@@ -1,6 +1,6 @@
-// Minimal starter for the MVP
-// - Initializes Leaflet map centered on Heerlen
-// - Hooks basic file input to importer
+// Minimale start voor de proefversie
+// - Initialiseert de Leaflet-kaart gecentreerd op Heerlen
+// - Koppelt de bestandsinvoer aan de importer
 
 const mapCenter = [50.8889, 5.9794]; // Heerlen approx
 const map = L.map('map').setView(mapCenter, 12);
@@ -27,7 +27,7 @@ fileInput.addEventListener('change', async (e) => {
   await handleFileImport(file);
 });
 
-// API buttons
+// API-knoppen
 const pdokBuurtenUrl = 'https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json';
 const pdokWijkenUrl = 'https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json';
 
@@ -39,14 +39,14 @@ document.getElementById('load-api')?.addEventListener('click', ()=>{
   loadFromApi(url);
 });
 
-// fetch JSON/GeoJSON from API, attempt reprojection if needed
+// Haal JSON/GeoJSON op via API en probeer indien nodig te herprojecteren
 async function loadFromApi(url){
   try{
     const res = await fetch(url);
     if(!res.ok) throw new Error('Netwerkfout: ' + res.status);
     const data = await res.json();
     let fc = data;
-    // If the API wrapped in features property
+    // Als de API de data in een features-property verpakt
     if(data && data.features===undefined && data.items && Array.isArray(data.items)){
       // try to convert items to FeatureCollection if possible
       fc = { type:'FeatureCollection', features: data.items };
@@ -66,48 +66,39 @@ async function loadFromApi(url){
 
     // populate field select
     if(window.populateFieldSelect) window.populateFieldSelect(fc);
-    alert('Dataset geladen vanaf API. Kies een variabele in het dropdown-menu.');
+    alert('Dataset geladen via API. Kies een variabele in het keuzemenu.');
   }catch(err){
     console.error(err);
-    alert('Fout bij laden API: ' + err.message);
+    alert('Fout bij het laden van de API: ' + err.message);
   }
 }
-
-// UI buttons: histogram and compare-mode
-const showHistBtn = document.getElementById('show-hist');
+  // UI-knoppen: vergelijkmodus
+// UI-knoppen: vergelijkmodus
 const startCompareBtn = document.getElementById('start-compare');
-
-showHistBtn?.addEventListener('click', ()=>{
-  const sel = document.getElementById('field-select');
-  const field = sel?.value;
-  if(!field) { alert('Kies eerst een variabele.'); return; }
-  if(!window.appData.lastFC){ alert('Laad eerst een dataset via "Bestand kiezen".'); return; }
-  if(window.createHistogramFromGeoJSON) window.createHistogramFromGeoJSON(window.appData.lastFC, field);
-});
 
 startCompareBtn?.addEventListener('click', ()=>{
   if(!window.appData.lastFC){ alert('Laad eerst de eerste dataset (basis).'); return; }
   window.appData.compareMode = true;
   startCompareBtn.textContent = 'Upload vergelijkingsbestand';
-  alert('Upload nu het tweede bestand via dezelfde bestandsuploader om te vergelijken.');
+  alert('Upload nu het tweede bestand via dezelfde bestandskiezer om te vergelijken.');
 });
 
-// Wanneer het geselecteerde veld verandert: update choropleth
+// Wanneer het geselecteerde veld verandert: werk de choropleet bij
 const fieldSelect = document.getElementById('field-select');
 fieldSelect?.addEventListener('change', ()=>{
   const field = fieldSelect.value;
   if(!field) return;
-  // gebruik laatste geladen dataset
+  // Gebruik de laatst geladen dataset
   const fc = window.appData?.lastFC;
   if(!fc) return;
-  // read visual options
+  // Lees visuele opties uit
   const method = document.getElementById('method-select')?.value || 'quantile';
   const palette = document.getElementById('palette-select')?.value || 'viridis';
   const opacity = parseFloat(document.getElementById('opacity-range')?.value || 0.8);
   if(window.applyChoropleth) window.applyChoropleth(fc, field, { method, palette, opacity });
 });
 
-// react to changes in method/palette/opacity too
+// Reageer ook op wijzigingen in methode/palet/dekking
 ['method-select','palette-select','opacity-range'].forEach(id=>{
   const el = document.getElementById(id);
   el?.addEventListener('change', ()=>{
@@ -115,18 +106,65 @@ fieldSelect?.addEventListener('change', ()=>{
     if(!field) return;
     const fc = window.appData?.lastFC;
     if(!fc) return;
-    const method = document.getElementById('method-select')?.value || 'quantile';
+    const method = 'quantile';
     const palette = document.getElementById('palette-select')?.value || 'viridis';
     const opacity = parseFloat(document.getElementById('opacity-range')?.value || 0.8);
     if(window.applyChoropleth) window.applyChoropleth(fc, field, { method, palette, opacity });
   });
 });
 
-// Placeholder functions (implemented in importer.js)
+// Filterknoppen: filter toepassen/ wissen
+document.getElementById('apply-filter')?.addEventListener('click', ()=>{
+  const min = document.getElementById('filter-min')?.value;
+  const max = document.getElementById('filter-max')?.value;
+  const lowpct = document.getElementById('filter-lowpct')?.value;
+  const highpct = document.getElementById('filter-highpct')?.value;
+  const filter = {};
+  if(min!==undefined && min!==null && min!=='') filter.min = +min;
+  if(max!==undefined && max!==null && max!=='') filter.max = +max;
+  if(lowpct) filter.lowPct = +lowpct;
+  if(highpct) filter.highPct = +highpct;
+  window.appData.filter = Object.keys(filter).length? filter : null;
+  // Pas de visualisatie opnieuw toe voor het huidige veld
+  const field = document.getElementById('field-select')?.value;
+  const fc = window.appData?.lastFC;
+  if(fc && field && window.applyChoropleth) window.applyChoropleth(fc, field, { method: 'quantile', palette: document.getElementById('palette-select')?.value, opacity: parseFloat(document.getElementById('opacity-range')?.value || 0.8) });
+  if(fc && field && window.createHistogramFromGeoJSON) window.createHistogramFromGeoJSON(fc, field);
+});
+
+document.getElementById('clear-filter')?.addEventListener('click', ()=>{
+  window.appData.filter = null;
+  document.getElementById('filter-min').value = '';
+  document.getElementById('filter-max').value = '';
+  document.getElementById('filter-lowpct').value = '';
+  document.getElementById('filter-highpct').value = '';
+  const field = document.getElementById('field-select')?.value;
+  const fc = window.appData?.lastFC;
+  if(fc && field && window.applyChoropleth) window.applyChoropleth(fc, field, { method: 'quantile', palette: document.getElementById('palette-select')?.value, opacity: parseFloat(document.getElementById('opacity-range')?.value || 0.8) });
+  if(fc && field && window.createHistogramFromGeoJSON) window.createHistogramFromGeoJSON(fc, field);
+});
+
+document.getElementById('filter-negative')?.addEventListener('click', ()=>{
+  // Zet de minimale waarde op 1 zodat negatieve en nul-uitschieters worden weggelaten.
+  const minInput = document.getElementById('filter-min');
+  if(minInput) minInput.value = '1';
+  window.appData.filter = { ...(window.appData.filter || {}), min: 1 };
+  const field = document.getElementById('field-select')?.value;
+  const fc = window.appData?.lastFC;
+  if(fc && field && window.applyChoropleth) {
+    window.applyChoropleth(fc, field, {
+      method: 'quantile',
+      palette: document.getElementById('palette-select')?.value,
+      opacity: parseFloat(document.getElementById('opacity-range')?.value || 0.8)
+    });
+  }
+});
+
+// Hulpfunctie (geïmplementeerd in importer.js)
 async function handleFileImport(file) {
   if (window.handleImportFile) {
     await window.handleImportFile(file, { map, dataLayer });
   } else {
-    alert('Importer not loaded yet.');
+    alert('Importer is nog niet geladen.');
   }
 }

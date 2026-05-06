@@ -1,38 +1,41 @@
-// Importer stub: supports GeoJSON and CSV (basic lat/lon) for MVP
+// Importer: ondersteunt GeoJSON en CSV (basis lat/lon) voor de proefversie
 
 window.handleImportFile = async function(file, ctx){
   const name = file.name.toLowerCase();
   const text = await file.text();
-
+  // Als de tekst op GeoJSON lijkt
   if (name.endsWith('.geojson') || text.trim().startsWith('{')){
-    const fc = JSON.parse(text);
-    const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
-    try{ map.fitBounds(layer.getBounds()); }catch(e){}
+    try{
+      const fc = JSON.parse(text);
+      const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
+      try{ map.fitBounds(layer.getBounds()); }catch(e){}
 
-    // App state + D3 hooks
-    window.appData = window.appData || {};
-    if(window.appData.compareMode && window.appData.lastFC){
-      window.appData.compareFC = fc;
-      window.appData.compareMode = false;
-      // use selected field
-      const sel = document.getElementById('field-select');
-      const field = sel?.value;
-      if(window.createCompareCharts && field){
-        window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, field);
+      // App-status + D3-koppelingen
+      window.appData = window.appData || {};
+      if(window.appData.compareMode && window.appData.lastFC){
+        window.appData.compareFC = fc;
+        window.appData.compareMode = false;
+        const sel = document.getElementById('field-select');
+        const field = sel?.value;
+        if(window.createCompareCharts && field){
+          window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, field);
+        } else {
+          alert('Vergelijkmodus: tweede bestand geladen. Kies eerst een variabele in het keuzemenu.');
+        }
       } else {
-        alert('Compare-mode: tweede bestand geladen. Kies eerst een variabele in het dropdown-menu.');
+        window.appData.lastFC = fc;
+        if(window.populateFieldSelect) window.populateFieldSelect(fc);
       }
-    } else {
-      // standaard: stel dit dataset in als lastFC en populeer fields
-      window.appData.lastFC = fc;
-      if(window.populateFieldSelect) window.populateFieldSelect(fc);
+      return;
+    }catch(err){
+      console.error('Fout bij het parsen van GeoJSON-tekst', err);
+      alert('Fout bij parsen van GeoJSON.');
+      return;
     }
-
-    return;
   }
 
   if (name.endsWith('.csv') || name.endsWith('.txt')){
-    // naive CSV parse: expect lat,lon or lon,lat columns
+    // Eenvoudige CSV-parsing: verwacht lat/lon- of lon/lat-kolommen
     const rows = text.split('\n').map(r=>r.split(','));
     // find lat/lon headers
     const headers = rows[0].map(h=>h.trim().toLowerCase());
@@ -55,7 +58,7 @@ window.handleImportFile = async function(file, ctx){
           if(window.createCompareCharts && field){
             window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, field);
           } else {
-            alert('Compare-mode: tweede bestand geladen. Kies eerst een variabele in het dropdown-menu.');
+            alert('Vergelijkmodus: tweede bestand geladen. Kies eerst een variabele in het keuzemenu.');
           }
         } else {
           window.appData.lastFC = fc;
@@ -64,7 +67,12 @@ window.handleImportFile = async function(file, ctx){
 
         return;
     }
+
+    if(name.endsWith('.zip')){
+        alert('Zip-bestanden worden in deze frontend-only versie niet ondersteund. Gebruik GeoJSON of CSV.');
+      return;
+      }
   }
 
-  alert('Bestandstype niet ondersteund door MVP importer.');
+      alert('Bestandstype niet ondersteund door de importer van de proefversie.');
 };

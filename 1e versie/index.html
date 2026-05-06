@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Opportunity Atlas — Heerlen MVP</title>
+  <title>Opportunity Atlas — Heerlen proefversie</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="css/app.css" />
 </head>
@@ -16,7 +16,7 @@
         <input id="file-input" type="file" />
       </div>
       <div id="api-area" style="margin-top:10px">
-        <h3>APIs</h3>
+        <h3>API's</h3>
         <button id="load-buurten">Laad PDOK Buurten (Heerlen)</button>
         <button id="load-wijken">Laad PDOK Wijken (Heerlen)</button>
         <div style="margin-top:6px">
@@ -29,16 +29,14 @@
         <select id="field-select">
           <option value="">-- geen --</option>
         </select>
-        <button id="show-hist">Toon histogram</button>
-        <button id="start-compare">Start compare-mode</button>
+        <button id="start-compare">Start vergelijkmodus</button>
       </div>
       <div id="visual-options" style="margin-top:10px">
         <label for="method-select">Classificatie:</label>
         <select id="method-select">
-          <option value="quantile">Quantile</option>
-          <option value="equal">Equal interval</option>
-          <option value="jenks">Jenks (natural breaks)</option>
+          <option value="quantile">Kwantiel</option>
         </select>
+        <br/>
         <label for="palette-select" style="margin-left:8px">Palet:</label>
         <select id="palette-select">
           <option value="viridis">Viridis</option>
@@ -47,8 +45,28 @@
           <option value="oranges">Oranges</option>
         </select>
         <div style="margin-top:6px">
-          <label for="opacity-range">Opacity:</label>
+          <label for="opacity-range">Dekking:</label>
           <input id="opacity-range" type="range" min="0" max="1" step="0.05" value="0.8" />
+        </div>
+      </div>
+      <div id="filter-area" style="margin-top:12px;border-top:1px solid #eee;padding-top:8px">
+        <h3>Filter & uitschieters</h3>
+        <div style="font-size:13px;color:#333;margin-bottom:6px">De verdeling van de gekozen variabele kan worden beïnvloed door extreme waarden. Gebruik filters of percentiel-clip om uitschieters te dempen.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="font-size:13px">Min:</label>
+          <input id="filter-min" type="number" style="width:100px" />
+          <label style="font-size:13px">Max:</label>
+          <input id="filter-max" type="number" style="width:100px" />
+        </div>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+          <label style="font-size:13px">Trim percentielen:</label>
+          <input id="filter-lowpct" type="number" min="0" max="50" step="1" placeholder="onder %" style="width:80px" />
+          <input id="filter-highpct" type="number" min="50" max="100" step="1" placeholder="boven %" style="width:80px" />
+        </div>
+        <div style="margin-top:8px">
+          <button id="apply-filter">Pas filter toe</button>
+          <button id="filter-negative">Filter negatieve waarden</button>
+          <button id="clear-filter">Wis filter</button>
         </div>
       </div>
       <div id="legend" aria-hidden="false" style="margin-top:12px"></div>

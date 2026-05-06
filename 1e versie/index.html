@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Opportunity Atlas — Heerlen MVP</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="map"></div>
+    <aside id="sidebar">
+      <h2>Datasets</h2>
+      <div id="import-area">
+        <input id="file-input" type="file" />
+      </div>
+      <div id="api-area" style="margin-top:10px">
+        <h3>APIs</h3>
+        <button id="load-buurten">Laad PDOK Buurten (Heerlen)</button>
+        <button id="load-wijken">Laad PDOK Wijken (Heerlen)</button>
+        <div style="margin-top:6px">
+          <input id="api-url" type="text" placeholder="Vul een GeoJSON/JSON API URL in" style="width:100%" />
+          <button id="load-api">Laad URL</button>
+        </div>
+      </div>
+      <div id="controls">
+        <label for="field-select">Selecteer variabele:</label>
+        <select id="field-select">
+          <option value="">-- geen --</option>
+        </select>
+        <button id="show-hist">Toon histogram</button>
+        <button id="start-compare">Start compare-mode</button>
+      </div>
+      <div id="visual-options" style="margin-top:10px">
+        <label for="method-select">Classificatie:</label>
+        <select id="method-select">
+          <option value="quantile">Quantile</option>
+          <option value="equal">Equal interval</option>
+          <option value="jenks">Jenks (natural breaks)</option>
+        </select>
+        <label for="palette-select" style="margin-left:8px">Palet:</label>
+        <select id="palette-select">
+          <option value="viridis">Viridis</option>
+          <option value="rdylgn">RdYlGn</option>
+          <option value="blues">Blues</option>
+          <option value="oranges">Oranges</option>
+        </select>
+        <div style="margin-top:6px">
+          <label for="opacity-range">Opacity:</label>
+          <input id="opacity-range" type="range" min="0" max="1" step="0.05" value="0.8" />
+        </div>
+      </div>
+      <div id="legend" aria-hidden="false" style="margin-top:12px"></div>
+      <div id="charts" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/importer.js"></script>
+  <script src="js/d3_charts.js"></script>
+</body>
+</html>

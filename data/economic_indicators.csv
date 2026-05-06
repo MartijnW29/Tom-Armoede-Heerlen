@@ -1,0 +1,8 @@
+locatie,lat,lon,bedrijven_count,bedrijven_groei_pct,werkgelegenheid,opleiding_hoger_pct,leegstand_winkels_pct
+Centrum,50.8900,5.9700,45,12.5,320,42,2.1
+Noord,50.9020,5.9680,28,8.3,189,38,3.4
+Oost,50.8850,5.9950,52,15.2,410,48,1.8
+West,50.8800,5.9600,34,6.1,215,35,4.7
+Zuid,50.8680,5.9750,41,11.8,298,40,3.2
+Northeast_node,50.8950,6.0050,15,22.1,98,52,0.5
+Southwest_node,50.8620,5.9450,22,5.3,156,32,5.9

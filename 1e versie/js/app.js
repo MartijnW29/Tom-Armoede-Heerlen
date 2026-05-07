@@ -228,6 +228,11 @@ async function laadVanApi(url, label) {
     if (fc && fc.features) {
       window.appData.lastFC = fc;
       
+      // Sla originele data op voor jaarfiltering
+      if (window.multiLoaderState) {
+        window.multiLoaderState.originalData = fc;
+      }
+      
       // Verwijder vorige choropleth-laag
       if (window.appData.choroplethLayer) {
         window.appData.dataLayer.removeLayer(window.appData.choroplethLayer);
@@ -247,6 +252,11 @@ async function laadVanApi(url, label) {
       try {
         map.fitBounds(laag.getBounds(), { maxZoom: 14 });
       } catch (e) { /* negeren */ }
+      
+      // Update jaarslider als data jaarvelden bevat
+      if (window.updateYearSlider) {
+        window.updateYearSlider(fc);
+      }
       
       // Vulveldenselectie-dropdown
       if (window.populateFieldSelect) window.populateFieldSelect(fc);
@@ -279,19 +289,7 @@ fileInput?.addEventListener('change', async (e) => {
 // EVENT-LISTENERS — API laden
 // ============================================================================
 
-document.getElementById('load-buurten')?.addEventListener('click', () =>
-  laadVanApi(APP_CONFIG.pdokBuurtenUrl, 'Heerlen Buurten')
-);
-
-document.getElementById('load-wijken')?.addEventListener('click', () =>
-  laadVanApi(APP_CONFIG.pdokWijkenUrl, 'Heerlen Wijken')
-);
-
-document.getElementById('load-api')?.addEventListener('click', () => {
-  const url = document.getElementById('api-url')?.value?.trim();
-  if (!url) return alert('Voer een geldige URL in.');
-  laadVanApi(url, 'Custom API');
-});
+// Single API buttons removed - use multi-API loading instead
 
 // ============================================================================
 // EVENT-LISTENERS — Veldkeuze & visualisatie

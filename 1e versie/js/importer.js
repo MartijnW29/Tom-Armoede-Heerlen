@@ -288,3 +288,13 @@ window.handleImportFile = async function(file, ctx){
 
       alert('Bestandstype niet ondersteund door de importer van de proefversie.');
 };
+
+// ============================================================================
+// EXPORT GLOBALE FUNCTIES — Voor compatibiliteit met multi-loader.js
+// ============================================================================
+
+window.parseCSV = parseCSV;
+window.vindBreedtegraadKolom = vindBreedtegraadKolom;
+window.vindLengtegraadKolom = vindLengtegraadKolom;
+window.toonDataOmgeving = toonDataOmgeving;
+

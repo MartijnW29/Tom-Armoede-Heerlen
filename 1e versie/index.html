@@ -25,16 +25,40 @@
       <section id="import-area" class="kaart-paneel">
         <h3>Bestand importeren</h3>
         <input id="file-input" type="file" />
+        <div class="multi-upload-controls">
+          <input id="multi-file-input" type="file" multiple />
+          <button id="load-multiple-files">Laad meerdere bestanden</button>
+          <div id="file-list" class="file-list"></div>
+        </div>
       </section>
 
       <section id="api-area" class="kaart-paneel">
-        <h3>API's</h3>
-        <button id="load-buurten">Laad PDOK Buurten (Heerlen)</button>
-        <button id="load-wijken">Laad PDOK Wijken (Heerlen)</button>
-        <div class="stapel-klein">
-          <input id="api-url" type="text" placeholder="Vul een GeoJSON/JSON API URL in" />
-          <button id="load-api">Laad URL</button>
+        <h3>API's - Laad meerdere tegelijk</h3>
+        <div class="multi-api-controls">
+          <div id="api-urls-list" class="api-urls-list">
+            <div class="api-url-item" data-api="pdok-buurten">
+              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
+              <label class="api-url-label">PDOK Buurten (Heerlen)</label>
+            </div>
+            <div class="api-url-item" data-api="pdok-wijken">
+              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
+              <label class="api-url-label">PDOK Wijken (Heerlen)</label>
+            </div>
+          </div>
+          <div style="margin-top: var(--ruimte-2);">
+            <button id="add-api-url">Voeg API URL toe</button>
+            <button id="load-all-apis">Laad alle API's</button>
+          </div>
         </div>
+      </section>
+
+      <section id="year-filter-area" class="kaart-paneel">
+        <h3>Filter op jaar</h3>
+        <div class="slider-container">
+          <input id="year-slider" type="range" min="2000" max="2024" step="1" value="2024" />
+          <span id="year-display">2024</span>
+        </div>
+        <button id="year-filter-clear" style="margin-top: var(--ruimte-2);">Wis jaarfilter</button>
       </section>
 
       <section id="controls" class="kaart-paneel">
@@ -107,6 +131,7 @@
   <script src="js/app.js"></script>
   <script src="js/map.js"></script>
   <script src="js/importer.js"></script>
+  <script src="js/multi-loader.js"></script>
   <script src="js/d3_charts.js"></script>
 </body>
 </html>

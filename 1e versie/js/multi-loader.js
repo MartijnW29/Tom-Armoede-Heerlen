@@ -193,7 +193,7 @@ async function loadMultipleFiles() {
       window.populateFieldSelect(merged);
     }
     
-    alert(`${allCollections.length} bestand(en) geladen en samengevoegd. ${merged.features.length} features totaal.`);
+    // Succesmelding weggelaten (stil laden als standaard)
     
   } catch (err) {
     console.error('Fout bij multi-file loading:', err);
@@ -305,7 +305,7 @@ async function loadAllAPIs() {
       window.populateFieldSelect(merged);
     }
     
-    alert(`${allCollections.length} API-verzoek(en) succesvol. ${merged.features.length} features totaal.`);
+    // Succesmelding weggelaten (stil laden als standaard)
     
   } catch (err) {
     console.error('Fout bij multi-API loading:', err);
@@ -482,6 +482,14 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialiseer met één API-URL invoerveld
   updateRemoveButtons();
+  
+  // Laad standaard API's automatisch bij start (gebruik de default gelezen URL-velden)
+  try {
+    // kleine timeout om zeker te zijn dat andere init scripts klaar zijn
+    setTimeout(() => {
+      if (typeof loadAllAPIs === 'function') loadAllAPIs();
+    }, 200);
+  } catch (e) { console.warn('Auto-load default APIs faalde:', e); }
 });
 
 // Zorg dat alles is geregistreerd als window-functie voor andere scripts

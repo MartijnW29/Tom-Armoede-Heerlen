@@ -20,7 +20,7 @@ const APP_CONFIG = {
   
   // Visualisatie-defaults
   standaardMethode: 'quantile',          // quantile of equal
-  standaardPalet: 'viridis',             // ColorBrewer palet
+  standaardPalet: 'rdylgn',             // ColorBrewer palet (default naar RdYlGn gezet)
   standaardOpaciteit: 0.8,               // 0.0–1.0
   standaardAantalKlassen: 5,             // Aantal kleurklassen
   
@@ -169,10 +169,22 @@ window.initFieldSelectors = function(fields){
     selectorsDiv.id = 'selectors-div';
     container.appendChild(selectorsDiv);
   }
-  // create one selector by default
-  window.addFieldSelector();
+  // create one selector by default met aantal_inwoners als standaardwaarde
+  const standaardVeld = 'aantal_inwoners';
+  if (window.availableFields.includes(standaardVeld)) {
+    window.addFieldSelector(standaardVeld);
+  } else {
+    window.addFieldSelector();
+  }
   const addButton = document.getElementById('add-variable');
   if (addButton) addButton.disabled = false;
+  
+  // Trigger visualisatie na korte delay zodat selector klaar is
+  setTimeout(() => {
+    if (typeof window.herllaadVisualisatie === 'function') {
+      window.herllaadVisualisatie();
+    }
+  }, 100);
 }
 
 document.getElementById('add-variable')?.addEventListener('click', (e)=>{ e.preventDefault(); window.addFieldSelector(); });
@@ -261,7 +273,7 @@ async function laadVanApi(url, label) {
       // Vulveldenselectie-dropdown
       if (window.populateFieldSelect) window.populateFieldSelect(fc);
       
-      alert(`Dataset "${label}" geladen. Kies een variabele om te visualiseren.`);
+      // Succesmelding weggelaten (stil laden als standaard)
     }
   } catch (err) {
     console.error(err);

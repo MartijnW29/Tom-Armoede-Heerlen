@@ -6,7 +6,7 @@
       "properties": {
         "buurt": "Centrum",
         "buurtnaam": "Heerlen Centrum",
-        "inwoners": 1250,
+        "aantal_inwoners": 1250,
         "huishoudens": 580,
         "werkloosheid_pct": 4.2,
         "inkomen_mediaan": 32500
@@ -29,7 +29,7 @@
       "properties": {
         "buurt": "Noord",
         "buurtnaam": "Heerlen Noord",
-        "inwoners": 2100,
+        "aantal_inwoners": 2100,
         "huishoudens": 920,
         "werkloosheid_pct": 5.8,
         "inkomen_mediaan": 28900
@@ -52,7 +52,7 @@
       "properties": {
         "buurt": "Oost",
         "buurtnaam": "Heerlen Oost",
-        "inwoners": 1850,
+        "aantal_inwoners": 1850,
         "huishoudens": 780,
         "werkloosheid_pct": 3.9,
         "inkomen_mediaan": 35200
@@ -75,7 +75,7 @@
       "properties": {
         "buurt": "West",
         "buurtnaam": "Heerlen West",
-        "inwoners": 1680,
+        "aantal_inwoners": 1680,
         "huishoudens": 710,
         "werkloosheid_pct": 6.1,
         "inkomen_mediaan": 27500
@@ -98,7 +98,7 @@
       "properties": {
         "buurt": "Zuid",
         "buurtnaam": "Heerlen Zuid",
-        "inwoners": 2340,
+        "aantal_inwoners": 2340,
         "huishoudens": 1050,
         "werkloosheid_pct": 7.3,
         "inkomen_mediaan": 26800

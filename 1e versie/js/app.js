@@ -52,6 +52,7 @@ window.appData = {
   lastFC: null,
   compareMode: false,
   compareFC: null,
+  baseGeoLayer: null,
   choroplethLayer: null,
   filter: null
 };
@@ -64,7 +65,9 @@ window.appData = {
  * Herlaad visualisatie met huidige instellingen
  */
 function herllaadVisualisatie() {
-  const veld = document.getElementById('field-select')?.value;
+  // Read selected fields from dynamic selectors (fallback to single select)
+  const geselecteerde = (window.getSelectedFields && window.getSelectedFields()) || [];
+  const veld = geselecteerde.length > 0 ? geselecteerde[0] : document.getElementById('field-select')?.value;
   const fc = window.appData?.lastFC;
   if (!veld || !fc || !window.toonChoropleth) return;
   
@@ -78,7 +81,101 @@ function herllaadVisualisatie() {
     opacity: opaciteit,
     classes: APP_CONFIG.standaardAantalKlassen
   });
+
+  // If multiple fields selected, render charts for all of them
+  if (geselecteerde.length > 0 && window.renderMultiVariableCharts) {
+    window.renderMultiVariableCharts(fc, geselecteerde);
+  } else if (window.renderMultiVariableCharts) {
+    window.renderMultiVariableCharts(fc, [veld]);
+  }
 }
+
+// Remove old compare-mode button behavior (if present)
+const startCompareBtn = document.getElementById('start-compare');
+if (startCompareBtn) startCompareBtn.remove();
+
+// ---- dynamic selector management ----
+window.availableFields = window.availableFields || [];
+
+window.getSelectedFields = function(){
+  const selects = Array.from(document.querySelectorAll('#selectors-div select.field-select-item'));
+  return selects.map(s => s.value).filter(v => v);
+}
+
+function createSelectElement(value){
+  const sel = document.createElement('select');
+  sel.className = 'field-select-item';
+  sel.style.minWidth = '180px';
+  const none = document.createElement('option'); none.value = ''; none.textContent = '-- geen --'; sel.appendChild(none);
+  (window.availableFields || []).forEach(f => {
+    const o = document.createElement('option'); o.value = f; o.textContent = f; if (f === value) o.selected = true; sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => herllaadVisualisatie());
+  return sel;
+}
+
+window.addFieldSelector = function(value){
+  const container = document.getElementById('field-select');
+  if(!container) { console.error('field-select container not found'); return; }
+  let selectorsDiv = document.getElementById('selectors-div');
+  if(!selectorsDiv){ 
+    selectorsDiv = document.createElement('div'); 
+    selectorsDiv.id = 'selectors-div'; 
+    container.appendChild(selectorsDiv);
+  }
+
+  const row = document.createElement('div'); 
+  row.className = 'field-row'; 
+  row.style.display='flex'; 
+  row.style.alignItems='center'; 
+  row.style.gap='6px'; 
+  row.style.marginTop='4px';
+  
+  const sel = createSelectElement(value);
+  row.appendChild(sel);
+  
+  const removeBtn = document.createElement('button'); 
+  removeBtn.type='button'; 
+  removeBtn.textContent='Verwijder'; 
+  removeBtn.addEventListener('click', ()=>{ 
+    row.remove(); 
+    herllaadVisualisatie(); 
+  });
+  row.appendChild(removeBtn);
+  selectorsDiv.appendChild(row);
+  console.log('Veldselector toegevoegd voor:', value);
+  return sel;
+}
+
+window.initFieldSelectors = function(fields){
+  window.availableFields = fields || [];
+  const container = document.getElementById('field-select');
+  if(!container) { console.error('field-select container not found'); return; }
+  console.log('initFieldSelectors aangeroepen met velden:', fields);
+  if (!window.availableFields.length) {
+    container.innerHTML = '<div class="hint">Laad eerst een dataset om variabelen te kunnen kiezen.</div>';
+    const addButton = document.getElementById('add-variable');
+    if (addButton) addButton.disabled = true;
+    return;
+  }
+  // Remove all but the hint
+  const hint = container.querySelector('.hint');
+  Array.from(container.children).forEach(child => {
+    if (child !== hint) child.remove();
+  });
+  let selectorsDiv = document.getElementById('selectors-div');
+  if (!selectorsDiv) {
+    selectorsDiv = document.createElement('div');
+    selectorsDiv.id = 'selectors-div';
+    container.appendChild(selectorsDiv);
+  }
+  // create one selector by default
+  window.addFieldSelector();
+  const addButton = document.getElementById('add-variable');
+  if (addButton) addButton.disabled = false;
+}
+
+document.getElementById('add-variable')?.addEventListener('click', (e)=>{ e.preventDefault(); window.addFieldSelector(); });
 
 /**
  * Pas filter toe en vernieuw visualisatie
@@ -136,11 +233,16 @@ async function laadVanApi(url, label) {
         window.appData.dataLayer.removeLayer(window.appData.choroplethLayer);
         window.appData.choroplethLayer = null;
       }
+      if (window.appData.baseGeoLayer) {
+        window.appData.dataLayer.removeLayer(window.appData.baseGeoLayer);
+        window.appData.baseGeoLayer = null;
+      }
       
       // Toon features als grijze generieke laag
       const laag = L.geoJSON(fc, {
         style: { color: '#888', weight: 1, fillOpacity: 0.3 }
       }).addTo(window.appData.dataLayer);
+      window.appData.baseGeoLayer = laag;
       
       try {
         map.fitBounds(laag.getBounds(), { maxZoom: 14 });
@@ -168,7 +270,7 @@ fileInput?.addEventListener('change', async (e) => {
   try {
     await handleFileImport(file);
   } catch (err) {
-    console.error('Import error:', err);
+    console.error('Fout bij import:', err);
     alert('Fout bij bestandimport: ' + err.message);
   }
 });
@@ -189,21 +291,6 @@ document.getElementById('load-api')?.addEventListener('click', () => {
   const url = document.getElementById('api-url')?.value?.trim();
   if (!url) return alert('Voer een geldige URL in.');
   laadVanApi(url, 'Custom API');
-});
-
-// ============================================================================
-// EVENT-LISTENERS — Vergelijking (Compare mode)
-// ============================================================================
-
-const startCompareBtn = document.getElementById('start-compare');
-startCompareBtn?.addEventListener('click', () => {
-  if (!window.appData.lastFC) {
-    alert('Laad eerst de eerste dataset.');
-    return;
-  }
-  window.appData.compareMode = true;
-  startCompareBtn.textContent = 'Upload vergelijkingsbestand';
-  alert('Upload nu het tweede bestand om te vergelijken.');
 });
 
 // ============================================================================

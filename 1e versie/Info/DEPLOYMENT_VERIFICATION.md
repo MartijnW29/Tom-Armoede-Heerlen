@@ -41,7 +41,7 @@
 | CSV-import | ✅ | lat/lon detection |
 | GeoJSON-import | ✅ | Full FeatureCollection support |
 | ZIP-import | ✅ | Basic support, GeoJSON in ZIP |
-| KML-import | 🔄 | TODO (documented in roadmap) |
+| KML-import | 🔄 | Nog te implementeren (gedocumenteerd in roadmap) |
 | Tooltips/Popups | ✅ | Click-triggered, attribute display |
 | Filtering | ✅ | Min/max, percentiles, negative filter |
 | Selection/Export | ✅ | Click-select, future export |
@@ -188,7 +188,7 @@ python -m http.server 8000
 **"CSV coordinates wrong"**
 - Verify `lat` and `lon` column headers (lowercase)
 - Check values are numeric (no quotes)
-- Example: `lat,lon,name` on first row
+- Voorbeeld: `lat,lon,name` op de eerste regel
 
 **"Choropleth not rendering"**
 - Hover each dropdown to choose valid numeric field

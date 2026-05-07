@@ -104,24 +104,12 @@ function haalWaarden(fc, veld) {
  * @param {GeoJSON} fc
  */
 window.populateFieldSelect = function(fc) {
-  const sel = document.getElementById('field-select');
-  if (!sel) return;
-  
-  // Wis bestaande opties
-  sel.innerHTML = '<option value="">-- geen --</option>';
-  
+  // Provide available numeric fields to the app; rendering of selectors is
+  // handled by the app logic so users can add/remove selectors dynamically.
   if (!fc || !fc.features || fc.features.length === 0) return;
-  
-  // Vind numerieke velden
   const numeriekeVelden = vindtNumeriekeVelden(fc);
-  
-  // Voeg opties toe
-  numeriekeVelden.forEach(veld => {
-    const option = document.createElement('option');
-    option.value = veld;
-    option.textContent = veld;
-    sel.appendChild(option);
-  });
+  window.availableFields = numeriekeVelden;
+  if (window.initFieldSelectors) window.initFieldSelectors(numeriekeVelden);
 };
 
 /**
@@ -301,17 +289,12 @@ function getValues(fc, field){
 
 // Vul de veldkeuze in de zijbalk
 window.populateFieldSelect = function(fc){
-  const sel = document.getElementById('field-select');
-  if(!sel) return;
-  // clear
-  sel.innerHTML = '<option value="">-- geen --</option>';
   if(!fc || !fc.features || fc.features.length===0) return;
   const numeric = extractNumericFields(fc);
-  numeric.forEach(f=>{
-    const o = document.createElement('option');
-    o.value = f; o.textContent = f;
-    sel.appendChild(o);
-  });
+  window.availableFields = numeric;
+  if (window.initFieldSelectors) {
+    window.initFieldSelectors(numeric);
+  }
 }
 
 // Wis het grafiekvlak

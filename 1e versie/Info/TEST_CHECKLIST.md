@@ -200,7 +200,7 @@
 
 ## 🐛 Bekende Beperkingen
 
-1. **KML-import:** Niet geïmplementeerd (TODO)
+1. **KML-import:** Niet geïmplementeerd (Nog te implementeren)
 2. **Shapefile in ZIP:** Vereist shpjs CDN (niet ingebouwd)
 3. **Backend:** Frontend-only; geen server-side processing
 4. **Performance:** Bij >10K features kan rendering traag zijn

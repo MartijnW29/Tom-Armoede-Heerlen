@@ -116,33 +116,37 @@ function filtreerdFeatures(fc, veld, filter) {
  */
 function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const props = feature.properties || {};
-  const waarde = props[veld];
-  const passeertFilter = waardePasseertFilter(waarde, alleWaarden, activeFilter);
-  
-  // Verzamel relevante velden
-  const relevantVelden = [];
-  if (veld && props[veld] !== undefined) relevantVelden.push(veld);
-  
-  KAART_CONFIG.voorkeurvelden.forEach(k => {
-    if (k !== veld && props[k] !== undefined && !relevantVelden.includes(k)) {
-      relevantVelden.push(k);
-    }
-  });
-  
-  // Bouw HTML
+
+  // Determine which variables to show: read from dynamic selectors if present,
+  // otherwise fall back to single `veld` parameter
+  const geselecteerde = Array.from(document.querySelectorAll('#selectors-div select.field-select-item')).map(s => s.value).filter(v => v);
+  const veldenToShow = geselecteerde.length > 0 ? geselecteerde : (veld ? [veld] : []);
+
   const rijen = [];
   rijen.push(`<b>Geselecteerd gebied</b>`);
-  if (!passeertFilter) rijen.push(`<i>Dit gebied valt buiten de actieve filter.</i>`);
-  
-  relevantVelden.forEach(k => {
-    const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
-    rijen.push(`<b>${k}</b>: ${txt}`);
+
+  // Add preferred identifying fields first
+  KAART_CONFIG.voorkeurvelden.forEach(k => {
+    if (props[k] !== undefined) {
+      const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
+      rijen.push(`<b>${k}</b>: ${txt}`);
+    }
   });
-  
-  if (relevantVelden.length === 0) {
-    rijen.push(`<i>Geen relevante velden gevonden.</i>`);
+
+  if (veldenToShow.length === 0) {
+    rijen.push(`<i>Geen variabele geselecteerd.</i>`);
+    return rijen.join('<br/>');
   }
-  
+
+  // Show values for all selected variables
+  for (const v of veldenToShow) {
+    const val = props[v];
+    const tekst = (val === null || val === undefined || val === '') ? '<i>geen waarde</i>' : (typeof val === 'number' ? val.toFixed(2) : val);
+    const passeert = waardePasseertFilter(val, alleWaarden, activeFilter);
+    const waarschuwing = !passeert ? ' <i>(buiten filter)</i>' : '';
+    rijen.push(`<b>${v}</b>: ${tekst}${waarschuwing}`);
+  }
+
   return rijen.join('<br/>');
 }
 
@@ -280,6 +284,10 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   );
   
   // Verwijder vorige choropleth-laag
+  if (window.appData.baseGeoLayer) {
+    window.appData.dataLayer.removeLayer(window.appData.baseGeoLayer);
+    window.appData.baseGeoLayer = null;
+  }
   if (window.appData.choroplethLayer) {
     window.appData.dataLayer.removeLayer(window.appData.choroplethLayer);
     window.appData.choroplethLayer = null;

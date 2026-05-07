@@ -280,6 +280,10 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   );
   
   // Verwijder vorige choropleth-laag
+  if (window.appData.baseGeoLayer) {
+    window.appData.dataLayer.removeLayer(window.appData.baseGeoLayer);
+    window.appData.baseGeoLayer = null;
+  }
   if (window.appData.choroplethLayer) {
     window.appData.dataLayer.removeLayer(window.appData.choroplethLayer);
     window.appData.choroplethLayer = null;

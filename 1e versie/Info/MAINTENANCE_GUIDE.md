@@ -258,7 +258,7 @@ Object.keys(window.appData.lastFC.features[0].properties)
 ```javascript
 // Check if coords detected as projected:
 const geom = window.appData.lastFC.features[0].geometry;
-console.log(Math.abs(geom.coordinates[0]));  // Should show lat/lon ~52/5
+console.log(Math.abs(geom.coordinates[0]));  // Zou lat/lon ~52/5 moeten tonen
 
 // If > 1000, likely RD/meters
 ```

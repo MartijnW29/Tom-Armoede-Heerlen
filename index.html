@@ -39,11 +39,13 @@
 
       <section id="controls" class="kaart-paneel">
         <h3>Variabele</h3>
-        <label for="field-select">Selecteer variabele:</label>
-        <select id="field-select">
-          <option value="">-- geen --</option>
-        </select>
-        <button id="start-compare">Start vergelijkmodus</button>
+        <label for="field-select">Selecteer variabele(s):</label>
+        <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
+          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken.</div>
+        </div>
+        <div style="margin-top:6px;">
+          <button id="add-variable">Variabele toevoegen</button>
+        </div>
       </section>
 
       <section id="visual-options" class="kaart-paneel">

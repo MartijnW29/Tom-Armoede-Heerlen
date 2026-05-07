@@ -111,8 +111,8 @@
 ✅ CSV-upload (met lat/lon)  
 ✅ Custom API-URL laden  
 ✅ ZIP-bestanden (GeoJSON in ZIP)  
-🔄 KML-import (TODO)  
-🔄 Shapefile (TODO)  
+🔄 KML-import (Nog te implementeren)  
+🔄 Shapefile (Nog te implementeren)  
 
 ### Visualisatie
 ✅ Choropleth-mapping (op numerieke velden)  

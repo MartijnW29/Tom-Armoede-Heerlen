@@ -22,35 +22,7 @@
         <h2>Datasets</h2>
       </header>
 
-      <section id="import-area" class="kaart-paneel">
-        <h3>Bestand importeren</h3>
-        <input id="file-input" type="file" />
-        <div class="multi-upload-controls">
-          <input id="multi-file-input" type="file" multiple />
-          <button id="load-multiple-files">Laad meerdere bestanden</button>
-          <div id="file-list" class="file-list"></div>
-        </div>
-      </section>
-
-      <section id="api-area" class="kaart-paneel">
-        <h3>API's - Laad meerdere tegelijk</h3>
-        <div class="multi-api-controls">
-          <div id="api-urls-list" class="api-urls-list">
-            <div class="api-url-item" data-api="pdok-buurten">
-              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
-              <label class="api-url-label">PDOK Buurten (Heerlen)</label>
-            </div>
-            <div class="api-url-item" data-api="pdok-wijken">
-              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
-              <label class="api-url-label">PDOK Wijken (Heerlen)</label>
-            </div>
-          </div>
-          <div style="margin-top: var(--ruimte-2);">
-            <button id="add-api-url">Voeg API URL toe</button>
-            <button id="load-all-apis">Laad alle API's</button>
-          </div>
-        </div>
-      </section>
+      <section id="legend" class="kaart-paneel" aria-hidden="false"></section>
 
       <section id="year-filter-area" class="kaart-paneel">
         <h3>Filter op jaar</h3>
@@ -61,21 +33,10 @@
         <button id="year-filter-clear" style="margin-top: var(--ruimte-2);">Wis jaarfilter</button>
       </section>
 
-      <section id="controls" class="kaart-paneel">
-        <h3>Variabele</h3>
-        <label for="field-select">Selecteer variabele(s):</label>
-        <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
-          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken.</div>
-        </div>
-        <div style="margin-top:6px;">
-          <button id="add-variable">Variabele toevoegen</button>
-        </div>
-      </section>
-
       <section id="visual-options" class="kaart-paneel">
         <h3>Visualisatie</h3>
-        <label for="method-select">Classificatie:</label>
-        <select id="method-select">
+         <label for="method-select" style="display:none;">Classificatie:</label>
+        <select id="method-select" hidden>
           <option value="quantile">Kwantiel</option>
           <option value="equal">Equal interval</option>
         </select>
@@ -92,7 +53,18 @@
         <input id="opacity-range" type="range" min="0" max="1" step="0.05" />
       </section>
 
-      <section id="filter-area" class="kaart-paneel kaart-paneel-filter">
+      <section id="controls" class="kaart-paneel">
+        <h3>Variabele</h3>
+        <label for="field-select">Selecteer variabele(s):</label>
+        <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
+          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken.</div>
+        </div>
+        <div style="margin-top:6px;">
+          <button id="add-variable">Variabele toevoegen</button>
+        </div>
+      </section>
+
+      <section id="filter-area" class="kaart-paneel kaart-paneel-filter" hidden>
         <h3>Filter en uitschieters</h3>
         <p class="uitleg-compact">
           De verdeling van de gekozen variabele kan worden beinvloed door extreme waarden.
@@ -120,8 +92,37 @@
         </div>
       </section>
 
-      <section id="legend" class="kaart-paneel" aria-hidden="false"></section>
-      <section id="charts" class="kaart-paneel" aria-live="polite"></section>
+      <section id="api-area" class="kaart-paneel" hidden>
+        <h3>API's - Laad meerdere tegelijk</h3>
+        <div class="multi-api-controls">
+          <div id="api-urls-list" class="api-urls-list">
+            <div class="api-url-item" data-api="pdok-buurten">
+              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
+              <label class="api-url-label">PDOK Buurten (Heerlen)</label>
+            </div>
+            <div class="api-url-item" data-api="pdok-wijken">
+              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" readonly />
+              <label class="api-url-label">PDOK Wijken (Heerlen)</label>
+            </div>
+          </div>
+          <div style="margin-top: var(--ruimte-2);">
+            <button id="add-api-url">Voeg API URL toe</button>
+            <button id="load-all-apis">Laad alle API's</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="import-area" class="kaart-paneel" hidden>
+        <h3>Bestand importeren</h3>
+        <input id="file-input" type="file" />
+        <div class="multi-upload-controls">
+          <input id="multi-file-input" type="file" multiple />
+          <button id="load-multiple-files">Laad meerdere bestanden</button>
+          <div id="file-list" class="file-list"></div>
+        </div>
+      </section>
+
+      
     </aside>
   </div>
 

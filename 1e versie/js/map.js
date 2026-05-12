@@ -251,6 +251,34 @@ function tekenLegenda(breuken, kleuren, veldnaam) {
   titel.style.margin = '0 0 8px 0';
   legendDiv.appendChild(titel);
   
+  // Voeg "Geen data" bovenaan toe
+  const geenDataRij = document.createElement('div');
+  geenDataRij.style.display = 'flex';
+  geenDataRij.style.alignItems = 'center';
+  geenDataRij.style.marginBottom = '4px';
+  geenDataRij.style.fontSize = '12px';
+  
+  const geenDataKastje = document.createElement('div');
+  geenDataKastje.style.width = '20px';
+  geenDataKastje.style.height = '14px';
+  geenDataKastje.style.backgroundColor = '#ccc';
+  geenDataKastje.style.marginRight = '8px';
+  geenDataKastje.style.border = '1px solid #666';
+  
+  const geenDataLabel = document.createElement('span');
+  geenDataLabel.textContent = 'Geen data';
+  geenDataLabel.style.fontStyle = 'italic';
+  
+  geenDataRij.appendChild(geenDataKastje);
+  geenDataRij.appendChild(geenDataLabel);
+  legendDiv.appendChild(geenDataRij);
+  
+  // Voeg scheider toe
+  const scheider = document.createElement('div');
+  scheider.style.borderTop = '1px solid #ddd';
+  scheider.style.margin = '4px 0 4px 0';
+  legendDiv.appendChild(scheider);
+  
   // Kleurkastjes met ranges
   for (let i = 0; i < kleuren.length; i++) {
     const rij = document.createElement('div');

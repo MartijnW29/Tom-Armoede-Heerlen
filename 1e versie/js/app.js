@@ -143,7 +143,9 @@ window.appData = {
   compareFC: null,
   baseGeoLayer: null,
   choroplethLayer: null,
-  filter: null
+  filter: {
+    min: 0.01
+  }
 };
 
 window.syncOpacityDefaults();

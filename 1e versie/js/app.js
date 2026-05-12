@@ -21,7 +21,7 @@ const APP_CONFIG = {
   // Visualisatie-defaults
   standaardMethode: 'quantile',          // quantile of equal
   standaardPalet: 'rdylgn',             // ColorBrewer palet (default naar RdYlGn gezet)
-  standaardOpaciteit: 0.75,               // 0.0–1.0
+  standaardOpaciteit: 0.50,               // 0.0–1.0
   standaardAantalKlassen: 5,             // Aantal kleurklassen
   
   // API-endpoints (PDOK Buurten/Wijken voor Heerlen gemeentecode GM0917)

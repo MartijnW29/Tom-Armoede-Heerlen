@@ -330,9 +330,9 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     if (!passeertFilter) {
       return {
         color: KAART_CONFIG.gefilterdRandKleur,
-        weight: 0.4,
-        fillOpacity: KAART_CONFIG.gefilterdTransparantie,
-        fillColor: KAART_CONFIG.gefilterdVulKleur
+        weight: 0.6,
+        fillOpacity: 0.45,
+        fillColor: '#bdbdbd'
       };
     }
     

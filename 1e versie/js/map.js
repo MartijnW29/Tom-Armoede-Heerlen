@@ -18,7 +18,7 @@
 const KAART_CONFIG = {
   // Kleuren en visualisatie-instellingen
   standaardKleurPalet: 'viridis',         // viridis, rdylgn, blues, oranges
-  standaardTransparantie: 0.8,            // 0.0–1.0: hoe zichtbaar polygonen zijn
+  standaardTransparantie: 0.5,            // 0.0–1.0: hoe zichtbaar polygonen zijn
   standaardAantalKlassen: 5,              // Aantal kleurklassen in legenda
   standaardClassificatie: 'quantile',     // quantile of equal
   
@@ -38,6 +38,12 @@ const KAART_CONFIG = {
   // Kaart-view
   maxZoomNaDataLoad: 14,                  // Maximaal zoomniveau na inladen data
 };
+
+window.APP_SETTINGS = window.APP_SETTINGS || {};
+window.APP_SETTINGS.defaultOpacity = KAART_CONFIG.standaardTransparantie;
+if (typeof window.syncOpacityDefaults === 'function') {
+  window.syncOpacityDefaults();
+}
 
 // ============================================================================
 // HULPFUNCTIES — Basis operaties

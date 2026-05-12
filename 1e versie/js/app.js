@@ -29,6 +29,21 @@ const APP_CONFIG = {
   pdokWijkenUrl: 'https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json',
 };
 
+window.APP_SETTINGS = window.APP_SETTINGS || {};
+
+function getDefaultOpacity() {
+  return typeof window.APP_SETTINGS.defaultOpacity === 'number'
+    ? window.APP_SETTINGS.defaultOpacity
+    : APP_CONFIG.standaardOpaciteit;
+}
+
+window.syncOpacityDefaults = function syncOpacityDefaults() {
+  const opacityRange = document.getElementById('opacity-range');
+  if (opacityRange) {
+    opacityRange.value = String(getDefaultOpacity());
+  }
+};
+
 // ============================================================================
 // INITIALISATIE — Kaart en basislagen
 // ============================================================================
@@ -131,6 +146,8 @@ window.appData = {
   filter: null
 };
 
+window.syncOpacityDefaults();
+
 // ============================================================================
 // HULPFUNCTIES
 // ============================================================================
@@ -147,7 +164,7 @@ function herllaadVisualisatie() {
   
   const methode = document.getElementById('method-select')?.value || APP_CONFIG.standaardMethode;
   const palet = document.getElementById('palette-select')?.value || APP_CONFIG.standaardPalet;
-  const opaciteit = parseFloat(document.getElementById('opacity-range')?.value || APP_CONFIG.standaardOpaciteit);
+  const opaciteit = parseFloat(document.getElementById('opacity-range')?.value || getDefaultOpacity());
   
   window.toonChoropleth(fc, veld, {
     method: methode,

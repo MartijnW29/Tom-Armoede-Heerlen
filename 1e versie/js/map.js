@@ -378,9 +378,23 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   const laag = L.geoJSON(fc, {
     style: styleFeature,
     onEachFeature: (feature, leafletLayer) => {
+      const popupHtml = bouwFeaturePopup(feature, veld, activeFilter, alleWaarden);
+
+      leafletLayer.bindPopup(popupHtml, {
+        closeButton: false,
+        autoPan: false
+      });
+
+      leafletLayer.on('mouseover', function () {
+        this.openPopup();
+      });
+
+      leafletLayer.on('mouseout', function () {
+        this.closePopup();
+      });
+
       leafletLayer.on('click', () => {
-        const popupHtml = bouwFeaturePopup(feature, veld, activeFilter, alleWaarden);
-        leafletLayer.bindPopup(popupHtml).openPopup();
+        leafletLayer.openPopup();
       });
     }
   }).addTo(window.appData.dataLayer);

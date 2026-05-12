@@ -112,26 +112,8 @@ window.populateFieldSelect = function(fc) {
   if (window.initFieldSelectors) window.initFieldSelectors(numeriekeVelden);
 
   // Selecteer standaardvariabele indien aanwezig
-  const standaardVeld = 'aantal_inwoners';
-  // Zoek exact match en voeg toe als eerste selector
-  if (numeriekeVelden.includes(standaardVeld)) {
-    // wacht even tot selectors zijn gerenderd en zet de waarde
-    setTimeout(() => {
-      // Force add selector met standaardveld
-      if (typeof window.addFieldSelector === 'function') {
-        const sel = window.addFieldSelector(standaardVeld);
-        if (sel) {
-          sel.value = standaardVeld;
-          // trigger visualisatie update
-          const evt = new Event('change', { bubbles: true });
-          sel.dispatchEvent(evt);
-          if (typeof window.herllaadVisualisatie === 'function') {
-            setTimeout(() => window.herllaadVisualisatie(), 50);
-          }
-        }
-      }
-    }, 100);
-  }
+  // No forced addition here; app initialiser (initFieldSelectors) handles
+  // creating default selectors. This avoids duplicated selectors.
 };
 
 /**

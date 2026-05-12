@@ -263,12 +263,84 @@ window.initFieldSelectors = function(fields){
     container.appendChild(selectorsDiv);
   }
   // create one selector by default met aantal_inwoners als standaardwaarde
-  const standaardVeld = 'aantal_inwoners';
-  if (window.availableFields.includes(standaardVeld)) {
-    window.addFieldSelector(standaardVeld);
+  const standaardVeld1 = 'aantal_inwoners';
+  const standaardVeld2 = 'aantal_huishoudens';
+
+  // Add first selector (preferred default)
+  if (window.availableFields.includes(standaardVeld1)) {
+    window.addFieldSelector(standaardVeld1);
   } else {
     window.addFieldSelector();
   }
+
+  // Add second selector if available, otherwise add an empty second selector
+  if (window.availableFields.includes(standaardVeld2)) {
+    window.addFieldSelector(standaardVeld2);
+  } else {
+    // add empty second selector so user can pick
+    window.addFieldSelector();
+  }
+
+  // Insert a small color hint widget to the left of the first selector
+  // so users understand that the first variable controls the map color.
+  setTimeout(() => {
+    const selectorsDiv = document.getElementById('selectors-div');
+    const firstRow = selectorsDiv?.querySelector('.field-row');
+    if (firstRow && !firstRow.querySelector('.color-hint')) {
+      const hintContainer = document.createElement('div');
+      hintContainer.style.display = 'inline-flex';
+      hintContainer.style.flexDirection = 'column';
+      hintContainer.style.alignItems = 'center';
+      hintContainer.style.gap = '2px';
+      hintContainer.style.marginRight = '6px';
+
+      const hint = document.createElement('div');
+      hint.className = 'color-hint';
+      hint.title = 'Kleur: bepaalt welke variabele de kleur van de kaart beïnvloedt.';
+      hint.style.display = 'inline-block';
+      hint.style.width = '20px';
+      hint.style.height = '20px';
+      hint.style.border = '1.5px solid #333';
+      hint.style.borderRadius = '4px';
+      hint.style.cursor = 'default';
+      hint.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)';
+
+      const label = document.createElement('span');
+      label.style.fontSize = '9px';
+      label.style.fontWeight = 'bold';
+      label.style.color = '#555';
+      label.textContent = 'kleur';
+
+      // Function to update color hint based on palette selection
+      const updateColorHint = () => {
+        const paletSelect = document.getElementById('palette-select');
+        const palet = paletSelect?.value || 'viridis';
+        
+        const paletGradients = {
+          'viridis': 'linear-gradient(135deg, #440154 0%, #31688e 40%, #35b779 70%, #fde724 100%)',
+          'rdylgn': 'linear-gradient(135deg, #a50026 0%, #ffffbf 50%, #006837 100%)',
+          'blues': 'linear-gradient(135deg, #f7fbff 0%, #4292c6 70%, #08519c 100%)',
+          'oranges': 'linear-gradient(135deg, #fff5eb 0%, #fb9a6f 70%, #b30000 100%)'
+        };
+        
+        hint.style.background = paletGradients[palet] || paletGradients['viridis'];
+      };
+
+      // Set initial color and listen for palette changes
+      updateColorHint();
+      const paletSelect = document.getElementById('palette-select');
+      if (paletSelect) {
+        paletSelect.addEventListener('change', updateColorHint);
+      }
+
+      hintContainer.appendChild(hint);
+      hintContainer.appendChild(label);
+
+      const sel = firstRow.querySelector('select');
+      if (sel) firstRow.insertBefore(hintContainer, sel);
+      else firstRow.insertBefore(hintContainer, firstRow.firstChild);
+    }
+  }, 120);
   const addButton = document.getElementById('add-variable');
   if (addButton) addButton.disabled = false;
   

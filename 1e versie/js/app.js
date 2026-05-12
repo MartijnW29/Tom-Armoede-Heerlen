@@ -45,6 +45,80 @@ L.tileLayer(APP_CONFIG.basemapUrl, {
 // Data-laag (container voor alle data-visualisaties)
 const dataLayer = L.layerGroup().addTo(map);
 
+function polygonRingArea(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+
+  let area = 0;
+  for (let i = 0; i < ring.length - 1; i += 1) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    area += x1 * y2 - x2 * y1;
+  }
+
+  return Math.abs(area) / 2;
+}
+
+function featureArea(feature) {
+  const geometry = feature?.geometry;
+  if (!geometry) return null;
+
+  if (geometry.type === 'Polygon') {
+    const rings = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+    if (rings.length === 0) return null;
+    const outerRing = polygonRingArea(rings[0]);
+    const holesArea = rings.slice(1).reduce((sum, ring) => sum + polygonRingArea(ring), 0);
+    return Math.max(outerRing - holesArea, 0);
+  }
+
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.reduce((sum, polygon) => {
+      const rings = Array.isArray(polygon) ? polygon : [];
+      if (rings.length === 0) return sum;
+      const outerRing = polygonRingArea(rings[0]);
+      const holesArea = rings.slice(1).reduce((innerSum, ring) => innerSum + polygonRingArea(ring), 0);
+      return sum + Math.max(outerRing - holesArea, 0);
+    }, 0);
+  }
+
+  return null;
+}
+
+function applySmallPolygonsToFront(rootLayer) {
+  if (!rootLayer || typeof rootLayer.eachLayer !== 'function') return;
+
+  const polygonLayers = [];
+
+  const collectLayers = (layer) => {
+    if (!layer) return;
+
+    if (typeof layer.eachLayer === 'function' && !layer.feature) {
+      layer.eachLayer(collectLayers);
+      return;
+    }
+
+    const area = featureArea(layer.feature);
+    if (typeof area === 'number' && typeof layer.bringToFront === 'function') {
+      polygonLayers.push({ layer, area });
+    }
+  };
+
+  rootLayer.eachLayer(collectLayers);
+
+  polygonLayers
+    .sort((a, b) => b.area - a.area)
+    .forEach(({ layer }) => layer.bringToFront());
+}
+
+window.bringSmallPolygonsToFront = function bringSmallPolygonsToFront(rootLayer) {
+  applySmallPolygonsToFront(rootLayer);
+
+  const schedule = typeof window.requestAnimationFrame === 'function'
+    ? window.requestAnimationFrame.bind(window)
+    : (callback) => setTimeout(callback, 0);
+
+  schedule(() => applySmallPolygonsToFront(rootLayer));
+};
+
 // Globale applicatiestate
 window.appData = {
   map,
@@ -259,6 +333,9 @@ async function laadVanApi(url, label) {
       const laag = L.geoJSON(fc, {
         style: { color: '#888', weight: 1, fillOpacity: 0.3 }
       }).addTo(window.appData.dataLayer);
+      if (window.bringSmallPolygonsToFront) {
+        window.bringSmallPolygonsToFront(window.appData.dataLayer);
+      }
       window.appData.baseGeoLayer = laag;
       
       try {

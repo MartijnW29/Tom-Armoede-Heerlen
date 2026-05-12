@@ -220,6 +220,9 @@ window.handleImportFile = async function(file, ctx){
     try{
       const fc = JSON.parse(text);
       const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
+      if (window.bringSmallPolygonsToFront) {
+        window.bringSmallPolygonsToFront(ctx.dataLayer);
+      }
       try{ map.fitBounds(layer.getBounds()); }catch(e){}
 
       // App-status + D3-koppelingen
@@ -259,6 +262,9 @@ window.handleImportFile = async function(file, ctx){
       }));
       const fc = { type:'FeatureCollection', features: feats };
         const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
+        if (window.bringSmallPolygonsToFront) {
+          window.bringSmallPolygonsToFront(ctx.dataLayer);
+        }
         try{ map.fitBounds(layer.getBounds()); }catch(e){}
 
         window.appData = window.appData || {};

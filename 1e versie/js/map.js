@@ -378,6 +378,9 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
       });
     }
   }).addTo(window.appData.dataLayer);
+    if (window.bringSmallPolygonsToFront) {
+      window.bringSmallPolygonsToFront(window.appData.dataLayer);
+    }
   
   window.appData.choroplethLayer = laag;
   

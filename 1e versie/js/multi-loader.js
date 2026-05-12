@@ -220,6 +220,9 @@ function toonGemergedData(fc) {
   const laag = L.geoJSON(fc, {
     style: { color: '#888', weight: 1, fillOpacity: 0.3 },
   }).addTo(window.appData.dataLayer);
+  if (window.bringSmallPolygonsToFront) {
+    window.bringSmallPolygonsToFront(window.appData.dataLayer);
+  }
   
   window.appData.baseGeoLayer = laag;
   

@@ -24,10 +24,10 @@
 
       <section id="legend" class="kaart-paneel" aria-hidden="false"></section>
 
-      <section id="year-filter-area" class="kaart-paneel">
+      <section id="year-filter-area" class="kaart-paneel" hidden>
         <h3>Filter op jaar</h3>
         <div class="slider-container">
-          <input id="year-slider" type="range" min="2000" max="2024" step="1" value="2024" />
+          <input id="year-slider" type="range" min="1000" max="3000" step="1" value="2024" />
           <span id="year-display">2024</span>
         </div>
         <button id="year-filter-clear" style="margin-top: var(--ruimte-2);">Wis jaarfilter</button>
@@ -57,7 +57,7 @@
         <h3>Variabele</h3>
         <label for="field-select">Selecteer variabele(s):</label>
         <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
-          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken.</div>
+          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken en een variabele toe te voegen aan de gebieden.</div>
         </div>
         <div style="margin-top:6px;">
           <button id="add-variable">Variabele toevoegen</button>

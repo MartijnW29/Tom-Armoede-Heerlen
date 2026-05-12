@@ -32,7 +32,7 @@ const KAART_CONFIG = {
   // Veldkeuzes voor popup
   voorkeurvelden: [
     'naam', 'name', 'buurtnaam', 'wijknaam', 
-    'id', 'code', 'gemeentenaam'
+    'id', 'code'
   ],
   
   // Kaart-view
@@ -131,8 +131,20 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const rijen = [];
   rijen.push(`<b>Geselecteerd gebied</b>`);
 
-  // Add preferred identifying fields first
+  // Add preferred identifying fields first. If this feature has overlapping
+  // wijken, show those (`wijknaam`) immediately before the `buurtnaam` line.
+  let overlapsInserted = false;
+  const overlaps = Array.isArray(props.overlapping_wijken) ? props.overlapping_wijken : null;
   KAART_CONFIG.voorkeurvelden.forEach(k => {
+    // If we're about to render buurtnaam and there are overlapping wijken,
+    // insert them first (once).
+    if (k === 'buurtnaam' && overlaps && overlaps.length && !overlapsInserted) {
+      for (const wn of overlaps) {
+        rijen.push(`<b>wijknaam</b>: ${wn}`);
+      }
+      overlapsInserted = true;
+    }
+
     if (props[k] !== undefined) {
       const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
       rijen.push(`<b>${k}</b>: ${txt}`);

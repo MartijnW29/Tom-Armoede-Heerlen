@@ -103,6 +103,93 @@ function mergeFeatureCollections(collections) {
   };
 }
 
+// ============================================================================
+// SPATIAL HELPERS — Centroid + point-in-polygon (lightweight, no turf)
+// ============================================================================
+
+function getFeatureCentroid(feature) {
+  if (!feature || !feature.geometry) return null;
+  const geom = feature.geometry;
+  const coords = [];
+
+  if (geom.type === 'Polygon') {
+    const ring = geom.coordinates && geom.coordinates[0];
+    if (!ring) return null;
+    ring.forEach(pt => coords.push(pt));
+  } else if (geom.type === 'MultiPolygon') {
+    geom.coordinates.forEach(poly => {
+      const ring = poly && poly[0];
+      if (ring) ring.forEach(pt => coords.push(pt));
+    });
+  } else {
+    return null;
+  }
+
+  if (coords.length === 0) return null;
+  let sx = 0, sy = 0;
+  coords.forEach(c => { sx += c[0]; sy += c[1]; });
+  return [sx / coords.length, sy / coords.length];
+}
+
+function pointInRing(point, ring) {
+  // Ray-casting algorithm — ring is array of [x,y]
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 0.0) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInGeometry(point, geom) {
+  if (!point || !geom) return false;
+  if (geom.type === 'Polygon') {
+    const ring = geom.coordinates && geom.coordinates[0];
+    if (!ring) return false;
+    return pointInRing(point, ring);
+  }
+  if (geom.type === 'MultiPolygon') {
+    for (const poly of geom.coordinates) {
+      const ring = poly && poly[0];
+      if (ring && pointInRing(point, ring)) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+function getFeatureName(f) {
+  const p = f && f.properties ? f.properties : {};
+  return p.wijknaam || p.naam || p.name || p.buurtnaam || p.buurt || p.code || null;
+}
+
+/**
+ * Voeg overlappende wijken toe aan buurten (eigenschap `overlapping_wijken`)
+ * Werkt via centroid -> point-in-polygon match (lichtgewicht benadering).
+ */
+function addWijkenToBuurten(buurtenFC, wijkenFC) {
+  if (!buurtenFC || !buurtenFC.features || !wijkenFC || !wijkenFC.features) return;
+  for (const buurt of buurtenFC.features) {
+    const c = getFeatureCentroid(buurt);
+    if (!c) continue;
+    const matches = [];
+    for (const wijk of wijkenFC.features) {
+      if (pointInGeometry(c, wijk.geometry)) {
+        const naam = getFeatureName(wijk);
+        if (naam && !matches.includes(naam)) matches.push(naam);
+      }
+    }
+    buurt.properties = buurt.properties || {};
+    buurt.properties.overlapping_wijken = matches;
+  }
+}
+
+// Expose for debugging/explicit calls
+window.addWijkenToBuurten = addWijkenToBuurten;
+
 /**
  * Filter features op jaarbereik
  * @param {Object} fc - FeatureCollection
@@ -288,6 +375,22 @@ async function loadAllAPIs() {
     if (allCollections.length === 0) {
       alert('Geen geldige data ontvangen van API\'s');
       return;
+    }
+
+    // Als zowel PDOK Buurten als Wijken geladen zijn, voeg wijken toe aan buurten
+    try {
+      const detectBuurtFC = (fc) => fc.features && fc.features.some(f => f.properties && (f.properties.buurt || f.properties.buurtnaam));
+      const detectWijkFC = (fc) => fc.features && fc.features.some(f => f.properties && (f.properties.wijk || f.properties.wijknaam));
+      const buurtFC = allCollections.find(detectBuurtFC);
+      const wijkFC = allCollections.find(detectWijkFC);
+      if (buurtFC && wijkFC && typeof addWijkenToBuurten === 'function') {
+        addWijkenToBuurten(buurtFC, wijkFC);
+        // also store for later inspection
+        window.multiLoaderState.buurtenFC = buurtFC;
+        window.multiLoaderState.wijkenFC = wijkFC;
+      }
+    } catch (e) {
+      console.warn('Kon overlaps niet berekenen:', e);
     }
     
     // Voeg alles samen

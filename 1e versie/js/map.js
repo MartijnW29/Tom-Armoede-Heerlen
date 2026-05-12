@@ -416,12 +416,16 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   
   window.appData.choroplethLayer = laag;
   
-  // Zoom naar data
-  try {
-    window.appData.map.fitBounds(laag.getBounds(), {
-      maxZoom: KAART_CONFIG.maxZoomNaDataLoad
-    });
-  } catch (e) { /* negeren */ }
+  // Zoom naar data ALLEEN als dit een nieuwe dataset is (niet bij visuele updates)
+  const isNieuweDataset = window.appData.lastLoadedData !== fc;
+  if (isNieuweDataset) {
+    try {
+      window.appData.map.fitBounds(laag.getBounds(), {
+        maxZoom: KAART_CONFIG.maxZoomNaDataLoad
+      });
+    } catch (e) { /* negeren */ }
+    window.appData.lastLoadedData = fc;
+  }
   
   // Teken legenda
   tekenLegenda(breuken, kleuren, veld);

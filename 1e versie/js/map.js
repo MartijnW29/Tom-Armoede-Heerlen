@@ -168,6 +168,394 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   return rijen.join('<br/>');
 }
 
+const HOVER_CHART_CONFIG = {
+  panelWidth: 340,
+  panelHeight: 190,
+  marginTop: 16,
+  marginRight: 14,
+  marginBottom: 36,
+  marginLeft: 42,
+  hideDelayMs: 80,
+  identityFields: [
+    'code', 'id', 'buurtcode', 'wijkcode',
+    'buurtnaam', 'wijknaam', 'naam', 'name'
+  ]
+};
+
+let hoverChartHideTimer = null;
+
+function getHoverChartPanel() {
+  let panel = document.getElementById('hover-timeseries-panel');
+  if (panel) return panel;
+
+  const mapContainer = document.getElementById('map');
+  if (!mapContainer) return null;
+
+  panel = document.createElement('section');
+  panel.id = 'hover-timeseries-panel';
+  panel.className = 'hover-timeseries-panel';
+  panel.innerHTML = [
+    '<div class="hover-timeseries-title"></div>',
+    '<div class="hover-timeseries-body"></div>'
+  ].join('');
+
+  mapContainer.appendChild(panel);
+  return panel;
+}
+
+function hideHoverChartPanelNow() {
+  const panel = document.getElementById('hover-timeseries-panel');
+  if (!panel) return;
+  panel.classList.remove('is-visible');
+}
+
+function scheduleHideHoverChartPanel() {
+  if (hoverChartHideTimer) {
+    clearTimeout(hoverChartHideTimer);
+  }
+  hoverChartHideTimer = setTimeout(hideHoverChartPanelNow, HOVER_CHART_CONFIG.hideDelayMs);
+}
+
+function cancelHideHoverChartPanel() {
+  if (!hoverChartHideTimer) return;
+  clearTimeout(hoverChartHideTimer);
+  hoverChartHideTimer = null;
+}
+
+function getSelectedFieldsForHover(defaultField) {
+  const fromSelectors = Array.from(
+    document.querySelectorAll('#selectors-div select.field-select-item')
+  )
+    .map(s => s.value)
+    .filter(Boolean);
+
+  if (fromSelectors.length > 0) return fromSelectors;
+  return defaultField ? [defaultField] : [];
+}
+
+function getCurrentSelectedYear() {
+  if (typeof window.multiLoaderState?.yearFilter === 'number') {
+    return window.multiLoaderState.yearFilter;
+  }
+
+  const slider = document.getElementById('year-slider');
+  if (!slider) return null;
+  const year = parseInt(slider.value, 10);
+  return Number.isFinite(year) ? year : null;
+}
+
+function detectYearFromFeature(feature) {
+  if (typeof window.getYearFromFeature === 'function') {
+    return window.getYearFromFeature(feature);
+  }
+
+  const props = feature?.properties || {};
+  const candidates = ['jaar', 'year', 'Jaar', 'Year', 'JAAR'];
+  for (const key of candidates) {
+    if (props[key] === undefined || props[key] === null || props[key] === '') continue;
+    const year = parseInt(props[key], 10);
+    if (Number.isFinite(year)) return year;
+  }
+
+  return null;
+}
+
+function getFeatureIdentity(feature) {
+  const props = feature?.properties || {};
+  for (const key of HOVER_CHART_CONFIG.identityFields) {
+    const value = props[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return { key, value: String(value) };
+    }
+  }
+  return null;
+}
+
+function matchesFeatureIdentity(candidate, identity) {
+  if (!identity || !candidate?.properties) return false;
+  const value = candidate.properties[identity.key];
+  if (value === undefined || value === null) return false;
+  return String(value) === identity.value;
+}
+
+function collectHoverSeries(baseFeature, fields) {
+  const source = window.multiLoaderState?.originalData || window.appData?.lastFC;
+  if (!source || !Array.isArray(source.features) || source.features.length === 0) return null;
+
+  const identity = getFeatureIdentity(baseFeature);
+  let candidates = source.features;
+
+  if (identity) {
+    const matched = candidates.filter(f => matchesFeatureIdentity(f, identity));
+    if (matched.length > 0) candidates = matched;
+  }
+
+  const byYear = new Map();
+
+  for (const candidate of candidates) {
+    const year = detectYearFromFeature(candidate);
+    if (!Number.isFinite(year)) continue;
+
+    if (!byYear.has(year)) {
+      const fieldBuckets = {};
+      for (const field of fields) fieldBuckets[field] = [];
+      byYear.set(year, fieldBuckets);
+    }
+
+    const bucket = byYear.get(year);
+    for (const field of fields) {
+      const raw = candidate.properties?.[field];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const num = +raw;
+      if (!Number.isFinite(num)) continue;
+      bucket[field].push(num);
+    }
+  }
+
+  const years = Array.from(byYear.keys()).sort((a, b) => a - b);
+  if (years.length === 0) return null;
+
+  const series = {};
+  const allValues = [];
+
+  for (const field of fields) {
+    const points = years
+      .map(year => {
+        const values = byYear.get(year)?.[field] || [];
+        if (values.length === 0) return null;
+        const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+        return { year, value: avg };
+      })
+      .filter(Boolean);
+
+    series[field] = points;
+    points.forEach(p => allValues.push(p.value));
+  }
+
+  if (allValues.length === 0) return null;
+
+  return {
+    years,
+    series,
+    allValues,
+    identity
+  };
+}
+
+function renderHoverChartMessage(panel, titleText, message) {
+  const titleEl = panel.querySelector('.hover-timeseries-title');
+  const bodyEl = panel.querySelector('.hover-timeseries-body');
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = titleText;
+  bodyEl.innerHTML = `<div class="hover-timeseries-empty">${message}</div>`;
+  panel.classList.add('is-visible');
+}
+
+function toonHoverJarenGrafiek(feature, defaultField) {
+  cancelHideHoverChartPanel();
+
+  const panel = getHoverChartPanel();
+  if (!panel) return;
+  if (typeof d3 === 'undefined') {
+    renderHoverChartMessage(panel, 'Trend over jaren', 'D3 is niet beschikbaar.');
+    return;
+  }
+
+  const fields = getSelectedFieldsForHover(defaultField);
+  if (fields.length === 0) {
+    renderHoverChartMessage(panel, 'Trend over jaren', 'Selecteer eerst een variabele.');
+    return;
+  }
+
+  const data = collectHoverSeries(feature, fields);
+  const identityValue = data?.identity?.value || feature?.properties?.naam || 'Gebied';
+  const title = `Trend over jaren - ${identityValue}`;
+
+  if (!data) {
+    renderHoverChartMessage(panel, title, 'Geen jaarreeks beschikbaar voor dit gebied.');
+    return;
+  }
+
+  const titleEl = panel.querySelector('.hover-timeseries-title');
+  const bodyEl = panel.querySelector('.hover-timeseries-body');
+  if (!titleEl || !bodyEl) return;
+
+  titleEl.textContent = title;
+  bodyEl.innerHTML = '';
+
+  const width = HOVER_CHART_CONFIG.panelWidth;
+  const height = HOVER_CHART_CONFIG.panelHeight;
+
+  const svg = d3
+    .select(bodyEl)
+    .append('svg')
+    .attr('width', width)
+    .attr('height', height)
+    .attr('viewBox', `0 0 ${width} ${height}`)
+    .attr('role', 'img')
+    .attr('aria-label', 'Trendgrafiek per geselecteerde variabele');
+
+  const xExtent = d3.extent(data.years);
+  let xMin = xExtent[0];
+  let xMax = xExtent[1];
+  if (xMin === xMax) {
+    xMin -= 1;
+    xMax += 1;
+  }
+
+  let yMin = d3.min(data.allValues);
+  let yMax = d3.max(data.allValues);
+  if (yMin === yMax) {
+    const pad = Math.abs(yMin || 1) * 0.05;
+    yMin -= pad;
+    yMax += pad;
+  }
+
+  const xScale = d3
+    .scaleLinear()
+    .domain([xMin, xMax])
+    .range([HOVER_CHART_CONFIG.marginLeft, width - HOVER_CHART_CONFIG.marginRight]);
+
+  const yScale = d3
+    .scaleLinear()
+    .domain([yMin, yMax])
+    .nice()
+    .range([height - HOVER_CHART_CONFIG.marginBottom, HOVER_CHART_CONFIG.marginTop]);
+
+  svg
+    .append('g')
+    .attr('transform', `translate(0,${height - HOVER_CHART_CONFIG.marginBottom})`)
+    .call(d3.axisBottom(xScale).ticks(5).tickFormat(d3.format('d')));
+
+  svg
+    .append('g')
+    .attr('transform', `translate(${HOVER_CHART_CONFIG.marginLeft},0)`)
+    .call(d3.axisLeft(yScale).ticks(4));
+
+  const line = d3
+    .line()
+    .x(d => xScale(d.year))
+    .y(d => yScale(d.value));
+
+  const colors = d3.scaleOrdinal(d3.schemeTableau10).domain(fields);
+
+  for (const field of fields) {
+    const points = data.series[field] || [];
+    if (points.length === 0) continue;
+
+    const pathLength = 1000;
+
+    const pathElement = svg
+      .append('path')
+      .datum(points)
+      .attr('fill', 'none')
+      .attr('stroke', colors(field))
+      .attr('stroke-width', 2)
+      .attr('d', line)
+      .attr('stroke-dasharray', pathLength)
+      .attr('stroke-dashoffset', pathLength)
+      .attr('opacity', 0.85);
+
+    pathElement
+      .transition()
+      .duration(600)
+      .ease(d3.easeCubicInOut)
+      .attr('stroke-dashoffset', 0);
+
+    const circleElement = svg
+      .append('circle')
+      .attr('cx', xScale(points[points.length - 1].year))
+      .attr('cy', yScale(points[points.length - 1].value))
+      .attr('r', 2.5)
+      .attr('fill', colors(field))
+      .attr('opacity', 0);
+
+    circleElement
+      .transition()
+      .delay(350)
+      .duration(300)
+      .ease(d3.easeQuadOut)
+      .attr('opacity', 1);
+  }
+
+  const selectedYear = getCurrentSelectedYear();
+  if (Number.isFinite(selectedYear)) {
+    const withinDomain = selectedYear >= xMin && selectedYear <= xMax;
+    if (withinDomain) {
+      const markerLine = svg
+        .append('line')
+        .attr('x1', xScale(selectedYear))
+        .attr('x2', xScale(selectedYear))
+        .attr('y1', HOVER_CHART_CONFIG.marginTop)
+        .attr('y2', height - HOVER_CHART_CONFIG.marginBottom)
+        .attr('class', 'hover-chart-year-marker')
+        .attr('opacity', 0);
+
+      markerLine
+        .transition()
+        .delay(500)
+        .duration(300)
+        .ease(d3.easeQuadOut)
+        .attr('opacity', 0.9);
+
+      for (const field of fields) {
+        const points = data.series[field] || [];
+        const match = points.find(p => p.year === selectedYear);
+        if (!match) continue;
+
+        const highlight = svg
+          .append('circle')
+          .attr('cx', xScale(match.year))
+          .attr('cy', yScale(match.value))
+          .attr('r', 0)
+          .attr('fill', colors(field))
+          .attr('stroke', '#111')
+          .attr('stroke-width', 1.4)
+          .attr('opacity', 0);
+
+        highlight
+          .transition()
+          .delay(550)
+          .duration(350)
+          .ease(d3.easeBackOut)
+          .attr('r', 5)
+          .attr('opacity', 1);
+      }
+    }
+  }
+
+  const legend = d3
+    .select(bodyEl)
+    .append('div')
+    .attr('class', 'hover-timeseries-legend')
+    .style('opacity', 0);
+
+  fields.forEach(field => {
+    const hasData = (data.series[field] || []).length > 0;
+    const item = legend.append('span').attr('class', 'legend-item');
+
+    item
+      .append('i')
+      .style('background', colors(field))
+      .style('opacity', hasData ? 1 : 0.35);
+
+    item.append('b').text(field);
+  });
+
+  d3.select(bodyEl)
+    .select('.hover-timeseries-legend')
+    .transition()
+    .delay(700)
+    .duration(300)
+    .ease(d3.easeQuadOut)
+    .style('opacity', 1);
+
+  panel.classList.add('is-visible');
+}
+
+window.hideHoverTimeSeries = scheduleHideHoverChartPanel;
+
 // ============================================================================
 // KLEURSCHEMA'S
 // ============================================================================
@@ -427,10 +815,12 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
 
       leafletLayer.on('mouseover', function () {
         this.openPopup();
+        toonHoverJarenGrafiek(feature, veld);
       });
 
       leafletLayer.on('mouseout', function () {
         this.closePopup();
+        scheduleHideHoverChartPanel();
       });
 
       leafletLayer.on('click', () => {

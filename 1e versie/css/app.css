@@ -55,6 +55,7 @@ body {
 #map {
   flex: 1;
   background: var(--kleur-achtergrond);
+  position: relative;
 }
 
 #sidebar {
@@ -346,6 +347,98 @@ button:focus-visible {
   color: var(--kleur-tekst);
 }
 
+.hover-timeseries-panel {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 900;
+  width: 360px;
+  max-width: calc(100% - 28px);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--kleur-rand);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(20, 35, 55, 0.2);
+  padding: 8px 10px 10px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  pointer-events: none;
+}
+
+.hover-timeseries-panel.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hover-timeseries-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kleur-tekst-zacht);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hover-timeseries-body {
+  min-height: 40px;
+}
+
+.hover-timeseries-body svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.hover-timeseries-body .domain,
+.hover-timeseries-body .tick line {
+  stroke: #c7d2df;
+}
+
+.hover-timeseries-body .tick text {
+  fill: #3a4e63;
+  font-size: 10px;
+}
+
+.hover-chart-year-marker {
+  stroke: #111;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
+
+.hover-timeseries-empty {
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+  padding: 6px 2px;
+}
+
+.hover-timeseries-legend {
+  margin-top: 4px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hover-timeseries-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #2e4358;
+}
+
+.hover-timeseries-legend .legend-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.hover-timeseries-legend .legend-item b {
+  font-weight: 600;
+}
+
 /* Responsief */
 @media (max-width: 920px) {
   #sidebar {
@@ -378,5 +471,14 @@ button:focus-visible {
     border-left: none;
     border-top: 1px solid var(--kleur-rand);
     box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.08);
+  }
+
+  .hover-timeseries-panel {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-width: none;
+    padding: 7px 8px 8px;
   }
 }

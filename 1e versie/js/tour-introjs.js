@@ -2,9 +2,9 @@
 window.tourSteps = window.tourSteps || [
   { id: 'welcome', title: 'Welkom', content: 'Welkom. Deze korte rondleiding laat rustig de belangrijkste bedieningselementen zien.' },
   { id: 'sidebar', title: 'Zijbalk', content: 'Hier staan legenda, variabele keuze en filters.' },
-  { id: 'year-slider', title: 'Jaarfilter', content: 'Met deze schuifregelaar selecteer je een jaar om op te filteren.' },
+  { id: 'year-filter-area', selector: '#year-filter-area', title: 'Filter op jaar', content: 'Met deze schuifregelaar kun je het jaar filteren.' },
   { id: 'controls', title: 'Variabelen', content: 'Voeg hier extra variabelen toe en pas kleuren/opacity aan.' },
-  { id: 'map', title: 'Kaart', content: 'De kaart toont de choropleth. Hover over een gebied voor een mini-grafiek.', center: [50.8889,5.9794], zoom: 12 },
+  { id: 'map', title: 'Kaart', content: 'De kaart toont de gebieden. Hover over een gebied voor een mini-grafiek.', center: [50.8889,5.9794], zoom: 12 },
   { id: 'end', title: 'Klaar', content: 'Dat is alles — je kunt de rondleiding altijd opnieuw starten.' }
 ];
 
@@ -80,6 +80,27 @@ window.tourSteps = window.tourSteps || [
       if (stepDef && stepDef.element) {
         try { const tgt = document.querySelector(stepDef.element); if (tgt && tgt.classList) tgt.classList.add('tour-highlight'); } catch(e) {}
       }
+      // Ensure intro.js bullets show our gradient color even if other styles override them.
+      try {
+        const bullets = Array.from(document.querySelectorAll('.introjs-bullets li'));
+        bullets.forEach((li, i) => {
+          const node = li.querySelector('a') || li;
+          if (typeof idx === 'number' && i === idx) {
+            node.style.backgroundImage = 'linear-gradient(90deg,#ffd166,#ffb703)';
+            node.style.backgroundColor = 'transparent';
+            node.style.boxShadow = '0 12px 28px rgba(255,167,29,0.18)';
+            node.style.transform = 'scale(1.35)';
+            node.style.borderColor = 'transparent';
+          } else {
+            node.style.backgroundImage = '';
+            node.style.backgroundColor = '';
+            node.style.boxShadow = '';
+            node.style.transform = '';
+            node.style.borderColor = '';
+          }
+        });
+      } catch(e) { /* ignore */ }
+
       dispatchEvent('tour:step:changed', { index: idx, step: stepDef });
     });
 
@@ -96,5 +117,43 @@ window.tourSteps = window.tourSteps || [
     const b = document.getElementById('start-tour'); if (b) b.addEventListener('click', ()=>{ window.startIntroTour(); try{sessionStorage.setItem('tourStarted','1')}catch(e){} });
     const yes = document.getElementById('tour-yes'); if (yes) yes.onclick = ()=>{ const modal = document.getElementById('tour-modal'); if (modal) modal.hidden=true; window.startIntroTour(); try{sessionStorage.setItem('tourStarted','1')}catch(e){} };
     const no = document.getElementById('tour-no'); if (no) no.onclick = ()=>{ const modal = document.getElementById('tour-modal'); if (modal) modal.hidden=true; try{sessionStorage.setItem('tourDeclined','1')}catch(e){} };
+
+    // Inject a high-specificity CSS override to ensure bullets show the gradient color.
+    try {
+      const css = `
+      .introjs-bullets ul li a, .introjs-bullets ul li { display:block !important; width:14px !important; height:14px !important; border-radius:50% !important; background:#f1f6f8 !important; border:1px solid rgba(8,24,48,0.06) !important; box-shadow: 0 4px 10px rgba(8,24,48,0.06) !important; }
+      .introjs-bullets ul li a.active, .introjs-bullets ul li.introjs-active a, .introjs-bullets ul li.introjs-active { background-image: linear-gradient(90deg,#ffd166,#ffb703) !important; background-color: transparent !important; box-shadow: 0 12px 28px rgba(255,167,29,0.18) !important; transform: scale(1.35) !important; border-color: transparent !important; }
+      .introjs-bullets ul li a:hover, .introjs-bullets ul li a:focus { transform: translateY(-3px) scale(1.05) !important; box-shadow: 0 8px 20px rgba(8,24,48,0.08) !important; }
+      `;
+      const style = document.createElement('style'); style.setAttribute('data-generated','tour-bullet-overrides'); style.appendChild(document.createTextNode(css));
+      document.head.appendChild(style);
+
+      // Observe DOM changes to re-apply inline styles if intro.js rewrites bullets
+      const applyBulletInline = () => {
+        const bullets = Array.from(document.querySelectorAll('.introjs-bullets ul li'));
+        bullets.forEach((li, i) => {
+          const node = li.querySelector('a') || li;
+          node.style.width = '14px'; node.style.height = '14px'; node.style.borderRadius = '50%';
+          if (li.classList.contains('introjs-active') || node.classList.contains('active')) {
+            node.style.backgroundImage = 'linear-gradient(90deg,#ffd166,#ffb703)';
+            node.style.backgroundColor = 'transparent';
+            node.style.boxShadow = '0 12px 28px rgba(255,167,29,0.18)';
+            node.style.transform = 'scale(1.35)';
+            node.style.borderColor = 'transparent';
+          } else {
+            node.style.backgroundImage = '';
+            node.style.backgroundColor = '';
+            node.style.boxShadow = '';
+            node.style.transform = '';
+            node.style.borderColor = '';
+          }
+        });
+      };
+
+      const mo = new MutationObserver((mutations) => { applyBulletInline(); });
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+      // Also run once now in case the tour is already present
+      setTimeout(applyBulletInline, 200);
+    } catch(e) { /* ignore injection errors */ }
   });
 })();

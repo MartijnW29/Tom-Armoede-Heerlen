@@ -317,10 +317,31 @@ button:focus-visible {
 }
 
 #year-display {
-  min-width: 40px;
+  min-width: 56px;
   font-weight: 600;
   color: var(--kleur-primair);
   font-size: 14px;
+}
+
+#year-filter-area {
+  padding-left: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 253, 0.98));
+  border: 1px solid rgba(11, 114, 133, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 24px rgba(11, 114, 133, 0.10);
+}
+
+#year-filter-area .slider-container {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(11, 114, 133, 0.08);
+  border-radius: 999px;
+  padding: 8px 10px;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.85);
+}
+
+#year-filter-area .slider-container input[type="range"] {
+  accent-color: var(--kleur-primair);
 }
 
 #year-filter-clear {
@@ -530,7 +551,7 @@ button:focus-visible {
 
 /* spotlight: soft radial gradient (no blur on target) */
 .tour-ui-center-focus { position: fixed; inset: 0; display:flex; align-items:center; justify-content:center; z-index:9998; pointer-events:none; }
-.tour-ui-center-focus .center-ring { width: 60%; max-width: 640px; height: 220px; background: rgba(255,255,255,0.02); border-radius:12px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.55); }
+.tour-ui-center-focus .center-ring { width: 60%; max-width: 640px; height: 220px; background: rgba(255,255,255,0.05); border-radius:12px; box-shadow: 0 0 0 2000px rgba(0,0,0,0.42), 0 0 36px 14px rgba(255, 214, 102, 0.10); }
 
 @keyframes tour-entrance { from { transform: translateY(10px) scale(0.985); opacity:0 } to { transform: translateY(0) scale(1); opacity:1 } }
 
@@ -561,14 +582,50 @@ button:focus-visible {
 .introjs-button { background: linear-gradient(135deg, #0b7285, #0a5f6f); color:#fff; border-radius:999px; padding:8px 12px; border:none; box-shadow: 0 8px 20px rgba(11,114,133,0.14); font-weight:700 }
 .introjs-button:disabled { opacity:0.6 }
 .introjs-prevbutton, .introjs-skipbutton { background:#e7eef2; color:#0b3040; box-shadow:none }
-.introjs-bullets { display:flex; gap:8px; align-items:center; margin-right:auto }
-.introjs-bullets li { width:8px; height:8px; border-radius:50%; background:#d9e4ea }
-.introjs-bullets li.active { background: linear-gradient(90deg,#ffd166,#ffb703); box-shadow: 0 6px 16px rgba(255,167,29,0.12); transform: scale(1.2) }
+.introjs-bullets { display:flex; gap:10px; align-items:center; margin-right:auto; padding:6px 8px; }
+.introjs-bullets li { list-style: none; }
+.introjs-bullets li a,
+.introjs-bullets li { display:block; width:14px; height:14px; border-radius:50%; background:#f1f6f8; border:1px solid rgba(8,24,48,0.06); box-shadow: 0 4px 10px rgba(8,24,48,0.06); transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease; cursor:pointer; }
+.introjs-bullets li:hover a,
+.introjs-bullets li:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 20px rgba(8,24,48,0.08); }
+/* Stronger selectors to catch both li and inner anchor states from Intro.js */
+.introjs-bullets li.active a,
+.introjs-bullets li.active,
+.introjs-bullets li.introjs-active,
+.introjs-bullets li.introjs-active a {
+  background-image: linear-gradient(90deg,#ffd166,#ffb703) !important;
+  background-color: transparent !important;
+  box-shadow: 0 12px 28px rgba(255,167,29,0.18) !important;
+  transform: scale(1.35) !important;
+  border-color: transparent !important;
+}
+.introjs-bullets li a:focus,
+.introjs-bullets li:focus { outline: 2px solid rgba(11,114,133,0.16); outline-offset: 3px; }
 .introjs-helperLayer {
-  box-shadow: 0 0 0 2000px rgba(2,10,18,0.48);
+  box-shadow: 0 0 0 2000px rgba(2,10,18,0.38), 0 0 32px 14px rgba(255, 214, 102, 0.14);
 }
 .introjs-disabledInteraction { pointer-events: none }
 
 /* Use our tour-highlight so map features can get a subtle glow */
 .tour-highlight { box-shadow: 0 8px 28px rgba(11,114,133,0.12); outline: 2px solid rgba(11,114,133,0.12); border-radius:6px }
+
+/* stronger highlight for the year filter area when highlighted by the tour */
+#year-filter-area.tour-highlight {
+  box-shadow: 0 14px 36px rgba(11,114,133,0.16), 0 2px 8px rgba(11,114,133,0.06);
+  outline: 3px solid rgba(11,114,133,0.14);
+  transform: translateY(-2px);
+}
+
+/* precise absolute overlay used by the tour to guarantee highlight alignment */
+.tour-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10050;
+  box-shadow: 0 20px 48px rgba(11,114,133,0.18);
+  border-radius: 10px;
+  border: 3px solid rgba(11,114,133,0.12);
+  transition: transform 160ms ease, opacity 160ms ease;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00));
+  opacity: 0.98;
+}
 

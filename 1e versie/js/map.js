@@ -399,7 +399,8 @@ function toonHoverJarenGrafiek(feature, defaultField) {
   }
 
   const data = collectHoverSeries(feature, fields);
-  const identityValue = data?.identity?.value || feature?.properties?.naam || 'Gebied';
+  const preferredName = feature?.properties?.buurtnaam || feature?.properties?.wijknaam || feature?.properties?.naam || feature?.properties?.name;
+  const identityValue = preferredName || data?.identity?.value || 'Gebied';
   const title = `Trend over jaren - ${identityValue}`;
 
   if (!data) {

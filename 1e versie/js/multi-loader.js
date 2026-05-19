@@ -9,8 +9,8 @@
 // ============================================================================
 
 const MULTI_LOADER_CONFIG = {
-  minYear: 2000,
-  maxYear: 2024,
+  minYear: 1950,
+  maxYear: 2050,
   yearField: 'jaar',  // Veldnaam om naar te zoeken
   yearFields: ['jaar', 'year', 'Jaar', 'Year', 'JAAR', 'jaa r'],  // Mogelijke veldnamen
 };
@@ -325,6 +325,34 @@ function toonGemergedData(fc) {
 // ============================================================================
 
 /**
+ * Breid URL's uit wanneer ze een jaartal bevatten: vervang gevonden jaartal
+ * door alle jaren in de geconfigureerde range zodat meerdere jaren tegelijk
+ * opgehaald kunnen worden.
+ * @param {Array<string>} urls
+ * @return {Array<string>} expanded urls (uniek)
+ */
+function expandUrlsForYearRange(urls) {
+  const out = new Set();
+  const minY = MULTI_LOADER_CONFIG.minYear;
+  const maxY = MULTI_LOADER_CONFIG.maxYear;
+
+  for (const url of urls) {
+    // Zoek een duidelijk viercijferig jaar (bv. 2024) in de URL
+    const m = url.match(/\b20\d{2}\b/);
+    if (m) {
+      const found = m[0];
+      for (let y = minY; y <= maxY; y++) {
+        out.add(url.replace(found, String(y)));
+      }
+    } else {
+      out.add(url);
+    }
+  }
+
+  return Array.from(out);
+}
+
+/**
  * Laad meerdere API's gelijktijdig
  */
 async function loadAllAPIs() {
@@ -341,8 +369,9 @@ async function loadAllAPIs() {
   try {
     console.log(`Laden van ${urls.length} API-verzoek(en)...`);
     
-    // Laad alle API's gelijktijdig
-    const fetchPromises = urls.map(url =>
+    // Breid URL-lijst uit voor jaargroepen en laad alle API's gelijktijdig
+    const expandedUrls = expandUrlsForYearRange(urls);
+    const fetchPromises = expandedUrls.map(url =>
       fetch(url)
         .then(res => {
           if (!res.ok) throw new Error(`Status ${res.status}`);

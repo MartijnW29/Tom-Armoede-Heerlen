@@ -362,7 +362,7 @@ button:focus-visible {
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.16s ease, transform 0.16s ease;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .hover-timeseries-panel.is-visible {

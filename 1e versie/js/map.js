@@ -183,6 +183,13 @@ const HOVER_CHART_CONFIG = {
 };
 
 let hoverChartHideTimer = null;
+let mouseIsOverPanel = false;
+let mouseIsOverFeature = false;
+let mouseIsOverPopup = false;
+
+function shouldHideHoverChart() {
+  return !mouseIsOverFeature && !mouseIsOverPopup && !mouseIsOverPanel;
+}
 
 function getHoverChartPanel() {
   let panel = document.getElementById('hover-timeseries-panel');
@@ -199,6 +206,18 @@ function getHoverChartPanel() {
     '<div class="hover-timeseries-body"></div>'
   ].join('');
 
+  panel.addEventListener('mouseenter', () => {
+    mouseIsOverPanel = true;
+    cancelHideHoverChartPanel();
+  });
+
+  panel.addEventListener('mouseleave', () => {
+    mouseIsOverPanel = false;
+    if (shouldHideHoverChart()) {
+      scheduleHideHoverChartPanel();
+    }
+  });
+
   mapContainer.appendChild(panel);
   return panel;
 }
@@ -206,14 +225,25 @@ function getHoverChartPanel() {
 function hideHoverChartPanelNow() {
   const panel = document.getElementById('hover-timeseries-panel');
   if (!panel) return;
+  // Only hide if mouse is not over feature/popup/panel
+  if (!shouldHideHoverChart()) return;
   panel.classList.remove('is-visible');
+  try {
+    if (map && typeof map.closePopup === 'function') {
+      map.closePopup();
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function scheduleHideHoverChartPanel() {
   if (hoverChartHideTimer) {
     clearTimeout(hoverChartHideTimer);
   }
-  hoverChartHideTimer = setTimeout(hideHoverChartPanelNow, HOVER_CHART_CONFIG.hideDelayMs);
+  hoverChartHideTimer = setTimeout(() => {
+    if (shouldHideHoverChart()) {
+      hideHoverChartPanelNow();
+    }
+  }, HOVER_CHART_CONFIG.hideDelayMs);
 }
 
 function cancelHideHoverChartPanel() {
@@ -813,14 +843,25 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
         autoPan: false
       });
 
+      // Per-feature we alleen de hover state bijhouden; popup mouse handlers
+      // worden globaal op de kaart afgehandeld (zie map popup listeners).
       leafletLayer.on('mouseover', function () {
+        mouseIsOverFeature = true;
+        cancelHideHoverChartPanel();
         this.openPopup();
         toonHoverJarenGrafiek(feature, veld);
       });
 
       leafletLayer.on('mouseout', function () {
-        this.closePopup();
-        scheduleHideHoverChartPanel();
+        mouseIsOverFeature = false;
+        // Don't close the popup immediately - allow entering the popup element
+        // or the chart panel to cancel the hide.
+        if (shouldHideHoverChart()) {
+          scheduleHideHoverChartPanel();
+        } else {
+          // If other hover states are active, ensure any pending hide is cancelled
+          cancelHideHoverChartPanel();
+        }
       });
 
       leafletLayer.on('click', () => {
@@ -851,6 +892,37 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
 
 // Alias voor achterwaarts compatibiliteit
 window.applyChoropleth = window.toonChoropleth;
+
+// Globale popup handlers: zorg dat when popup open is, hover over popup telt
+// zodat het paneel niet flickert als de gebruiker van feature -> popup -> paneel beweegt.
+if (map && typeof map.on === 'function') {
+  map.on('popupopen', (e) => {
+    try {
+      const popupEl = e.popup && e.popup.getElement ? e.popup.getElement() : null;
+      if (!popupEl) return;
+
+      // Ensure we only attach once
+      if (!popupEl.__hoverHandlersAttached) {
+        popupEl.__hoverHandlersAttached = true;
+
+        popupEl.addEventListener('mouseenter', () => {
+          mouseIsOverPopup = true;
+          cancelHideHoverChartPanel();
+        });
+
+        popupEl.addEventListener('mouseleave', () => {
+          mouseIsOverPopup = false;
+          if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
+        });
+      }
+    } catch (err) { /* ignore */ }
+  });
+
+  map.on('popupclose', (e) => {
+    mouseIsOverPopup = false;
+    if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
+  });
+}
 
 // ============================================================================
 // COÖRDINAAT-REPROJECTION — RD (EPSG:28992) naar WGS84

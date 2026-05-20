@@ -322,6 +322,19 @@ function collectHoverSeries(baseFeature, fields) {
 
   const byYear = new Map();
 
+  // Prepare arrays of all values per field to enable percentile/min/max checks
+  const allePerField = {};
+  for (const field of fields) {
+    allePerField[field] = source.features
+      .map(f => {
+        const v = f.properties?.[field];
+        return (v === null || v === undefined || v === '') ? null : +v;
+      })
+      .filter(v => Number.isFinite(v));
+  }
+
+  const activeFilter = window.appData?.filter || null;
+
   for (const candidate of candidates) {
     const year = detectYearFromFeature(candidate);
     if (!Number.isFinite(year)) continue;
@@ -338,6 +351,11 @@ function collectHoverSeries(baseFeature, fields) {
       if (raw === undefined || raw === null || raw === '') continue;
       const num = +raw;
       if (!Number.isFinite(num)) continue;
+
+      // Apply active map filter: only include values that pass
+      const alleVals = allePerField[field] || [];
+      if (!waardePasseertFilter(num, alleVals, activeFilter)) continue;
+
       bucket[field].push(num);
     }
   }

@@ -501,6 +501,10 @@ function applyYearFilter(year) {
   window.appData.lastFC = filtered;
   
   // Vernieuw visualisatie
+  // Prevent automatic fitBounds/zoom reset when updating year filter
+  if (!window.appData) window.appData = {};
+  window.appData.skipFitOnNextRender = true;
+
   if (window.herllaadVisualisatie) {
     window.herllaadVisualisatie();
   }

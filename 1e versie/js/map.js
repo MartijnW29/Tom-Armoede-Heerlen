@@ -896,12 +896,21 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   
   // Zoom naar data ALLEEN als dit een nieuwe dataset is (niet bij visuele updates)
   const isNieuweDataset = window.appData.lastLoadedData !== fc;
+  const suppressFit = window.appData?.skipFitOnNextRender;
+  // Always update lastLoadedData so future dataset-detection works
   if (isNieuweDataset) {
-    try {
-      window.appData.map.fitBounds(laag.getBounds(), {
-        maxZoom: KAART_CONFIG.maxZoomNaDataLoad
-      });
-    } catch (e) { /* negeren */ }
+    // If a suppression flag is set (e.g., year filter), skip fitBounds once
+    if (!suppressFit) {
+      try {
+        window.appData.map.fitBounds(laag.getBounds(), {
+          maxZoom: KAART_CONFIG.maxZoomNaDataLoad
+        });
+      } catch (e) { /* negeren */ }
+    }
+    // Clear suppression flag after use
+    if (suppressFit) {
+      delete window.appData.skipFitOnNextRender;
+    }
     window.appData.lastLoadedData = fc;
   }
   

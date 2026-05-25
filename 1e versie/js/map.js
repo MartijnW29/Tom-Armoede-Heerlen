@@ -881,6 +881,19 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
         cancelHideHoverChartPanel();
         this.openPopup();
         toonHoverJarenGrafiek(feature, veld);
+        try {
+          // Broadcast hover to split parent so peer pane can highlight the same area
+          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+            const identity = getFeatureIdentity(feature);
+            if (identity && window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                type: 'heerlen-hover',
+                panelId: window.splitScreenPanelId || null,
+                identity
+              }, '*');
+            }
+          }
+        } catch (e) { /* ignore */ }
       });
 
       leafletLayer.on('mouseout', function () {
@@ -893,6 +906,13 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
           // If other hover states are active, ensure any pending hide is cancelled
           cancelHideHoverChartPanel();
         }
+        try {
+          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
+            }
+          }
+        } catch (e) { /* ignore */ }
       });
 
       leafletLayer.on('click', () => {
@@ -1129,11 +1149,27 @@ if (map && typeof map.on === 'function') {
         popupEl.addEventListener('mouseenter', () => {
           mouseIsOverPopup = true;
           cancelHideHoverChartPanel();
+          try {
+            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+              const feature = e.popup && e.popup._source && e.popup._source.feature ? e.popup._source.feature : null;
+              const identity = feature ? getFeatureIdentity(feature) : null;
+              if (identity && window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'heerlen-hover', identity, panelId: window.splitScreenPanelId || null }, '*');
+              }
+            }
+          } catch (err) { /* ignore */ }
         });
 
         popupEl.addEventListener('mouseleave', () => {
           mouseIsOverPopup = false;
           if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
+          try {
+            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
+              }
+            }
+          } catch (err) { /* ignore */ }
         });
       }
 
@@ -1160,6 +1196,67 @@ if (map && typeof map.on === 'function') {
     if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
   });
 }
+
+// --- Hover synchronization: receive highlight requests from peer pane ---
+function findLayerByIdentity(identity) {
+  if (!identity || !window.appData || !window.appData.dataLayer) return null;
+  let found = null;
+  try {
+    window.appData.dataLayer.eachLayer(function search(layer) {
+      if (found) return;
+      if (layer && layer.feature && matchesFeatureIdentity(layer.feature, identity)) {
+        found = layer;
+        return;
+      }
+      if (layer && typeof layer.eachLayer === 'function') {
+        layer.eachLayer(function (inner) {
+          if (found) return;
+          if (inner && inner.feature && matchesFeatureIdentity(inner.feature, identity)) {
+            found = inner;
+          }
+        });
+      }
+    });
+  } catch (e) { /* ignore */ }
+  return found;
+}
+
+function highlightFeatureByIdentity(identity) {
+  const layer = findLayerByIdentity(identity);
+  if (!layer) return false;
+  try {
+    // Suppress broadcasting while we programmatically show popup/highlight
+    window.__suppressHoverBroadcast = true;
+    layer.openPopup();
+    try { toonHoverJarenGrafiek(layer.feature); } catch (e) { /* ignore */ }
+    // small timeout then re-enable broadcast
+    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 350);
+    return true;
+  } catch (e) {
+    window.__suppressHoverBroadcast = false;
+    return false;
+  }
+}
+
+function clearPeerHighlight() {
+  try {
+    window.__suppressHoverBroadcast = true;
+    if (map && typeof map.closePopup === 'function') map.closePopup();
+    if (typeof window.hideHoverTimeSeries === 'function') window.hideHoverTimeSeries();
+    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 250);
+  } catch (e) { window.__suppressHoverBroadcast = false; }
+}
+
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'heerlen-set-hover' && data.identity) {
+    highlightFeatureByIdentity(data.identity);
+  } else if (data.type === 'heerlen-clear-hover') {
+    clearPeerHighlight();
+  }
+});
 
 // ============================================================================
 // COÖRDINAAT-REPROJECTION — RD (EPSG:28992) naar WGS84

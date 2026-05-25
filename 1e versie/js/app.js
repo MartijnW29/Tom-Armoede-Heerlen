@@ -154,6 +154,10 @@ const splitScreenParams = new URLSearchParams(window.location.search);
 const isSplitScreenPane = splitScreenParams.get('split') === '1';
 const splitScreenPanelId = splitScreenParams.get('panel') || splitScreenParams.get('sidebar') || 'single';
 
+// Expose split-screen flags for other modules (map.js listens for these)
+window.isSplitScreenPane = isSplitScreenPane;
+window.splitScreenPanelId = splitScreenPanelId;
+
 if (isSplitScreenPane) {
   let suppressNextSplitBroadcast = false;
 

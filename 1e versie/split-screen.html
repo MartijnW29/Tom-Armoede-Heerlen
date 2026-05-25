@@ -165,12 +165,34 @@
 
       window.addEventListener('message', (event) => {
         const data = event.data;
-        if (!data || data.type !== 'heerlen-map-view') return;
-        if (data.panelId !== 'left' && data.panelId !== 'right') return;
-        if (!data.center || typeof data.zoom !== 'number') return;
+        if (!data || typeof data !== 'object') return;
 
-        lastViews[data.panelId] = { center: data.center, zoom: data.zoom };
-        relayView(data.panelId, data.center, data.zoom);
+        // Map view synchronization
+        if (data.type === 'heerlen-map-view') {
+          if (data.panelId !== 'left' && data.panelId !== 'right') return;
+          if (!data.center || typeof data.zoom !== 'number') return;
+          lastViews[data.panelId] = { center: data.center, zoom: data.zoom };
+          relayView(data.panelId, data.center, data.zoom);
+          return;
+        }
+
+        // Hover synchronization: relay hover to peer as a set-hover message
+        if (data.type === 'heerlen-hover' && data.identity && (data.panelId === 'left' || data.panelId === 'right')) {
+          const target = getTargetPanel(data.panelId);
+          const targetFrame = frames[target];
+          if (!targetFrame || !targetFrame.contentWindow) return;
+          targetFrame.contentWindow.postMessage({ type: 'heerlen-set-hover', identity: data.identity, panelId: target }, '*');
+          return;
+        }
+
+        // Hover clear synchronization
+        if (data.type === 'heerlen-hover-clear' && (data.panelId === 'left' || data.panelId === 'right')) {
+          const target = getTargetPanel(data.panelId);
+          const targetFrame = frames[target];
+          if (!targetFrame || !targetFrame.contentWindow) return;
+          targetFrame.contentWindow.postMessage({ type: 'heerlen-clear-hover', panelId: target }, '*');
+          return;
+        }
       });
 
       function wireFrame(side) {

@@ -852,8 +852,20 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   }
   
   // === LAAG TOEVOEGEN ===
+  // Zorg dat speciale panes bestaan voordat we de laag toevoegen (voorkomt render-issues)
+  try {
+    const map = window.appData.map;
+    if (map) {
+      if (!map.getPane('dimPane')) map.createPane('dimPane');
+      if (!map.getPane('choroplethPane')) map.createPane('choroplethPane');
+      map.getPane('dimPane').style.zIndex = 450;
+      map.getPane('choroplethPane').style.zIndex = 460;
+    }
+  } catch (e) { /* ignore */ }
+
   const laag = L.geoJSON(fc, {
     style: styleFeature,
+    pane: 'choroplethPane',
     onEachFeature: (feature, leafletLayer) => {
       const popupHtml = bouwFeaturePopup(feature, veld, activeFilter, alleWaarden);
 
@@ -893,6 +905,187 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     }
   
   window.appData.choroplethLayer = laag;
+  
+  // --- Dim achtergrond buiten de gevisualiseerde gebieden (pane-based) ---
+  (function setupDimPane() {
+    const map = window.appData.map;
+    if (!map) return;
+
+    // Create panes if they don't exist
+    if (!map.getPane('dimPane')) map.createPane('dimPane');
+    if (!map.getPane('choroplethPane')) map.createPane('choroplethPane');
+
+    const dimPane = map.getPane('dimPane');
+    const choroplethPane = map.getPane('choroplethPane');
+
+    // z-index ordering: dimPane below choroplethPane
+    dimPane.style.zIndex = 450;
+    choroplethPane.style.zIndex = 460;
+
+    // Ensure choropleth layer uses the choropleth pane
+    // (we set pane when creating the layer above)
+
+    // Remove any existing overlay element
+    const existing = dimPane.querySelector('.choropleth-dim-overlay');
+    if (existing) existing.remove();
+
+    // Create an SVG overlay that contains a mask with holes matching the choropleth polygons.
+    // This projects GeoJSON coordinates to container points on every view change so holes stay aligned.
+    const mapContainer = (map && typeof map.getContainer === 'function') ? map.getContainer() : document.getElementById('map');
+    if (!mapContainer) return;
+
+    // Remove existing svg overlay
+    const oldSvg = mapContainer.querySelector('svg.choropleth-dim-svg');
+    if (oldSvg) oldSvg.remove();
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.classList.add('choropleth-dim-svg');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.style.zIndex = '400';
+
+    const defs = document.createElementNS(svgNS, 'defs');
+    svg.appendChild(defs);
+
+    const mask = document.createElementNS(svgNS, 'mask');
+    const maskId = `choropleth-dim-mask`;
+    mask.setAttribute('id', maskId);
+    defs.appendChild(mask);
+
+    window.appData.choroplethDimOverlayState = {
+      map,
+      mapContainer,
+      mask,
+      popupEl: null
+    };
+
+    // full white rect to show by default
+    const fullRect = document.createElementNS(svgNS, 'rect');
+    fullRect.setAttribute('x', '0');
+    fullRect.setAttribute('y', '0');
+    fullRect.setAttribute('width', '100%');
+    fullRect.setAttribute('height', '100%');
+    fullRect.setAttribute('fill', 'white');
+    mask.appendChild(fullRect);
+
+    // overlay rect that will dim the map; it will be masked by polygon holes
+    const overlayRect = document.createElementNS(svgNS, 'rect');
+    overlayRect.setAttribute('x', '0');
+    overlayRect.setAttribute('y', '0');
+    overlayRect.setAttribute('width', '100%');
+    overlayRect.setAttribute('height', '100%');
+    overlayRect.setAttribute('fill', '#000');
+    overlayRect.setAttribute('opacity', '0.6');
+    overlayRect.setAttribute('mask', `url(#${maskId})`);
+
+    // Insert overlayRect as first child so choropleth paths (in other panes) render above it
+    svg.appendChild(overlayRect);
+
+    mapContainer.appendChild(svg);
+
+    // Function to clear holes and recreate from GeoJSON features
+    function updateMaskFromFeatures() {
+      // remove previous hole paths (keep first child fullRect)
+      while (mask.childNodes.length > 1) mask.removeChild(mask.lastChild);
+
+      function projectCoords(coord) {
+        // coord [lng, lat]
+        const p = map.latLngToContainerPoint([coord[1], coord[0]]);
+        return `${p.x},${p.y}`;
+      }
+
+      function ringToPath(ring) {
+        return ring.map(projectCoords).map((c, i) => (i === 0 ? `M${c}` : `L${c}`)).join(' ') + ' Z';
+      }
+
+      const popupEl = window.appData.choroplethDimOverlayState?.popupEl;
+      if (popupEl) {
+        const popupRect = popupEl.getBoundingClientRect();
+        const containerRect = mapContainer.getBoundingClientRect();
+        const left = Math.max(0, popupRect.left - containerRect.left);
+        const top = Math.max(0, popupRect.top - containerRect.top);
+        const width = Math.min(containerRect.width - left, popupRect.width);
+        const height = Math.min(containerRect.height - top, popupRect.height);
+
+        if (width > 0 && height > 0) {
+          const popupHole = document.createElementNS(svgNS, 'rect');
+          popupHole.setAttribute('x', String(left));
+          popupHole.setAttribute('y', String(top));
+          popupHole.setAttribute('width', String(width));
+          popupHole.setAttribute('height', String(height));
+          popupHole.setAttribute('rx', '12');
+          popupHole.setAttribute('ry', '12');
+          popupHole.setAttribute('fill', 'black');
+          popupHole.setAttribute('stroke', 'none');
+          mask.appendChild(popupHole);
+        }
+      }
+
+      // For each feature, build path(s)
+      (fc.features || []).forEach(feat => {
+        const geom = feat.geometry;
+        if (!geom) return;
+        if (geom.type === 'Polygon') {
+          const d = geom.coordinates.map(ringToPath).join(' ');
+          const path = document.createElementNS(svgNS, 'path');
+          path.setAttribute('d', d);
+          path.setAttribute('fill', 'black');
+          path.setAttribute('stroke', 'none');
+          mask.appendChild(path);
+        } else if (geom.type === 'MultiPolygon') {
+          geom.coordinates.forEach(poly => {
+            const d = poly.map(ringToPath).join(' ');
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'black');
+            path.setAttribute('stroke', 'none');
+            mask.appendChild(path);
+          });
+        }
+      });
+    }
+
+    // Initial and update on view changes
+    updateMaskFromFeatures();
+
+    // Attach listeners (throttled during continuous moves using rAF)
+    // Remove previous listener if present
+    try {
+      if (map._choroplethDimUpdater) {
+        map.off('move moveend viewreset zoomend resize', map._choroplethDimUpdater);
+        map._choroplethDimUpdater = null;
+      }
+    } catch (e) { /* ignore */ }
+
+    let rafId = null;
+    const schedule = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        try { updateMaskFromFeatures(); } catch (e) { /* ignore */ }
+      });
+    };
+
+    window.requestChoroplethDimOverlayUpdate = schedule;
+
+    // Listen to a wide set of map events so the mask updates continuously
+    map.on('move moveend viewreset zoom zoomstart zoomend zoomanim resize', schedule);
+    map._choroplethDimUpdater = schedule;
+
+    // Bring choropleth layer to front so it appears above the dim overlay
+    try {
+      if (window.appData.choroplethLayer && typeof window.appData.choroplethLayer.bringToFront === 'function') {
+        window.appData.choroplethLayer.bringToFront();
+      }
+    } catch (e) { /* ignore */ }
+
+  })();
   
   // Zoom naar data ALLEEN als dit een nieuwe dataset is (niet bij visuele updates)
   const isNieuweDataset = window.appData.lastLoadedData !== fc;
@@ -943,11 +1136,27 @@ if (map && typeof map.on === 'function') {
           if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
         });
       }
+
+      const overlayState = window.appData?.choroplethDimOverlayState;
+      if (overlayState) {
+        overlayState.popupEl = popupEl;
+      }
+
+      if (typeof window.requestChoroplethDimOverlayUpdate === 'function') {
+        window.requestChoroplethDimOverlayUpdate();
+      }
     } catch (err) { /* ignore */ }
   });
 
   map.on('popupclose', (e) => {
     mouseIsOverPopup = false;
+    const overlayState = window.appData?.choroplethDimOverlayState;
+    if (overlayState) {
+      overlayState.popupEl = null;
+    }
+    if (typeof window.requestChoroplethDimOverlayUpdate === 'function') {
+      window.requestChoroplethDimOverlayUpdate();
+    }
     if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
   });
 }

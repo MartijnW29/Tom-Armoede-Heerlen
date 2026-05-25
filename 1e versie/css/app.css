@@ -68,6 +68,25 @@ body {
   box-shadow: var(--schaduw-paneel);
 }
 
+html.sidebar-left #app {
+  flex-direction: row-reverse;
+}
+
+html.sidebar-left #sidebar {
+  border-left: 0;
+  border-right: 1px solid var(--kleur-rand);
+  box-shadow: 2px 0 10px rgba(15, 23, 42, 0.12);
+}
+
+html.sidebar-left .hover-timeseries-panel {
+  left: auto;
+  right: 14px;
+}
+
+html.split-pane #open-split-screen {
+  display: none;
+}
+
 .paneel-kop h2 {
   margin: 0 0 var(--ruimte-3);
   padding-bottom: var(--ruimte-2);

@@ -4,6 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Opportunity Atlas — Heerlen proefversie</title>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('sidebar') === 'left') {
+        document.documentElement.classList.add('sidebar-left');
+      }
+      if (params.get('split') === '1') {
+        document.documentElement.classList.add('split-pane');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/intro.js/minified/introjs.min.css" />
   <link rel="stylesheet" href="css/app.css" />
@@ -54,6 +65,7 @@
         <input id="opacity-range" type="range" min="0" max="1" step="0.05" />
         <div style="margin-top:10px;">
           <button id="start-tour" type="button">Rondleiding starten</button>
+          <button id="open-split-screen" type="button">Splitscherm</button>
         </div>
       </section>
 

@@ -25,6 +25,7 @@ const KAART_CONFIG = {
   // Polygon randstijl
   randKleur: '#333',                      // Kleur van grenzen
   randBreedte: 0.6,                       // Dikte van grenzen
+  wijkRandBreedte: 2.5,                   // Dikte van grenzen voor features met `wijknaam`
   gefilterdRandKleur: '#999',             // Grenzen van gefilterde gebieden
   gefilterdVulKleur: '#e8e8e8',           // Vulkleur van gefilterde gebieden
   gefilterdTransparantie: 0.15,           // Transparantie gefilterde gebieden
@@ -123,6 +124,28 @@ function filtreerdFeatures(fc, veld, filter) {
 function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const props = feature.properties || {};
 
+  // Ensure `wijknaam` is available in the popup when possible.
+  // If the source data doesn't include `wijknaam`, attempt to derive it
+  // from `buurtnaam` (e.g. "Heerlen Centrum" -> "Centrum") or from
+  // the shorter `buurt` field as a fallback.
+  if (!props.wijknaam || String(props.wijknaam).trim() === '') {
+    const buurtnaam = props.buurtnaam || '';
+    const buurt = props.buurt || '';
+    if (buurtnaam && typeof buurtnaam === 'string') {
+      // If buurtnaam contains a space, prefer the trailing part(s)
+      // (e.g. "Heerlen Centrum" -> "Centrum"). For single-token
+      // buurtnamen (e.g. "Terworm") use the full buurtnaam.
+      const parts = buurtnaam.trim().split(/\s+/);
+      if (parts.length > 1) {
+        props.wijknaam = parts.slice(1).join(' ');
+      } else {
+        props.wijknaam = buurtnaam.trim();
+      }
+    } else if (buurt && typeof buurt === 'string') {
+      props.wijknaam = buurt;
+    }
+  }
+
   // Determine which variables to show: read from dynamic selectors if present,
   // otherwise fall back to single `veld` parameter
   const geselecteerde = Array.from(document.querySelectorAll('#selectors-div select.field-select-item')).map(s => s.value).filter(v => v);
@@ -131,20 +154,45 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const rijen = [];
   rijen.push(`<b>Geselecteerd gebied</b>`);
 
-  // Add preferred identifying fields first. If this feature has overlapping
-  // wijken, show those (`wijknaam`) immediately before the `buurtnaam` line.
-  let overlapsInserted = false;
+  // Add preferred identifying fields first. Determine a single, normalized
+  // `wijknaam` to show (priority: overlapping_wijken[0], props.wijknaam,
+  // derived from buurtnaam/buurt). Add it once and avoid duplicates.
   const overlaps = Array.isArray(props.overlapping_wijken) ? props.overlapping_wijken : null;
-  KAART_CONFIG.voorkeurvelden.forEach(k => {
-    // If we're about to render buurtnaam and there are overlapping wijken,
-    // insert them first (once).
-    if (k === 'buurtnaam' && overlaps && overlaps.length && !overlapsInserted) {
-      for (const wn of overlaps) {
-        rijen.push(`<b>wijknaam</b>: ${wn}`);
-      }
-      overlapsInserted = true;
-    }
 
+  function normalizeName(s) {
+    if (!s && s !== 0) return s;
+    let t = String(s).trim();
+    // Normalize hyphen spacing and multiple spaces
+    t = t.replace(/\s*-\s*/g, ' - ');
+    t = t.replace(/\s+/g, ' ');
+    return t;
+  }
+
+  // Determine displayWijk
+  let displayWijk = null;
+  if (overlaps && overlaps.length) {
+    displayWijk = normalizeName(overlaps[0]);
+  } else if (props.wijknaam && String(props.wijknaam).trim() !== '') {
+    displayWijk = normalizeName(props.wijknaam);
+  } else {
+    const buurtnaam = props.buurtnaam || '';
+    const buurt = props.buurt || '';
+    if (buurtnaam && typeof buurtnaam === 'string') {
+      const parts = buurtnaam.trim().split(/\s+/);
+      displayWijk = parts.length > 1 ? normalizeName(parts.slice(1).join(' ')) : normalizeName(buurtnaam);
+    } else if (buurt && typeof buurt === 'string') {
+      displayWijk = normalizeName(buurt);
+    }
+  }
+
+  // Add `wijknaam` once if available
+  if (displayWijk) {
+    rijen.push(`<b>wijknaam</b>: ${displayWijk}`);
+  }
+
+  // Now add the preferred fields, but skip `wijknaam` to avoid duplicates
+  KAART_CONFIG.voorkeurvelden.forEach(k => {
+    if (k === 'wijknaam') return;
     if (props[k] !== undefined) {
       const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
       rijen.push(`<b>${k}</b>: ${txt}`);
@@ -803,6 +851,15 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   
   // Haal kleuren
   const kleuren = haalKleurSchema(palet, aantalKlassen);
+
+  // If wijken data is available globally but buurten features don't yet have
+  // overlapping_wijken, try to compute them via the light-weight helper.
+  try {
+    const hasOverlaps = (fc.features || []).some(f => f.properties && Array.isArray(f.properties.overlapping_wijken) && f.properties.overlapping_wijken.length > 0);
+    if (!hasOverlaps && window.multiLoaderState && window.multiLoaderState.wijkenFC && typeof addWijkenToBuurten === 'function') {
+      addWijkenToBuurten(fc, window.multiLoaderState.wijkenFC);
+    }
+  } catch (e) { /* ignore */ }
   
   // === STYLING FUNCTIE ===
   function styleFeature(feature) {
@@ -857,9 +914,12 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     const map = window.appData.map;
     if (map) {
       if (!map.getPane('dimPane')) map.createPane('dimPane');
+      if (!map.getPane('choroplethWijkBorderPane')) map.createPane('choroplethWijkBorderPane');
       if (!map.getPane('choroplethPane')) map.createPane('choroplethPane');
       map.getPane('dimPane').style.zIndex = 450;
       map.getPane('choroplethPane').style.zIndex = 460;
+      // Pane speciaal voor dikkere wijkranden die altijd bovenop moeten komen
+      try { map.getPane('choroplethWijkBorderPane').style.zIndex = 475; } catch (e) { /* ignore */ }
     }
   } catch (e) { /* ignore */ }
 
@@ -925,6 +985,41 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     }
   
   window.appData.choroplethLayer = laag;
+
+  // --- Tekenen van dikke grenzen voor echte WIJKEN (bovenop) ---
+  try {
+    // Verwijder bestaande wijk-border laag als aanwezig
+    if (window.appData.choroplethWijkBorderLayer) {
+      try { window.appData.dataLayer.removeLayer(window.appData.choroplethWijkBorderLayer); } catch (e) { /* ignore */ }
+      window.appData.choroplethWijkBorderLayer = null;
+    }
+
+    // Only create thick wijk borders from an explicit wijken FeatureCollection
+    // (e.g. loaded via PDOK and stored in window.multiLoaderState.wijkenFC).
+    const wijkSourceFC = window.multiLoaderState && window.multiLoaderState.wijkenFC ? window.multiLoaderState.wijkenFC : null;
+    if (wijkSourceFC && Array.isArray(wijkSourceFC.features) && wijkSourceFC.features.length > 0) {
+      const wijkBorderStyle = function () {
+        return {
+          color: KAART_CONFIG.randKleur,
+          weight: KAART_CONFIG.wijkRandBreedte || (KAART_CONFIG.randBreedte * 3),
+          opacity: 1,
+          fillOpacity: 0
+        };
+      };
+
+      const wijkBorderLayer = L.geoJSON(wijkSourceFC, {
+        style: wijkBorderStyle,
+        pane: 'choroplethWijkBorderPane',
+        interactive: false
+      }).addTo(window.appData.dataLayer);
+
+      // Ensure border layer is above choropleth and dim overlays
+      try { if (wijkBorderLayer && typeof wijkBorderLayer.bringToFront === 'function') wijkBorderLayer.bringToFront(); } catch (e) { /* ignore */ }
+      window.appData.choroplethWijkBorderLayer = wijkBorderLayer;
+    }
+    // If no explicit wijkenFC is available, do not create a thick wijk border
+    // from the buurten dataset (avoids making every buurt border thick).
+  } catch (e) { /* ignore */ }
   
   // --- Dim achtergrond buiten de gevisualiseerde gebieden (pane-based) ---
   (function setupDimPane() {

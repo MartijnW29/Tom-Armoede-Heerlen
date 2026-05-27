@@ -25,6 +25,7 @@ window.multiLoaderState = {
   mergedData: null,
   yearFilter: null,
   originalData: null,
+  availableYears: [],
 };
 
 // ============================================================================
@@ -77,6 +78,25 @@ function getYearRange(fc) {
     min: Math.min(...years),
     max: Math.max(...years),
   };
+}
+
+/**
+ * Bepaal alle unieke jaren in een FeatureCollection
+ * @param {Object} fc - FeatureCollection
+ * @return {Array<number>} Gesorteerde lijst met jaren
+ */
+function getAvailableYears(fc) {
+  if (!fc || !fc.features) return [];
+
+  const years = new Set();
+  fc.features.forEach(feature => {
+    const year = getYearFromFeature(feature);
+    if (Number.isFinite(year)) {
+      years.add(year);
+    }
+  });
+
+  return Array.from(years).sort((a, b) => a - b);
 }
 
 // ============================================================================
@@ -458,15 +478,120 @@ async function loadAllAPIs() {
  */
 function updateYearSlider(fc) {
   const slider = document.getElementById('year-slider');
+  const display = document.getElementById('year-display');
+  const clearButton = document.getElementById('year-filter-clear');
   const yearRange = getYearRange(fc);
+  const availableYears = getAvailableYears(fc);
   
   if (!yearRange || !slider) return;
   
-  slider.min = Math.max(yearRange.min, MULTI_LOADER_CONFIG.minYear);
-  slider.max = Math.min(yearRange.max, MULTI_LOADER_CONFIG.maxYear);
-  slider.value = slider.max; // Standaard het meest recente jaar
+  const yearsInRange = availableYears.filter(year => (
+    year >= MULTI_LOADER_CONFIG.minYear && year <= MULTI_LOADER_CONFIG.maxYear
+  ));
+  const yearsToUse = yearsInRange.length > 0 ? yearsInRange : [
+    Math.max(yearRange.min, MULTI_LOADER_CONFIG.minYear),
+    Math.min(yearRange.max, MULTI_LOADER_CONFIG.maxYear),
+  ].filter((value, index, array) => Number.isFinite(value) && array.indexOf(value) === index);
+
+  window.multiLoaderState.availableYears = yearsToUse;
+
+  slider.min = String(yearsToUse[0]);
+  slider.max = String(yearsToUse[yearsToUse.length - 1]);
+  slider.step = '1';
+  slider.value = String(yearsToUse[yearsToUse.length - 1]); // Standaard het meest recente jaar
+
+  renderYearTicks(slider, yearsToUse);
   
   updateYearDisplay();
+
+  if (display) {
+    display.textContent = String(yearsToUse[yearsToUse.length - 1]);
+  }
+
+  if (clearButton) {
+    clearButton.hidden = true;
+    clearButton.setAttribute('aria-hidden', 'true');
+  }
+}
+
+/**
+ * Render de streepjes en labels onder de jaarslider
+ * @param {HTMLInputElement} slider - Jaar-slider
+ * @param {Array<number>} years - Beschikbare jaren
+ */
+function renderYearTicks(slider, years) {
+  const container = document.getElementById('year-ticks');
+  if (!container || !slider || !Array.isArray(years) || years.length === 0) return;
+
+  const minYear = parseInt(slider.min, 10);
+  const maxYear = parseInt(slider.max, 10);
+  const span = Math.max(maxYear - minYear, 1);
+  const labelStep = years.length <= 16 ? 1 : Math.ceil(years.length / 12);
+
+  container.innerHTML = '';
+
+  years.forEach((year, index) => {
+    const left = `${((year - minYear) / span) * 100}%`;
+    const edge = index === 0 ? 'start' : (index === years.length - 1 ? 'end' : 'middle');
+    const tick = document.createElement('span');
+    tick.className = 'year-tick';
+    tick.style.left = left;
+    tick.dataset.year = String(year);
+    tick.dataset.edge = edge;
+    tick.title = String(year);
+
+    const label = document.createElement('span');
+    label.className = 'year-tick-label';
+    label.style.left = left;
+    label.dataset.edge = edge;
+    label.textContent = index % labelStep === 0 || index === years.length - 1 ? String(year) : '';
+
+    container.appendChild(tick);
+    container.appendChild(label);
+  });
+}
+
+/**
+ * Markeer het actieve jaar in de ticks
+ * @param {number|null} year - Actief jaar
+ */
+function updateYearTickHighlight(year) {
+  const container = document.getElementById('year-ticks');
+  if (!container) return;
+
+  const ticks = container.querySelectorAll('.year-tick');
+  const labels = container.querySelectorAll('.year-tick-label');
+
+  ticks.forEach(tick => {
+    tick.classList.toggle('is-active', year !== null && tick.dataset.year === String(year));
+  });
+
+  labels.forEach(label => {
+    label.classList.toggle('is-active', year !== null && label.textContent === String(year));
+  });
+}
+
+/**
+ * Snap een gekozen jaar naar het dichtstbijzijnde beschikbare jaar
+ * @param {number} year - Gewenst jaar
+ * @return {number|null} Gesnapte jaarwaarde
+ */
+function snapYearToAvailableYear(year) {
+  const years = window.multiLoaderState.availableYears || [];
+  if (!Number.isFinite(year) || years.length === 0) return Number.isFinite(year) ? year : null;
+
+  let closestYear = years[0];
+  let closestDistance = Math.abs(year - closestYear);
+
+  for (const candidate of years) {
+    const distance = Math.abs(year - candidate);
+    if (distance < closestDistance) {
+      closestYear = candidate;
+      closestDistance = distance;
+    }
+  }
+
+  return closestYear;
 }
 
 /**
@@ -475,12 +600,25 @@ function updateYearSlider(fc) {
 function updateYearDisplay() {
   const slider = document.getElementById('year-slider');
   const display = document.getElementById('year-display');
+  const clearButton = document.getElementById('year-filter-clear');
   
   if (slider && display) {
-    display.textContent = slider.value;
+    const currentYear = snapYearToAvailableYear(parseInt(slider.value, 10));
+    if (currentYear !== null && String(currentYear) !== slider.value) {
+      slider.value = String(currentYear);
+    }
+
+    display.textContent = currentYear === null ? 'Alle jaren' : String(currentYear);
+    updateYearTickHighlight(currentYear);
     
     // Pas filtering toe
-    applyYearFilter(parseInt(slider.value, 10));
+    if (currentYear !== null) {
+      applyYearFilter(currentYear);
+      if (clearButton) {
+        clearButton.hidden = false;
+        clearButton.setAttribute('aria-hidden', 'false');
+      }
+    }
   }
 }
 
@@ -515,10 +653,23 @@ function applyYearFilter(year) {
  */
 function clearYearFilter() {
   const slider = document.getElementById('year-slider');
+  const display = document.getElementById('year-display');
+  const clearButton = document.getElementById('year-filter-clear');
   window.multiLoaderState.yearFilter = null;
   
   if (window.multiLoaderState.originalData) {
     window.appData.lastFC = window.multiLoaderState.originalData;
+
+    if (display) {
+      display.textContent = 'Alle jaren';
+    }
+
+    if (clearButton) {
+      clearButton.hidden = true;
+      clearButton.setAttribute('aria-hidden', 'true');
+    }
+
+    updateYearTickHighlight(null);
     
     if (window.herllaadVisualisatie) {
       window.herllaadVisualisatie();
@@ -638,5 +789,6 @@ window.applyYearFilter = applyYearFilter;
 window.clearYearFilter = clearYearFilter;
 window.getYearFromFeature = getYearFromFeature;
 window.getYearRange = getYearRange;
+window.getAvailableYears = getAvailableYears;
 window.mergeFeatureCollections = mergeFeatureCollections;
 window.filterFeaturesByYear = filterFeaturesByYear;

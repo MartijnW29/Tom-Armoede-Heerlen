@@ -813,7 +813,7 @@ button:focus-visible {
 }
 
 .story-shell {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .story-backdrop {
@@ -829,7 +829,7 @@ button:focus-visible {
     radial-gradient(circle at top left, rgba(255,209,102,0.18), transparent 28%),
     radial-gradient(circle at bottom right, rgba(11,114,133,0.20), transparent 28%),
     linear-gradient(180deg, rgba(3,10,17,0.40), rgba(3,10,17,0.66));
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
 }
 
 .story-shell {
@@ -846,6 +846,7 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  pointer-events: none;
 }
 
 .story-chip,
@@ -860,11 +861,18 @@ button:focus-visible {
   font-size: 12px;
   font-weight: 700;
   box-shadow: 0 10px 26px rgba(8,24,48,0.14);
-  backdrop-filter: blur(14px);
+  backdrop-filter: none;
 }
 
 .story-counter {
   margin-left: auto;
+}
+
+.story-chip,
+.story-counter,
+.story-actions,
+.story-actions button {
+  pointer-events: auto;
 }
 
 .story-actions {
@@ -897,6 +905,7 @@ button:focus-visible {
   grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: clamp(10px, 2vw, 18px);
   min-height: 0;
+  pointer-events: none;
 }
 
 .story-card {
@@ -907,8 +916,9 @@ button:focus-visible {
   border: 1px solid rgba(255,255,255,0.50);
   color: #061826;
   box-shadow: 0 28px 80px rgba(0,0,0,0.28);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
   align-self: stretch;
+  pointer-events: auto;
 }
 
 .story-card[data-anchor="top-left"] { grid-column: 1; grid-row: 1; justify-self: start; align-self: start; }
@@ -968,6 +978,12 @@ button:focus-visible {
   border: 1px solid rgba(8,24,48,0.08);
 }
 
+.story-stat.is-no-data {
+  background: linear-gradient(180deg, rgba(8,24,48,0.05), rgba(8,24,48,0.03));
+  border-style: dashed;
+  border-color: rgba(8,24,48,0.24);
+}
+
 .story-stat-label {
   display: block;
   margin-bottom: 6px;
@@ -984,6 +1000,14 @@ button:focus-visible {
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #061826;
+}
+
+.story-stat-value.is-no-data {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #5f7482;
 }
 
 .story-stat-note {

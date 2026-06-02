@@ -12,36 +12,6 @@
 
   const STORY_DATA_URL = 'data/heerlen_buurten.geojson';
 
-  const STORY_DATA_FALLBACK = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: { buurt: 'Centrum', buurtnaam: 'Heerlen Centrum', aantal_inwoners: 1250, huishoudens: 580, werkloosheid_pct: 4.2, inkomen_mediaan: 32500 },
-        geometry: { type: 'Polygon', coordinates: [[[5.965, 50.885], [5.975, 50.885], [5.975, 50.895], [5.965, 50.895], [5.965, 50.885]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Noord', buurtnaam: 'Heerlen Noord', aantal_inwoners: 2100, huishoudens: 920, werkloosheid_pct: 5.8, inkomen_mediaan: 28900 },
-        geometry: { type: 'Polygon', coordinates: [[[5.95, 50.895], [5.985, 50.895], [5.985, 50.91], [5.95, 50.91], [5.95, 50.895]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Oost', buurtnaam: 'Heerlen Oost', aantal_inwoners: 1850, huishoudens: 780, werkloosheid_pct: 3.9, inkomen_mediaan: 35200 },
-        geometry: { type: 'Polygon', coordinates: [[[5.975, 50.875], [6.005, 50.875], [6.005, 50.895], [5.975, 50.895], [5.975, 50.875]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'West', buurtnaam: 'Heerlen West', aantal_inwoners: 1680, huishoudens: 710, werkloosheid_pct: 6.1, inkomen_mediaan: 27500 },
-        geometry: { type: 'Polygon', coordinates: [[[5.945, 50.87], [5.965, 50.87], [5.965, 50.885], [5.945, 50.885], [5.945, 50.87]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Zuid', buurtnaam: 'Heerlen Zuid', aantal_inwoners: 2340, huishoudens: 1050, werkloosheid_pct: 7.3, inkomen_mediaan: 26800 },
-        geometry: { type: 'Polygon', coordinates: [[[5.962, 50.86], [5.982, 50.86], [5.982, 50.878], [5.962, 50.878], [5.962, 50.86]]] }
-      }
-    ]
-  };
 
   let storyDataCache = null;
   let storyDataPromise = null;
@@ -281,7 +251,7 @@
           const mappings = {
             'aantal_inwoners': ['aantal_inwoners'],
             'huishoudens': ['aantal_huishoudens', 'huishoudens'],
-            'werkloosheid_pct': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
+            'werkloosheid': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
             'inkomen_mediaan': ['inkomen_mediaan', 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', 'gemiddeld_inkomen_per_inwoner']
           };
           rawValue = getPropWithFallback(props, mappings[stat.field] || [stat.field]);
@@ -344,6 +314,7 @@
             <button type="button" class="story-close">Sluit</button>
           </div>
         </div>
+        <div class="story-progress"><span class="story-progress-bar"></span></div>
         <div class="story-grid">
           <article class="story-card" data-anchor="middle-right">
             <p class="story-kicker"></p>
@@ -365,6 +336,7 @@
     state.prevButton = overlay.querySelector('.story-prev');
     state.nextButton = overlay.querySelector('.story-next');
     state.closeButton = overlay.querySelector('.story-close');
+    state.progressBar = overlay.querySelector('.story-progress-bar');
     state.card = overlay.querySelector('.story-card');
     state.kicker = overlay.querySelector('.story-kicker');
     state.title = overlay.querySelector('.story-title');
@@ -421,8 +393,8 @@
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
               { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
-              { label: 'Werkloosheid', field: 'werkloosheid_pct', suffix: '%' },
-              { label: 'Gemiddeld inkomen', field: 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', format: 'currency' }
+              { label: 'Werklozen', field: 'werkloosheid', suffix: '' },
+              { label: 'Gemiddeld inkomen', field: 'inkomen_mediaan', format: 'currency' }
             ],
             mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
           },
@@ -497,7 +469,77 @@
   function applyStoryScene(slide, fc) { /* jouw originele functie */ 
     const map = getMap();
     clearHighlights(state);
-    
+    if (!map || !slide) return;
+
+    if (slide.kind === 'map' && slide.field && typeof window.toonChoropleth === 'function') {
+      const method = document.getElementById('method-select')?.value || 'quantile';
+      const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
+      const opacity = parseFloat(document.getElementById('opacity-range')?.value || '0.65');
+
+      window.toonChoropleth(fc, slide.field, {
+        method,
+        palette,
+        opacity: Number.isFinite(opacity) ? opacity : 0.65,
+        classes: 5
+      });
+    }
+
+    if (!slide.focus) return;
+    const focusFeature = findFeatureInCollection(fc, slide.focus);
+    if (!focusFeature?.properties) return;
+
+    const focusField = slide.focus.field || 'buurtnaam';
+    const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
+    if (!focusValue) return;
+
+    const candidates = getStoryLayerCandidates();
+    for (const rootLayer of candidates) {
+      if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
+
+      let matchedLayer = null;
+      rootLayer.eachLayer(layer => {
+        if (matchedLayer || !layer?.feature?.properties) return;
+        const props = layer.feature.properties;
+        const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
+        if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
+          matchedLayer = layer;
+        }
+      });
+
+      if (!matchedLayer) continue;
+
+      try {
+        if (!matchedLayer.__storyOriginalStyle && typeof matchedLayer.setStyle === 'function') {
+          matchedLayer.__storyOriginalStyle = {
+            color: matchedLayer.options?.color,
+            weight: matchedLayer.options?.weight,
+            fillOpacity: matchedLayer.options?.fillOpacity,
+            fillColor: matchedLayer.options?.fillColor
+          };
+        }
+
+        if (typeof matchedLayer.setStyle === 'function') {
+          matchedLayer.setStyle({
+            color: '#ffd166',
+            weight: 2.2,
+            fillOpacity: 0.9
+          });
+        }
+
+        if (typeof matchedLayer.getBounds === 'function') {
+          map.fitBounds(matchedLayer.getBounds(), { maxZoom: 14, animate: true, padding: [18, 18] });
+        }
+
+        if (typeof matchedLayer.openPopup === 'function') {
+          matchedLayer.openPopup();
+          matchedLayer.__storyOpenedPopup = true;
+        }
+
+        state.highlightedLayers.push(matchedLayer);
+      } catch (e) {}
+
+      break;
+    }
   }
 
   function resolveSlideFeature(slide, fc) {
@@ -525,6 +567,10 @@
 
     state.chip.textContent = slide.overline || story.title;
     state.counter.textContent = `${state.slideIndex + 1} / ${story.slides.length}`;
+    if (state.progressBar) {
+      const progress = ((state.slideIndex + 1) / story.slides.length) * 100;
+      state.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    }
     state.prevButton.disabled = state.slideIndex === 0;
     state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
     state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');

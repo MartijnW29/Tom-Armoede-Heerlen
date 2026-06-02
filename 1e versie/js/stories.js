@@ -1,0 +1,556 @@
+(function () {
+  const STORY_ANCHORS = [
+    'top-left', 'top-center', 'top-right',
+    'middle-left', 'middle-center', 'middle-right',
+    'bottom-left', 'bottom-center', 'bottom-right'
+  ];
+
+  const NF_NUMBER = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
+  const NF_DECIMAL = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 });
+  const NF_CURRENCY = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+
+  const STORY_DATA_URL = 'data/heerlen_buurten.geojson';
+
+  const STORY_DATA_FALLBACK = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { buurt: 'Centrum', buurtnaam: 'Heerlen Centrum', aantal_inwoners: 1250, huishoudens: 580, werkloosheid_pct: 4.2, inkomen_mediaan: 32500 },
+        geometry: { type: 'Polygon', coordinates: [[[5.965, 50.885], [5.975, 50.885], [5.975, 50.895], [5.965, 50.895], [5.965, 50.885]]] }
+      },
+      {
+        type: 'Feature',
+        properties: { buurt: 'Noord', buurtnaam: 'Heerlen Noord', aantal_inwoners: 2100, huishoudens: 920, werkloosheid_pct: 5.8, inkomen_mediaan: 28900 },
+        geometry: { type: 'Polygon', coordinates: [[[5.95, 50.895], [5.985, 50.895], [5.985, 50.91], [5.95, 50.91], [5.95, 50.895]]] }
+      },
+      {
+        type: 'Feature',
+        properties: { buurt: 'Oost', buurtnaam: 'Heerlen Oost', aantal_inwoners: 1850, huishoudens: 780, werkloosheid_pct: 3.9, inkomen_mediaan: 35200 },
+        geometry: { type: 'Polygon', coordinates: [[[5.975, 50.875], [6.005, 50.875], [6.005, 50.895], [5.975, 50.895], [5.975, 50.875]]] }
+      },
+      {
+        type: 'Feature',
+        properties: { buurt: 'West', buurtnaam: 'Heerlen West', aantal_inwoners: 1680, huishoudens: 710, werkloosheid_pct: 6.1, inkomen_mediaan: 27500 },
+        geometry: { type: 'Polygon', coordinates: [[[5.945, 50.87], [5.965, 50.87], [5.965, 50.885], [5.945, 50.885], [5.945, 50.87]]] }
+      },
+      {
+        type: 'Feature',
+        properties: { buurt: 'Zuid', buurtnaam: 'Heerlen Zuid', aantal_inwoners: 2340, huishoudens: 1050, werkloosheid_pct: 7.3, inkomen_mediaan: 26800 },
+        geometry: { type: 'Polygon', coordinates: [[[5.962, 50.86], [5.982, 50.86], [5.982, 50.878], [5.962, 50.878], [5.962, 50.86]]] }
+      }
+    ]
+  };
+
+  let storyDataCache = null;
+  let storyDataPromise = null;
+
+  // ====================== DEBUG ======================
+  window.debugStoryData = async () => {
+    const fc = await ensureStoryDataCollection();
+    console.log('%c🔍 Story Data Debug', 'color: #0b7285; font-weight: bold');
+    console.log('Features count:', fc?.features?.length || 0);
+    if (fc?.features?.[0]) {
+      console.log('Available properties:', Object.keys(fc.features[0].properties));
+    }
+  };
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeXml(value) {
+    return escapeHtml(value).replace(/\n/g, ' ');
+  }
+
+  function createBackdrop(title, subtitle, colors) {
+    const first = colors?.[0] || '#0b7285';
+    const second = colors?.[1] || '#ffb703';
+    const third = colors?.[2] || '#061826';
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="${escapeXml(title)}">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="${first}"/>
+            <stop offset="52%" stop-color="${second}"/>
+            <stop offset="100%" stop-color="${third}"/>
+          </linearGradient>
+          <radialGradient id="glow" cx="50%" cy="35%" r="68%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+            <stop offset="50%" stop-color="#ffffff" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="1600" height="900" fill="url(#bg)"/>
+        <rect width="1600" height="900" fill="url(#glow)"/>
+        <g fill="none" stroke="#ffffff" stroke-opacity="0.18">
+          <circle cx="260" cy="220" r="180" stroke-width="2"/>
+          <circle cx="1260" cy="170" r="260" stroke-width="2"/>
+          <circle cx="1190" cy="740" r="220" stroke-width="2"/>
+          <path d="M70 690 C250 560, 410 620, 560 510 S860 420, 1020 520 S1330 650, 1540 470" stroke-width="10" stroke-linecap="round"/>
+        </g>
+        <g fill="#ffffff" fill-opacity="0.92" font-family="Segoe UI, Arial, sans-serif">
+          <text x="96" y="170" font-size="34" letter-spacing="6" font-weight="800">HEERLEN STORIES</text>
+          <text x="96" y="300" font-size="88" font-weight="800">${escapeXml(title)}</text>
+          <text x="96" y="375" font-size="28" font-weight="400" fill-opacity="0.82">${escapeXml(subtitle || '')}</text>
+        </g>
+      </svg>`;
+
+    return `url("data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}")`;
+  }
+
+  function formatValue(value, stat = {}) {
+    if (value === null || value === undefined || value === '') return '—';
+    const numeric = Number(value);
+
+    if (stat.format === 'currency') return Number.isFinite(numeric) ? NF_CURRENCY.format(numeric) : String(value);
+    if (stat.format === 'integer') return Number.isFinite(numeric) ? NF_NUMBER.format(numeric) : String(value);
+    if (stat.format === 'decimal') return Number.isFinite(numeric) ? NF_DECIMAL.format(numeric) : String(value);
+    if (stat.suffix === '%') return Number.isFinite(numeric) ? `${NF_DECIMAL.format(numeric)}%` : String(value);
+    if (Number.isFinite(numeric)) return NF_DECIMAL.format(numeric);
+    return String(value);
+  }
+
+  function getFeatureCollection() {
+    return window.multiLoaderState?.originalData || window.appData?.lastFC || storyDataCache || null;
+  }
+
+  function setStoryDataCache(fc) {
+    storyDataCache = fc || null;
+    return storyDataCache;
+  }
+
+  async function ensureStoryDataCollection() {
+    const current = getFeatureCollection();
+    if (current && Array.isArray(current.features) && current.features.length > 0) return current;
+
+    if (storyDataCache) return storyDataCache;
+    if (storyDataPromise) return storyDataPromise;
+
+    storyDataPromise = fetch(STORY_DATA_URL, { cache: 'no-cache' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(fc => {
+        console.log(`✅ ${fc.features.length} buurten geladen`);
+        return setStoryDataCache(fc);
+      })
+      .catch(() => setStoryDataCache(STORY_DATA_FALLBACK))
+      .finally(() => {
+        storyDataPromise = null;
+        dispatchStoryEvent('story:data-ready', { ready: true });
+      });
+
+    return storyDataPromise;
+  }
+
+  function getMap() {
+    return window.appData?.map || window.map || null;
+  }
+
+  function getStoryLayerCandidates() {
+    return [window.appData?.choroplethLayer, window.appData?.baseGeoLayer].filter(Boolean);
+  }
+
+  function normalizeAnchors(anchor) {
+    return STORY_ANCHORS.includes(anchor) ? anchor : 'middle-right';
+  }
+
+  function normalizeText(value) {
+    return String(value ?? '').trim().toLowerCase();
+  }
+
+  // ==================== VERBETERDE FEATURE MATCHING ====================
+  function findFeatureInCollection(fc, focus) {
+    if (!fc?.features || !focus) return null;
+
+    let target = normalizeText(focus.value ?? focus.name ?? focus.label);
+    if (!target) return null;
+
+    // Extra tolerantie: verwijder "heerlen " als het erin zit
+    target = target.replace(/^heerlen\s+/, '');
+
+    const fields = ['buurtnaam', 'naam', 'buurt', 'wijknaam', 'label'];
+
+    for (const feature of fc.features) {
+      if (!feature?.properties) continue;
+      for (const field of fields) {
+        const value = normalizeText(feature.properties[field]);
+        if (!value) continue;
+
+        if (value === target || value.includes(target) || target.includes(value)) {
+          console.log(`✅ Feature gevonden: ${feature.properties.buurtnaam || feature.properties.naam}`);
+          return feature;
+        }
+      }
+    }
+
+    console.warn(`⚠️ Kon feature niet vinden voor: "${target}"`);
+    return null;
+  }
+
+  function getPropWithFallback(props, candidates) {
+    if (!props) return undefined;
+    for (const c of candidates) {
+      if (c == null) continue;
+      const v = props[c];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return undefined;
+  }
+
+  function clearHighlights(state) {
+    for (const layer of state.highlightedLayers) {
+      if (!layer) continue;
+      try {
+        if (layer.__storyOriginalStyle && typeof layer.setStyle === 'function') {
+          layer.setStyle(layer.__storyOriginalStyle);
+        }
+        if (layer.__storyOpenedPopup && typeof layer.closePopup === 'function') {
+          layer.closePopup();
+        }
+      } catch (e) {}
+      layer.__storyOpenedPopup = false;
+    }
+    state.highlightedLayers = [];
+  }
+
+  // ==================== STAT BUILDER MET BETERE MAPPING ====================
+  function buildStatEntries(slide, feature, fc) {
+    if (!Array.isArray(slide?.stats)) return [];
+
+    const sourceFeature = feature || (slide.focus ? findFeatureInCollection(fc, slide.focus) : null);
+    if (!sourceFeature?.properties) return [];
+
+    const props = sourceFeature.properties;
+
+    return slide.stats.map((stat) => {
+      let rawValue = stat.value;
+
+      if (rawValue === undefined && stat.field) {
+        rawValue = props[stat.field];
+
+        if (rawValue === undefined) {
+          const mappings = {
+            'aantal_inwoners': ['aantal_inwoners'],
+            'huishoudens': ['aantal_huishoudens', 'huishoudens'],
+            'werkloosheid_pct': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
+            'inkomen_mediaan': ['inkomen_mediaan', 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', 'gemiddeld_inkomen_per_inwoner']
+          };
+          rawValue = getPropWithFallback(props, mappings[stat.field] || [stat.field]);
+        }
+      }
+
+      return {
+        label: stat.label || stat.field || 'Statistiek',
+        value: formatValue(rawValue, stat),
+        note: stat.note || ''
+      };
+    });
+  }
+
+  function buildStatHtml(entries) {
+    if (!entries.length) {
+      return `<div class="story-stats"><p style="color:#888;">Geen statistieken beschikbaar</p></div>`;
+    }
+    return `
+      <div class="story-stats">
+        ${entries.map(entry => `
+          <article class="story-stat">
+            <span class="story-stat-label">${escapeHtml(entry.label)}</span>
+            <span class="story-stat-value">${escapeHtml(entry.value)}</span>
+            ${entry.note ? `<span class="story-stat-note">${escapeHtml(entry.note)}</span>` : ''}
+          </article>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // ==================== OVERIGE FUNCTIES (uit jouw origineel) ====================
+  function ensureOverlay(state) {
+    if (state.overlay) return state.overlay;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'story-overlay';
+    overlay.hidden = true;
+    overlay.innerHTML = `
+      <div class="story-backdrop"></div>
+      <div class="story-scrim"></div>
+      <div class="story-shell">
+        <div class="story-topbar">
+          <div class="story-chip"></div>
+          <div class="story-counter"></div>
+          <div class="story-actions">
+            <button type="button" class="story-prev">Vorige</button>
+            <button type="button" class="story-next">Volgende</button>
+            <button type="button" class="story-close">Sluit</button>
+          </div>
+        </div>
+        <div class="story-grid">
+          <article class="story-card" data-anchor="middle-right">
+            <p class="story-kicker"></p>
+            <h2 class="story-title"></h2>
+            <p class="story-copy"></p>
+            <div class="story-stats"></div>
+            <div class="story-map-note" hidden></div>
+          </article>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    state.overlay = overlay;
+    state.backdrop = overlay.querySelector('.story-backdrop');
+    state.chip = overlay.querySelector('.story-chip');
+    state.counter = overlay.querySelector('.story-counter');
+    state.prevButton = overlay.querySelector('.story-prev');
+    state.nextButton = overlay.querySelector('.story-next');
+    state.closeButton = overlay.querySelector('.story-close');
+    state.card = overlay.querySelector('.story-card');
+    state.kicker = overlay.querySelector('.story-kicker');
+    state.title = overlay.querySelector('.story-title');
+    state.copy = overlay.querySelector('.story-copy');
+    state.stats = overlay.querySelector('.story-stats');
+    state.note = overlay.querySelector('.story-map-note');
+
+    state.prevButton.addEventListener('click', () => window.prevStorySlide());
+    state.nextButton.addEventListener('click', () => window.nextStorySlide());
+    state.closeButton.addEventListener('click', () => window.closeStory());
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target === state.backdrop || e.target === overlay.querySelector('.story-scrim')) {
+        window.closeStory();
+      }
+    });
+
+    return overlay;
+  }
+
+  function ensureMenu(state) {
+    if (state.menu) return state.menu;
+    state.menu = document.getElementById('stories-menu');
+    return state.menu;
+  }
+
+  // ==================== MOOIE ARMOEDE STORY ====================
+  function storyCatalog() {
+    return [
+      // === NIEUW VERHAAL: ARMOEDE IN HEERLEN ===
+      {
+        id: 'armoede-heerlen',
+        title: 'Armoede in Heerlen',
+        summary: 'Een eerlijk en hoopvol verhaal over armoede, veerkracht en de toekomst van onze stad.',
+        colors: ['#1a3a5e', '#e63946', '#f4a261'],
+        slides: [
+          {
+            kind: 'hero',
+            overline: 'Verhaal over onze stad',
+            title: 'Armoede in Heerlen',
+            body: 'Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.',
+            anchor: 'middle-right',
+            backgroundImage: createBackdrop('Armoede in Heerlen', 'De onzichtbare realiteit achter de cijfers', ['#1a3a5e', '#e63946', '#f4a261'])
+          },
+          {
+            kind: 'map',
+            overline: 'De realiteit',
+            title: 'Waar armoede het hardst toeslaat',
+            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
+            anchor: 'bottom-left',
+            field: 'aantal_huishoudens',
+            palette: 'reds',
+            focus: { field: 'buurtnaam', value: 'Heerlen Centrum' },
+            stats: [
+              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
+              { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
+              { label: 'Werkloosheid', field: 'werkloosheid_pct', suffix: '%' },
+              { label: 'Gemiddeld inkomen', field: 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', format: 'currency' }
+            ],
+            mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
+          },
+          {
+            kind: 'map',
+            overline: 'Kinderen in armoede',
+            title: 'De toekomst mag niet verloren gaan',
+            body: 'Kinderen die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
+            anchor: 'middle-right',
+            field: 'aantal_jongeren_met_jeugdzorg_in_natura',
+            palette: 'oranges',
+            focus: { field: 'buurtnaam', value: 'Hoensbroek' },
+            stats: [
+              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
+              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', format: 'integer' },
+              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' }
+            ]
+          },
+          {
+            kind: 'summary',
+            overline: 'Hoop en actie',
+            title: 'Heerlen kan het beter',
+            body: 'Armoede is niet onvermijdelijk. Door samen te werken — gemeente, bewoners, bedrijven en organisaties — kunnen we de cirkel doorbreken. Veel buurten laten al zien dat het anders kan.',
+            anchor: 'top-right',
+            stats: [
+              { label: 'Samen kunnen we', value: 'meer', note: 'Ondersteuning, onderwijs en werkgelegenheid zijn de sleutels' }
+            ]
+          }
+        ]
+      }
+      // Voeg hier je andere stories toe
+    ];
+  }
+
+  const state = {
+    overlay: null, backdrop: null, chip: null, counter: null,
+    prevButton: null, nextButton: null, closeButton: null,
+    card: null, kicker: null, title: null, copy: null,
+    stats: null, note: null, menu: null,
+    storyId: null, slideIndex: 0, highlightedLayers: [], keyHandler: null
+  };
+
+  function getStoryById(id) {
+    return storyCatalog().find(s => s.id === id) || null;
+  }
+
+  function buildStoryMenu() { /* ... jouw originele buildStoryMenu ... */ 
+    const menu = ensureMenu(state);
+    if (!menu) return;
+    const current = getFeatureCollection();
+    const hasData = !!(current && Array.isArray(current.features) && current.features.length > 0);
+
+    menu.innerHTML = storyCatalog().map(story => `
+      <button type="button" class="story-menu-button" data-story-id="${escapeHtml(story.id)}">
+        <span class="story-menu-title">${escapeHtml(story.title)}</span>
+        <span class="story-menu-meta">${escapeHtml(story.summary)} · ${story.slides.length} slides${hasData ? '' : ' · data laden...'}</span>
+      </button>
+    `).join('');
+
+    menu.querySelectorAll('[data-story-id]').forEach(btn => {
+      btn.addEventListener('click', () => startStory(btn.getAttribute('data-story-id')));
+    });
+  }
+
+  function updateMenuActiveState() {
+    if (!state.menu) return;
+    state.menu.querySelectorAll('.story-menu-button').forEach(btn => {
+      btn.classList.toggle('is-active', btn.getAttribute('data-story-id') === state.storyId);
+    });
+  }
+
+  function applyStoryScene(slide, fc) { /* jouw originele functie */ 
+    const map = getMap();
+    clearHighlights(state);
+    // ... (laat deze functie ongewijzigd als hij werkt)
+  }
+
+  function resolveSlideFeature(slide, fc) {
+    if (!slide) return null;
+    return slide.focus ? findFeatureInCollection(fc, slide.focus) : null;
+  }
+
+  async function renderSlide() {
+    const story = getStoryById(state.storyId);
+    if (!story) return;
+    const slide = story.slides[state.slideIndex];
+    if (!slide) return;
+
+    ensureOverlay(state);
+    const fc = await ensureStoryDataCollection();
+
+    const background = slide.kind === 'hero' 
+      ? (slide.backgroundImage || createBackdrop(slide.title || story.title, slide.body, story.colors))
+      : 'none';
+
+    state.overlay.dataset.kind = slide.kind;
+    state.overlay.hidden = false;
+    state.backdrop.style.backgroundImage = background;
+    state.backdrop.style.opacity = slide.kind === 'hero' ? '1' : '0.14';
+
+    state.chip.textContent = slide.overline || story.title;
+    state.counter.textContent = `${state.slideIndex + 1} / ${story.slides.length}`;
+    state.prevButton.disabled = state.slideIndex === 0;
+    state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
+    state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');
+
+    state.kicker.textContent = slide.overline || story.title;
+    state.title.textContent = slide.title || story.title;
+    state.copy.textContent = slide.body || '';
+
+    applyStoryScene(slide, fc);
+    const feature = resolveSlideFeature(slide, fc);
+    state.stats.innerHTML = buildStatHtml(buildStatEntries(slide, feature, fc));
+
+    updateMenuActiveState();
+  }
+
+  function dispatchStoryEvent(name, detail) {
+    try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch (e) {}
+  }
+
+  async function openStory(id) {
+    const story = getStoryById(id) || storyCatalog()[0];
+    if (!story) return;
+
+    ensureOverlay(state);
+    state.storyId = story.id;
+    state.slideIndex = 0;
+    document.body.classList.add('story-open');
+    state.overlay.hidden = false;
+
+    try {
+      const fc = await ensureStoryDataCollection();
+    } catch (e) {}
+
+    if (!state.keyHandler) {
+      state.keyHandler = (e) => {
+        if (e.key === 'Escape') window.closeStory();
+        if (e.key === 'ArrowRight') window.nextStorySlide();
+        if (e.key === 'ArrowLeft') window.prevStorySlide();
+      };
+      document.addEventListener('keydown', state.keyHandler);
+    }
+
+    await renderSlide();
+  }
+
+  function closeStory() {
+    if (!state.overlay) return;
+    clearHighlights(state);
+    state.overlay.hidden = true;
+    document.body.classList.remove('story-open');
+    state.storyId = null;
+    state.slideIndex = 0;
+  }
+
+  function nextSlide() {
+    const story = getStoryById(state.storyId);
+    if (!story) return;
+    if (state.slideIndex >= story.slides.length - 1) return closeStory();
+    state.slideIndex++;
+    renderSlide();
+  }
+
+  function prevSlide() {
+    if (state.slideIndex <= 0) return;
+    state.slideIndex--;
+    renderSlide();
+  }
+
+  // ==================== START ====================
+  console.log('%c✅ Mooi armoede-verhaal toegevoegd', 'color:#e63946; font-weight:bold');
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureOverlay(state);
+    buildStoryMenu();
+    ensureStoryDataCollection();
+  });
+
+  window.startStory = openStory;
+  window.closeStory = closeStory;
+  window.nextStorySlide = nextSlide;
+  window.prevStorySlide = prevSlide;
+  window.debugStoryData = window.debugStoryData;
+
+})();

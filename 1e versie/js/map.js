@@ -25,6 +25,7 @@ const KAART_CONFIG = {
   // Polygon randstijl
   randKleur: '#333',                      // Kleur van grenzen
   randBreedte: 0.6,                       // Dikte van grenzen
+  wijkRandBreedte: 2.5,                   // Dikte van grenzen voor features met `wijknaam`
   gefilterdRandKleur: '#999',             // Grenzen van gefilterde gebieden
   gefilterdVulKleur: '#e8e8e8',           // Vulkleur van gefilterde gebieden
   gefilterdTransparantie: 0.15,           // Transparantie gefilterde gebieden
@@ -123,6 +124,28 @@ function filtreerdFeatures(fc, veld, filter) {
 function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const props = feature.properties || {};
 
+  // Ensure `wijknaam` is available in the popup when possible.
+  // If the source data doesn't include `wijknaam`, attempt to derive it
+  // from `buurtnaam` (e.g. "Heerlen Centrum" -> "Centrum") or from
+  // the shorter `buurt` field as a fallback.
+  if (!props.wijknaam || String(props.wijknaam).trim() === '') {
+    const buurtnaam = props.buurtnaam || '';
+    const buurt = props.buurt || '';
+    if (buurtnaam && typeof buurtnaam === 'string') {
+      // If buurtnaam contains a space, prefer the trailing part(s)
+      // (e.g. "Heerlen Centrum" -> "Centrum"). For single-token
+      // buurtnamen (e.g. "Terworm") use the full buurtnaam.
+      const parts = buurtnaam.trim().split(/\s+/);
+      if (parts.length > 1) {
+        props.wijknaam = parts.slice(1).join(' ');
+      } else {
+        props.wijknaam = buurtnaam.trim();
+      }
+    } else if (buurt && typeof buurt === 'string') {
+      props.wijknaam = buurt;
+    }
+  }
+
   // Determine which variables to show: read from dynamic selectors if present,
   // otherwise fall back to single `veld` parameter
   const geselecteerde = Array.from(document.querySelectorAll('#selectors-div select.field-select-item')).map(s => s.value).filter(v => v);
@@ -131,20 +154,45 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   const rijen = [];
   rijen.push(`<b>Geselecteerd gebied</b>`);
 
-  // Add preferred identifying fields first. If this feature has overlapping
-  // wijken, show those (`wijknaam`) immediately before the `buurtnaam` line.
-  let overlapsInserted = false;
+  // Add preferred identifying fields first. Determine a single, normalized
+  // `wijknaam` to show (priority: overlapping_wijken[0], props.wijknaam,
+  // derived from buurtnaam/buurt). Add it once and avoid duplicates.
   const overlaps = Array.isArray(props.overlapping_wijken) ? props.overlapping_wijken : null;
-  KAART_CONFIG.voorkeurvelden.forEach(k => {
-    // If we're about to render buurtnaam and there are overlapping wijken,
-    // insert them first (once).
-    if (k === 'buurtnaam' && overlaps && overlaps.length && !overlapsInserted) {
-      for (const wn of overlaps) {
-        rijen.push(`<b>wijknaam</b>: ${wn}`);
-      }
-      overlapsInserted = true;
-    }
 
+  function normalizeName(s) {
+    if (!s && s !== 0) return s;
+    let t = String(s).trim();
+    // Normalize hyphen spacing and multiple spaces
+    t = t.replace(/\s*-\s*/g, ' - ');
+    t = t.replace(/\s+/g, ' ');
+    return t;
+  }
+
+  // Determine displayWijk
+  let displayWijk = null;
+  if (overlaps && overlaps.length) {
+    displayWijk = normalizeName(overlaps[0]);
+  } else if (props.wijknaam && String(props.wijknaam).trim() !== '') {
+    displayWijk = normalizeName(props.wijknaam);
+  } else {
+    const buurtnaam = props.buurtnaam || '';
+    const buurt = props.buurt || '';
+    if (buurtnaam && typeof buurtnaam === 'string') {
+      const parts = buurtnaam.trim().split(/\s+/);
+      displayWijk = parts.length > 1 ? normalizeName(parts.slice(1).join(' ')) : normalizeName(buurtnaam);
+    } else if (buurt && typeof buurt === 'string') {
+      displayWijk = normalizeName(buurt);
+    }
+  }
+
+  // Add `wijknaam` once if available
+  if (displayWijk) {
+    rijen.push(`<b>wijknaam</b>: ${displayWijk}`);
+  }
+
+  // Now add the preferred fields, but skip `wijknaam` to avoid duplicates
+  KAART_CONFIG.voorkeurvelden.forEach(k => {
+    if (k === 'wijknaam') return;
     if (props[k] !== undefined) {
       const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
       rijen.push(`<b>${k}</b>: ${txt}`);
@@ -803,6 +851,15 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   
   // Haal kleuren
   const kleuren = haalKleurSchema(palet, aantalKlassen);
+
+  // If wijken data is available globally but buurten features don't yet have
+  // overlapping_wijken, try to compute them via the light-weight helper.
+  try {
+    const hasOverlaps = (fc.features || []).some(f => f.properties && Array.isArray(f.properties.overlapping_wijken) && f.properties.overlapping_wijken.length > 0);
+    if (!hasOverlaps && window.multiLoaderState && window.multiLoaderState.wijkenFC && typeof addWijkenToBuurten === 'function') {
+      addWijkenToBuurten(fc, window.multiLoaderState.wijkenFC);
+    }
+  } catch (e) { /* ignore */ }
   
   // === STYLING FUNCTIE ===
   function styleFeature(feature) {
@@ -852,8 +909,23 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   }
   
   // === LAAG TOEVOEGEN ===
+  // Zorg dat speciale panes bestaan voordat we de laag toevoegen (voorkomt render-issues)
+  try {
+    const map = window.appData.map;
+    if (map) {
+      if (!map.getPane('dimPane')) map.createPane('dimPane');
+      if (!map.getPane('choroplethWijkBorderPane')) map.createPane('choroplethWijkBorderPane');
+      if (!map.getPane('choroplethPane')) map.createPane('choroplethPane');
+      map.getPane('dimPane').style.zIndex = 450;
+      map.getPane('choroplethPane').style.zIndex = 460;
+      // Pane speciaal voor dikkere wijkranden die altijd bovenop moeten komen
+      try { map.getPane('choroplethWijkBorderPane').style.zIndex = 475; } catch (e) { /* ignore */ }
+    }
+  } catch (e) { /* ignore */ }
+
   const laag = L.geoJSON(fc, {
     style: styleFeature,
+    pane: 'choroplethPane',
     onEachFeature: (feature, leafletLayer) => {
       const popupHtml = bouwFeaturePopup(feature, veld, activeFilter, alleWaarden);
 
@@ -869,6 +941,19 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
         cancelHideHoverChartPanel();
         this.openPopup();
         toonHoverJarenGrafiek(feature, veld);
+        try {
+          // Broadcast hover to split parent so peer pane can highlight the same area
+          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+            const identity = getFeatureIdentity(feature);
+            if (identity && window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                type: 'heerlen-hover',
+                panelId: window.splitScreenPanelId || null,
+                identity
+              }, '*');
+            }
+          }
+        } catch (e) { /* ignore */ }
       });
 
       leafletLayer.on('mouseout', function () {
@@ -881,6 +966,13 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
           // If other hover states are active, ensure any pending hide is cancelled
           cancelHideHoverChartPanel();
         }
+        try {
+          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
+            }
+          }
+        } catch (e) { /* ignore */ }
       });
 
       leafletLayer.on('click', () => {
@@ -893,6 +985,222 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     }
   
   window.appData.choroplethLayer = laag;
+
+  // --- Tekenen van dikke grenzen voor echte WIJKEN (bovenop) ---
+  try {
+    // Verwijder bestaande wijk-border laag als aanwezig
+    if (window.appData.choroplethWijkBorderLayer) {
+      try { window.appData.dataLayer.removeLayer(window.appData.choroplethWijkBorderLayer); } catch (e) { /* ignore */ }
+      window.appData.choroplethWijkBorderLayer = null;
+    }
+
+    // Only create thick wijk borders from an explicit wijken FeatureCollection
+    // (e.g. loaded via PDOK and stored in window.multiLoaderState.wijkenFC).
+    const wijkSourceFC = window.multiLoaderState && window.multiLoaderState.wijkenFC ? window.multiLoaderState.wijkenFC : null;
+    if (wijkSourceFC && Array.isArray(wijkSourceFC.features) && wijkSourceFC.features.length > 0) {
+      const wijkBorderStyle = function () {
+        return {
+          color: KAART_CONFIG.randKleur,
+          weight: KAART_CONFIG.wijkRandBreedte || (KAART_CONFIG.randBreedte * 3),
+          opacity: 1,
+          fillOpacity: 0
+        };
+      };
+
+      const wijkBorderLayer = L.geoJSON(wijkSourceFC, {
+        style: wijkBorderStyle,
+        pane: 'choroplethWijkBorderPane',
+        interactive: false
+      }).addTo(window.appData.dataLayer);
+
+      // Ensure border layer is above choropleth and dim overlays
+      try { if (wijkBorderLayer && typeof wijkBorderLayer.bringToFront === 'function') wijkBorderLayer.bringToFront(); } catch (e) { /* ignore */ }
+      window.appData.choroplethWijkBorderLayer = wijkBorderLayer;
+    }
+    // If no explicit wijkenFC is available, do not create a thick wijk border
+    // from the buurten dataset (avoids making every buurt border thick).
+  } catch (e) { /* ignore */ }
+  
+  // --- Dim achtergrond buiten de gevisualiseerde gebieden (pane-based) ---
+  (function setupDimPane() {
+    const map = window.appData.map;
+    if (!map) return;
+
+    // Create panes if they don't exist
+    if (!map.getPane('dimPane')) map.createPane('dimPane');
+    if (!map.getPane('choroplethPane')) map.createPane('choroplethPane');
+
+    const dimPane = map.getPane('dimPane');
+    const choroplethPane = map.getPane('choroplethPane');
+
+    // z-index ordering: dimPane below choroplethPane
+    dimPane.style.zIndex = 450;
+    choroplethPane.style.zIndex = 460;
+
+    // Ensure choropleth layer uses the choropleth pane
+    // (we set pane when creating the layer above)
+
+    // Remove any existing overlay element
+    const existing = dimPane.querySelector('.choropleth-dim-overlay');
+    if (existing) existing.remove();
+
+    // Create an SVG overlay that contains a mask with holes matching the choropleth polygons.
+    // This projects GeoJSON coordinates to container points on every view change so holes stay aligned.
+    const mapContainer = (map && typeof map.getContainer === 'function') ? map.getContainer() : document.getElementById('map');
+    if (!mapContainer) return;
+
+    // Remove existing svg overlay
+    const oldSvg = mapContainer.querySelector('svg.choropleth-dim-svg');
+    if (oldSvg) oldSvg.remove();
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.classList.add('choropleth-dim-svg');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.position = 'absolute';
+    svg.style.top = '0';
+    svg.style.left = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.pointerEvents = 'none';
+    svg.style.zIndex = '400';
+
+    const defs = document.createElementNS(svgNS, 'defs');
+    svg.appendChild(defs);
+
+    const mask = document.createElementNS(svgNS, 'mask');
+    const maskId = `choropleth-dim-mask`;
+    mask.setAttribute('id', maskId);
+    defs.appendChild(mask);
+
+    window.appData.choroplethDimOverlayState = {
+      map,
+      mapContainer,
+      mask,
+      popupEl: null
+    };
+
+    // full white rect to show by default
+    const fullRect = document.createElementNS(svgNS, 'rect');
+    fullRect.setAttribute('x', '0');
+    fullRect.setAttribute('y', '0');
+    fullRect.setAttribute('width', '100%');
+    fullRect.setAttribute('height', '100%');
+    fullRect.setAttribute('fill', 'white');
+    mask.appendChild(fullRect);
+
+    // overlay rect that will dim the map; it will be masked by polygon holes
+    const overlayRect = document.createElementNS(svgNS, 'rect');
+    overlayRect.setAttribute('x', '0');
+    overlayRect.setAttribute('y', '0');
+    overlayRect.setAttribute('width', '100%');
+    overlayRect.setAttribute('height', '100%');
+    overlayRect.setAttribute('fill', '#000');
+    overlayRect.setAttribute('opacity', '0.6');
+    overlayRect.setAttribute('mask', `url(#${maskId})`);
+
+    // Insert overlayRect as first child so choropleth paths (in other panes) render above it
+    svg.appendChild(overlayRect);
+
+    mapContainer.appendChild(svg);
+
+    // Function to clear holes and recreate from GeoJSON features
+    function updateMaskFromFeatures() {
+      // remove previous hole paths (keep first child fullRect)
+      while (mask.childNodes.length > 1) mask.removeChild(mask.lastChild);
+
+      function projectCoords(coord) {
+        // coord [lng, lat]
+        const p = map.latLngToContainerPoint([coord[1], coord[0]]);
+        return `${p.x},${p.y}`;
+      }
+
+      function ringToPath(ring) {
+        return ring.map(projectCoords).map((c, i) => (i === 0 ? `M${c}` : `L${c}`)).join(' ') + ' Z';
+      }
+
+      const popupEl = window.appData.choroplethDimOverlayState?.popupEl;
+      if (popupEl) {
+        const popupRect = popupEl.getBoundingClientRect();
+        const containerRect = mapContainer.getBoundingClientRect();
+        const left = Math.max(0, popupRect.left - containerRect.left);
+        const top = Math.max(0, popupRect.top - containerRect.top);
+        const width = Math.min(containerRect.width - left, popupRect.width);
+        const height = Math.min(containerRect.height - top, popupRect.height);
+
+        if (width > 0 && height > 0) {
+          const popupHole = document.createElementNS(svgNS, 'rect');
+          popupHole.setAttribute('x', String(left));
+          popupHole.setAttribute('y', String(top));
+          popupHole.setAttribute('width', String(width));
+          popupHole.setAttribute('height', String(height));
+          popupHole.setAttribute('rx', '12');
+          popupHole.setAttribute('ry', '12');
+          popupHole.setAttribute('fill', 'black');
+          popupHole.setAttribute('stroke', 'none');
+          mask.appendChild(popupHole);
+        }
+      }
+
+      // For each feature, build path(s)
+      (fc.features || []).forEach(feat => {
+        const geom = feat.geometry;
+        if (!geom) return;
+        if (geom.type === 'Polygon') {
+          const d = geom.coordinates.map(ringToPath).join(' ');
+          const path = document.createElementNS(svgNS, 'path');
+          path.setAttribute('d', d);
+          path.setAttribute('fill', 'black');
+          path.setAttribute('stroke', 'none');
+          mask.appendChild(path);
+        } else if (geom.type === 'MultiPolygon') {
+          geom.coordinates.forEach(poly => {
+            const d = poly.map(ringToPath).join(' ');
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', d);
+            path.setAttribute('fill', 'black');
+            path.setAttribute('stroke', 'none');
+            mask.appendChild(path);
+          });
+        }
+      });
+    }
+
+    // Initial and update on view changes
+    updateMaskFromFeatures();
+
+    // Attach listeners (throttled during continuous moves using rAF)
+    // Remove previous listener if present
+    try {
+      if (map._choroplethDimUpdater) {
+        map.off('move moveend viewreset zoomend resize', map._choroplethDimUpdater);
+        map._choroplethDimUpdater = null;
+      }
+    } catch (e) { /* ignore */ }
+
+    let rafId = null;
+    const schedule = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        try { updateMaskFromFeatures(); } catch (e) { /* ignore */ }
+      });
+    };
+
+    window.requestChoroplethDimOverlayUpdate = schedule;
+
+    // Listen to a wide set of map events so the mask updates continuously
+    map.on('move moveend viewreset zoom zoomstart zoomend zoomanim resize', schedule);
+    map._choroplethDimUpdater = schedule;
+
+    // Bring choropleth layer to front so it appears above the dim overlay
+    try {
+      if (window.appData.choroplethLayer && typeof window.appData.choroplethLayer.bringToFront === 'function') {
+        window.appData.choroplethLayer.bringToFront();
+      }
+    } catch (e) { /* ignore */ }
+
+  })();
   
   // Zoom naar data ALLEEN als dit een nieuwe dataset is (niet bij visuele updates)
   const isNieuweDataset = window.appData.lastLoadedData !== fc;
@@ -936,21 +1244,114 @@ if (map && typeof map.on === 'function') {
         popupEl.addEventListener('mouseenter', () => {
           mouseIsOverPopup = true;
           cancelHideHoverChartPanel();
+          try {
+            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+              const feature = e.popup && e.popup._source && e.popup._source.feature ? e.popup._source.feature : null;
+              const identity = feature ? getFeatureIdentity(feature) : null;
+              if (identity && window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'heerlen-hover', identity, panelId: window.splitScreenPanelId || null }, '*');
+              }
+            }
+          } catch (err) { /* ignore */ }
         });
 
         popupEl.addEventListener('mouseleave', () => {
           mouseIsOverPopup = false;
           if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
+          try {
+            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
+              }
+            }
+          } catch (err) { /* ignore */ }
         });
+      }
+
+      const overlayState = window.appData?.choroplethDimOverlayState;
+      if (overlayState) {
+        overlayState.popupEl = popupEl;
+      }
+
+      if (typeof window.requestChoroplethDimOverlayUpdate === 'function') {
+        window.requestChoroplethDimOverlayUpdate();
       }
     } catch (err) { /* ignore */ }
   });
 
   map.on('popupclose', (e) => {
     mouseIsOverPopup = false;
+    const overlayState = window.appData?.choroplethDimOverlayState;
+    if (overlayState) {
+      overlayState.popupEl = null;
+    }
+    if (typeof window.requestChoroplethDimOverlayUpdate === 'function') {
+      window.requestChoroplethDimOverlayUpdate();
+    }
     if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
   });
 }
+
+// --- Hover synchronization: receive highlight requests from peer pane ---
+function findLayerByIdentity(identity) {
+  if (!identity || !window.appData || !window.appData.dataLayer) return null;
+  let found = null;
+  try {
+    window.appData.dataLayer.eachLayer(function search(layer) {
+      if (found) return;
+      if (layer && layer.feature && matchesFeatureIdentity(layer.feature, identity)) {
+        found = layer;
+        return;
+      }
+      if (layer && typeof layer.eachLayer === 'function') {
+        layer.eachLayer(function (inner) {
+          if (found) return;
+          if (inner && inner.feature && matchesFeatureIdentity(inner.feature, identity)) {
+            found = inner;
+          }
+        });
+      }
+    });
+  } catch (e) { /* ignore */ }
+  return found;
+}
+
+function highlightFeatureByIdentity(identity) {
+  const layer = findLayerByIdentity(identity);
+  if (!layer) return false;
+  try {
+    // Suppress broadcasting while we programmatically show popup/highlight
+    window.__suppressHoverBroadcast = true;
+    layer.openPopup();
+    try { toonHoverJarenGrafiek(layer.feature); } catch (e) { /* ignore */ }
+    // small timeout then re-enable broadcast
+    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 350);
+    return true;
+  } catch (e) {
+    window.__suppressHoverBroadcast = false;
+    return false;
+  }
+}
+
+function clearPeerHighlight() {
+  try {
+    window.__suppressHoverBroadcast = true;
+    if (map && typeof map.closePopup === 'function') map.closePopup();
+    if (typeof window.hideHoverTimeSeries === 'function') window.hideHoverTimeSeries();
+    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 250);
+  } catch (e) { window.__suppressHoverBroadcast = false; }
+}
+
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'heerlen-set-hover' && data.identity) {
+    highlightFeatureByIdentity(data.identity);
+  } else if (data.type === 'heerlen-clear-hover') {
+    clearPeerHighlight();
+  }
+});
 
 // ============================================================================
 // COÖRDINAAT-REPROJECTION — RD (EPSG:28992) naar WGS84

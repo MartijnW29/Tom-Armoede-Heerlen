@@ -150,6 +150,50 @@ window.appData = {
 
 window.syncOpacityDefaults();
 
+const splitScreenParams = new URLSearchParams(window.location.search);
+const isSplitScreenPane = splitScreenParams.get('split') === '1';
+const splitScreenPanelId = splitScreenParams.get('panel') || splitScreenParams.get('sidebar') || 'single';
+
+// Expose split-screen flags for other modules (map.js listens for these)
+window.isSplitScreenPane = isSplitScreenPane;
+window.splitScreenPanelId = splitScreenPanelId;
+
+if (isSplitScreenPane) {
+  let suppressNextSplitBroadcast = false;
+
+  const broadcastMapView = () => {
+    if (suppressNextSplitBroadcast) {
+      suppressNextSplitBroadcast = false;
+      return;
+    }
+
+    if (window.parent && window.parent !== window && map) {
+      window.parent.postMessage({
+        type: 'heerlen-map-view',
+        panelId: splitScreenPanelId,
+        center: map.getCenter(),
+        zoom: map.getZoom()
+      }, '*');
+    }
+  };
+
+  map.on('moveend', broadcastMapView);
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.type !== 'heerlen-set-map-view') return;
+    if (data.panelId !== splitScreenPanelId) return;
+    if (!data.center || typeof data.zoom !== 'number') return;
+
+    suppressNextSplitBroadcast = true;
+    map.setView(data.center, data.zoom, { animate: false });
+  });
+}
+
+document.getElementById('open-split-screen')?.addEventListener('click', () => {
+  window.location.href = 'split-screen.html';
+});
+
 // ============================================================================
 // HULPFUNCTIES
 // ============================================================================

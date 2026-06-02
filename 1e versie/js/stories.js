@@ -8,39 +8,10 @@
   const NF_NUMBER = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
   const NF_DECIMAL = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 });
   const NF_CURRENCY = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const NO_DATA_TEXT = 'geen data';
 
   const STORY_DATA_URL = 'data/heerlen_buurten.geojson';
 
-  const STORY_DATA_FALLBACK = {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: { buurt: 'Centrum', buurtnaam: 'Heerlen Centrum', aantal_inwoners: 1250, huishoudens: 580, werkloosheid_pct: 4.2, inkomen_mediaan: 32500 },
-        geometry: { type: 'Polygon', coordinates: [[[5.965, 50.885], [5.975, 50.885], [5.975, 50.895], [5.965, 50.895], [5.965, 50.885]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Noord', buurtnaam: 'Heerlen Noord', aantal_inwoners: 2100, huishoudens: 920, werkloosheid_pct: 5.8, inkomen_mediaan: 28900 },
-        geometry: { type: 'Polygon', coordinates: [[[5.95, 50.895], [5.985, 50.895], [5.985, 50.91], [5.95, 50.91], [5.95, 50.895]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Oost', buurtnaam: 'Heerlen Oost', aantal_inwoners: 1850, huishoudens: 780, werkloosheid_pct: 3.9, inkomen_mediaan: 35200 },
-        geometry: { type: 'Polygon', coordinates: [[[5.975, 50.875], [6.005, 50.875], [6.005, 50.895], [5.975, 50.895], [5.975, 50.875]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'West', buurtnaam: 'Heerlen West', aantal_inwoners: 1680, huishoudens: 710, werkloosheid_pct: 6.1, inkomen_mediaan: 27500 },
-        geometry: { type: 'Polygon', coordinates: [[[5.945, 50.87], [5.965, 50.87], [5.965, 50.885], [5.945, 50.885], [5.945, 50.87]]] }
-      },
-      {
-        type: 'Feature',
-        properties: { buurt: 'Zuid', buurtnaam: 'Heerlen Zuid', aantal_inwoners: 2340, huishoudens: 1050, werkloosheid_pct: 7.3, inkomen_mediaan: 26800 },
-        geometry: { type: 'Polygon', coordinates: [[[5.962, 50.86], [5.982, 50.86], [5.982, 50.878], [5.962, 50.878], [5.962, 50.86]]] }
-      }
-    ]
-  };
 
   let storyDataCache = null;
   let storyDataPromise = null;
@@ -105,7 +76,7 @@
   }
 
   function formatValue(value, stat = {}) {
-    if (value === null || value === undefined || value === '') return '—';
+    if (value === null || value === undefined || value === '') return NO_DATA_TEXT;
     const numeric = Number(value);
 
     if (stat.format === 'currency') return Number.isFinite(numeric) ? NF_CURRENCY.format(numeric) : String(value);
@@ -118,6 +89,47 @@
 
   function getFeatureCollection() {
     return window.multiLoaderState?.originalData || window.appData?.lastFC || storyDataCache || null;
+  }
+
+  function toNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function getActiveFilter() {
+    return window.appData?.filter || null;
+  }
+
+  function valuePassesFilter(value, allValues, filter) {
+    if (!filter) return true;
+    const num = toNumber(value);
+    if (num === null) return false;
+
+    if (typeof filter.min === 'number' && num < filter.min) return false;
+    if (typeof filter.max === 'number' && num > filter.max) return false;
+
+    if (typeof filter.lowPct === 'number' || typeof filter.highPct === 'number') {
+      const sorted = (allValues || []).slice().sort((a, b) => a - b);
+      if (sorted.length === 0) return true;
+
+      const lowIndex = Math.floor(((filter.lowPct || 0) / 100) * (sorted.length - 1));
+      const highIndex = Math.floor(((filter.highPct || 100) / 100) * (sorted.length - 1));
+      const lowValue = sorted[Math.max(0, lowIndex)];
+      const highValue = sorted[Math.min(sorted.length - 1, highIndex)];
+
+      if (typeof filter.lowPct === 'number' && num < lowValue) return false;
+      if (typeof filter.highPct === 'number' && num > highValue) return false;
+    }
+
+    return true;
+  }
+
+  function getAllNumericValuesForField(fc, field) {
+    if (!fc?.features || !field) return [];
+    return fc.features
+      .map(f => toNumber(f?.properties?.[field]))
+      .filter(v => v !== null);
   }
 
   function setStoryDataCache(fc) {
@@ -227,6 +239,8 @@
 
     const props = sourceFeature.properties;
 
+    const activeFilter = getActiveFilter();
+
     return slide.stats.map((stat) => {
       let rawValue = stat.value;
 
@@ -237,17 +251,28 @@
           const mappings = {
             'aantal_inwoners': ['aantal_inwoners'],
             'huishoudens': ['aantal_huishoudens', 'huishoudens'],
-            'werkloosheid_pct': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
+            'werkloosheid': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
             'inkomen_mediaan': ['inkomen_mediaan', 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', 'gemiddeld_inkomen_per_inwoner']
           };
           rawValue = getPropWithFallback(props, mappings[stat.field] || [stat.field]);
         }
       }
 
+      const numericValue = toNumber(rawValue);
+      const allValuesForField = stat.field ? getAllNumericValuesForField(fc, stat.field) : [];
+      const filteredOut = stat.field && numericValue !== null && !valuePassesFilter(numericValue, allValuesForField, activeFilter);
+      const hasNoValue = rawValue === undefined || rawValue === null || rawValue === '';
+      const noData = hasNoValue || filteredOut;
+      const baseNote = stat.note || '';
+      const computedNote = filteredOut
+        ? (baseNote ? `${baseNote} · buiten actief filter` : 'Buiten actief filter')
+        : baseNote;
+
       return {
         label: stat.label || stat.field || 'Statistiek',
-        value: formatValue(rawValue, stat),
-        note: stat.note || ''
+        value: noData ? NO_DATA_TEXT : formatValue(rawValue, stat),
+        note: computedNote,
+        isNoData: noData
       };
     });
   }
@@ -259,9 +284,9 @@
     return `
       <div class="story-stats">
         ${entries.map(entry => `
-          <article class="story-stat">
+          <article class="story-stat${entry.isNoData ? ' is-no-data' : ''}">
             <span class="story-stat-label">${escapeHtml(entry.label)}</span>
-            <span class="story-stat-value">${escapeHtml(entry.value)}</span>
+            <span class="story-stat-value${entry.isNoData ? ' is-no-data' : ''}">${escapeHtml(entry.value)}</span>
             ${entry.note ? `<span class="story-stat-note">${escapeHtml(entry.note)}</span>` : ''}
           </article>
         `).join('')}
@@ -289,6 +314,7 @@
             <button type="button" class="story-close">Sluit</button>
           </div>
         </div>
+        <div class="story-progress"><span class="story-progress-bar"></span></div>
         <div class="story-grid">
           <article class="story-card" data-anchor="middle-right">
             <p class="story-kicker"></p>
@@ -310,6 +336,7 @@
     state.prevButton = overlay.querySelector('.story-prev');
     state.nextButton = overlay.querySelector('.story-next');
     state.closeButton = overlay.querySelector('.story-close');
+    state.progressBar = overlay.querySelector('.story-progress-bar');
     state.card = overlay.querySelector('.story-card');
     state.kicker = overlay.querySelector('.story-kicker');
     state.title = overlay.querySelector('.story-title');
@@ -361,13 +388,13 @@
             body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
             anchor: 'bottom-left',
             field: 'aantal_huishoudens',
-            palette: 'reds',
+            palette: 'oranges',
             focus: { field: 'buurtnaam', value: 'Heerlen Centrum' },
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
               { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
-              { label: 'Werkloosheid', field: 'werkloosheid_pct', suffix: '%' },
-              { label: 'Gemiddeld inkomen', field: 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', format: 'currency' }
+              { label: 'Werklozen', field: 'werkloosheid', suffix: '' },
+              { label: 'Gemiddeld inkomen', field: 'inkomen_mediaan', format: 'currency' }
             ],
             mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
           },
@@ -442,7 +469,77 @@
   function applyStoryScene(slide, fc) { /* jouw originele functie */ 
     const map = getMap();
     clearHighlights(state);
-    // ... (laat deze functie ongewijzigd als hij werkt)
+    if (!map || !slide) return;
+
+    if (slide.kind === 'map' && slide.field && typeof window.toonChoropleth === 'function') {
+      const method = document.getElementById('method-select')?.value || 'quantile';
+      const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
+      const opacity = parseFloat(document.getElementById('opacity-range')?.value || '0.65');
+
+      window.toonChoropleth(fc, slide.field, {
+        method,
+        palette,
+        opacity: Number.isFinite(opacity) ? opacity : 0.65,
+        classes: 5
+      });
+    }
+
+    if (!slide.focus) return;
+    const focusFeature = findFeatureInCollection(fc, slide.focus);
+    if (!focusFeature?.properties) return;
+
+    const focusField = slide.focus.field || 'buurtnaam';
+    const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
+    if (!focusValue) return;
+
+    const candidates = getStoryLayerCandidates();
+    for (const rootLayer of candidates) {
+      if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
+
+      let matchedLayer = null;
+      rootLayer.eachLayer(layer => {
+        if (matchedLayer || !layer?.feature?.properties) return;
+        const props = layer.feature.properties;
+        const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
+        if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
+          matchedLayer = layer;
+        }
+      });
+
+      if (!matchedLayer) continue;
+
+      try {
+        if (!matchedLayer.__storyOriginalStyle && typeof matchedLayer.setStyle === 'function') {
+          matchedLayer.__storyOriginalStyle = {
+            color: matchedLayer.options?.color,
+            weight: matchedLayer.options?.weight,
+            fillOpacity: matchedLayer.options?.fillOpacity,
+            fillColor: matchedLayer.options?.fillColor
+          };
+        }
+
+        if (typeof matchedLayer.setStyle === 'function') {
+          matchedLayer.setStyle({
+            color: '#ffd166',
+            weight: 2.2,
+            fillOpacity: 0.9
+          });
+        }
+
+        if (typeof matchedLayer.getBounds === 'function') {
+          map.fitBounds(matchedLayer.getBounds(), { maxZoom: 14, animate: true, padding: [18, 18] });
+        }
+
+        if (typeof matchedLayer.openPopup === 'function') {
+          matchedLayer.openPopup();
+          matchedLayer.__storyOpenedPopup = true;
+        }
+
+        state.highlightedLayers.push(matchedLayer);
+      } catch (e) {}
+
+      break;
+    }
   }
 
   function resolveSlideFeature(slide, fc) {
@@ -470,9 +567,16 @@
 
     state.chip.textContent = slide.overline || story.title;
     state.counter.textContent = `${state.slideIndex + 1} / ${story.slides.length}`;
+    if (state.progressBar) {
+      const progress = ((state.slideIndex + 1) / story.slides.length) * 100;
+      state.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    }
     state.prevButton.disabled = state.slideIndex === 0;
     state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
     state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');
+    state.card.classList.toggle('is-hero', slide.kind === 'hero');
+    state.card.classList.toggle('is-map', slide.kind === 'map');
+    state.card.classList.toggle('is-summary', slide.kind === 'summary');
 
     state.kicker.textContent = slide.overline || story.title;
     state.title.textContent = slide.title || story.title;
@@ -481,6 +585,14 @@
     applyStoryScene(slide, fc);
     const feature = resolveSlideFeature(slide, fc);
     state.stats.innerHTML = buildStatHtml(buildStatEntries(slide, feature, fc));
+
+    if (slide.mapNote) {
+      state.note.hidden = false;
+      state.note.textContent = slide.mapNote;
+    } else {
+      state.note.hidden = true;
+      state.note.textContent = '';
+    }
 
     updateMenuActiveState();
   }
@@ -545,6 +657,19 @@
     ensureOverlay(state);
     buildStoryMenu();
     ensureStoryDataCollection();
+
+    window.addEventListener('story:data-ready', buildStoryMenu);
+
+    const refreshOpenStory = () => {
+      if (state.storyId) {
+        renderSlide();
+      }
+    };
+
+    document.getElementById('apply-filter')?.addEventListener('click', refreshOpenStory);
+    document.getElementById('clear-filter')?.addEventListener('click', refreshOpenStory);
+    document.getElementById('filter-negative')?.addEventListener('click', refreshOpenStory);
+    document.getElementById('year-slider')?.addEventListener('change', refreshOpenStory);
   });
 
   window.startStory = openStory;

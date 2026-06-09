@@ -406,8 +406,8 @@
             body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
             anchor: 'bottom-left',
             field: 'aantal_huishoudens',
-            palette: 'oranges',
-            focus: { field: 'buurtnaam', value: 'Hoensbroek' },
+            palette: 'Oranges',
+            focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners'},
               { label: 'Huishoudens', field: 'aantal_huishoudens'},
@@ -424,8 +424,8 @@
             body: 'Kinderen die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
             anchor: 'bottom-left',
             field: 'aantal_inwoners',
-            palette: 'oranges',
-            focus: { field: 'buurtnaam', value: 'Hoensbroek' },
+            palette: 'Blues',
+            focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners'},
               { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum'},

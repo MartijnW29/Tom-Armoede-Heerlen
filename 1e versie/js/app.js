@@ -177,7 +177,7 @@ if (isSplitScreenPane) {
     }
   };
 
-  map.on('moveend', broadcastMapView);
+  map.on('move', broadcastMapView);
 
   window.addEventListener('message', (event) => {
     const data = event.data;

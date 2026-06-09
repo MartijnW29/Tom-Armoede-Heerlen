@@ -498,14 +498,15 @@ function updateYearSlider(fc) {
   slider.min = String(yearsToUse[0]);
   slider.max = String(yearsToUse[yearsToUse.length - 1]);
   slider.step = '1';
-  slider.value = String(yearsToUse[yearsToUse.length - 1]); // Standaard het meest recente jaar
+  const defaultYear = yearsToUse.includes(2024) ? 2024 : yearsToUse[yearsToUse.length - 1];
+  slider.value = String(defaultYear);
 
   renderYearTicks(slider, yearsToUse);
   
   updateYearDisplay();
 
   if (display) {
-    display.textContent = String(yearsToUse[yearsToUse.length - 1]);
+    display.textContent = String(defaultYear);
   }
 
   if (clearButton) {

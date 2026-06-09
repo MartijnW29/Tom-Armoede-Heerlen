@@ -10,7 +10,13 @@
   const NF_CURRENCY = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   const NO_DATA_TEXT = 'geen data';
 
-  const STORY_DATA_URL = 'data/heerlen_buurten.geojson';
+  function getStoryDataUrl(year) {
+  if (!year) {
+    const slider = document.getElementById('year-slider');
+    year = slider ? parseInt(slider.value, 10) : null;
+  }
+  return year ? `data/heerlen_buurten_${year}.geojson` : 'data/heerlen_buurten.geojson';
+}
 
 
   let storyDataCache = null;
@@ -137,27 +143,38 @@
     return storyDataCache;
   }
 
-  async function ensureStoryDataCollection() {
-    const current = getFeatureCollection();
-    if (current && Array.isArray(current.features) && current.features.length > 0) return current;
+  async function ensureStoryDataCollection(year) {
+  // Haal altijd de originele (ongefilterde) data op
+  const original = window.multiLoaderState?.originalData || null;
 
-    if (storyDataCache) return storyDataCache;
-    if (storyDataPromise) return storyDataPromise;
-
-    storyDataPromise = fetch(STORY_DATA_URL, { cache: 'no-cache' })
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(fc => {
-        console.log(`✅ ${fc.features.length} buurten geladen`);
-        return setStoryDataCache(fc);
-      })
-      .catch(() => setStoryDataCache(STORY_DATA_FALLBACK))
-      .finally(() => {
-        storyDataPromise = null;
-        dispatchStoryEvent('story:data-ready', { ready: true });
-      });
-
-    return storyDataPromise;
+  if (original && Array.isArray(original.features) && original.features.length > 0) {
+    // Filter op jaar als opgegeven
+    if (year && typeof window.filterFeaturesByYear === 'function') {
+      const filtered = window.filterFeaturesByYear(original, year);
+      console.log(`📅 Story data gefilterd op jaar ${year}: ${filtered.features.length} features`);
+      return filtered;
+    }
+    return original;
   }
+
+  // Geen data in memory: gebruik cache of laad standaard bestand
+  if (storyDataCache) return storyDataCache;
+  if (storyDataPromise) return storyDataPromise;
+
+  storyDataPromise = fetch(getStoryDataUrl(), { cache: 'no-cache' })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(fc => {
+      console.log(`✅ ${fc.features.length} buurten geladen`);
+      return setStoryDataCache(fc);
+    })
+    .catch(() => setStoryDataCache(null))
+    .finally(() => {
+      storyDataPromise = null;
+      dispatchStoryEvent('story:data-ready', { ready: true });
+    });
+
+  return storyDataPromise;
+}
 
   function getMap() {
     return window.appData?.map || window.map || null;
@@ -383,44 +400,47 @@
           },
           {
             kind: 'map',
+            year: 2024,
             overline: 'De realiteit',
             title: 'Waar armoede het hardst toeslaat',
             body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
             anchor: 'bottom-left',
             field: 'aantal_huishoudens',
             palette: 'oranges',
-            focus: { field: 'buurtnaam', value: 'Heerlen Centrum' },
+            focus: { field: 'buurtnaam', value: 'Hoensbroek' },
             stats: [
-              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
-              { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
-              { label: 'Werklozen', field: 'werkloosheid', suffix: '' },
-              { label: 'Gemiddeld inkomen', field: 'inkomen_mediaan', format: 'currency' }
+              { label: 'Inwoners', field: 'aantal_inwoners'},
+              { label: 'Huishoudens', field: 'aantal_huishoudens'},
+              { label: 'Werklozen', field: 'aantal_personen_met_een_aow_uitkering_totaal'},
+              { label: 'Gemiddeld inkomen', field: 'gemiddeld_inkomen_per_inwoner'}
             ],
             mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
           },
           {
             kind: 'map',
+            year: 2024,
             overline: 'Kinderen in armoede',
             title: 'De toekomst mag niet verloren gaan',
             body: 'Kinderen die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
-            anchor: 'middle-right',
-            field: 'aantal_jongeren_met_jeugdzorg_in_natura',
+            anchor: 'bottom-left',
+            field: 'aantal_inwoners',
             palette: 'oranges',
             focus: { field: 'buurtnaam', value: 'Hoensbroek' },
             stats: [
-              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
-              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', format: 'integer' },
-              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' }
+              { label: 'Inwoners', field: 'aantal_inwoners'},
+              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum'},
+              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura'}
             ]
           },
           {
             kind: 'summary',
+            year: 2024,
             overline: 'Hoop en actie',
             title: 'Heerlen kan het beter',
             body: 'Armoede is niet onvermijdelijk. Door samen te werken — gemeente, bewoners, bedrijven en organisaties — kunnen we de cirkel doorbreken. Veel buurten laten al zien dat het anders kan.',
-            anchor: 'top-right',
+            anchor: 'top-left',
             stats: [
-              { label: 'Samen kunnen we', value: 'meer', note: 'Ondersteuning, onderwijs en werkgelegenheid zijn de sleutels' }
+              { label: '', field: ''}
             ]
           }
         ]
@@ -466,81 +486,148 @@
     });
   }
 
-  function applyStoryScene(slide, fc) { /* jouw originele functie */ 
-    const map = getMap();
-    clearHighlights(state);
-    if (!map || !slide) return;
-
-    if (slide.kind === 'map' && slide.field && typeof window.toonChoropleth === 'function') {
-      const method = document.getElementById('method-select')?.value || 'quantile';
-      const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
-      const opacity = parseFloat(document.getElementById('opacity-range')?.value || '0.65');
-
-      window.toonChoropleth(fc, slide.field, {
-        method,
-        palette,
-        opacity: Number.isFinite(opacity) ? opacity : 0.65,
-        classes: 5
-      });
-    }
-
-    if (!slide.focus) return;
-    const focusFeature = findFeatureInCollection(fc, slide.focus);
-    if (!focusFeature?.properties) return;
-
-    const focusField = slide.focus.field || 'buurtnaam';
-    const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
-    if (!focusValue) return;
-
-    const candidates = getStoryLayerCandidates();
-    for (const rootLayer of candidates) {
-      if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
-
-      let matchedLayer = null;
-      rootLayer.eachLayer(layer => {
-        if (matchedLayer || !layer?.feature?.properties) return;
-        const props = layer.feature.properties;
-        const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
-        if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
-          matchedLayer = layer;
-        }
-      });
-
-      if (!matchedLayer) continue;
-
-      try {
-        if (!matchedLayer.__storyOriginalStyle && typeof matchedLayer.setStyle === 'function') {
-          matchedLayer.__storyOriginalStyle = {
-            color: matchedLayer.options?.color,
-            weight: matchedLayer.options?.weight,
-            fillOpacity: matchedLayer.options?.fillOpacity,
-            fillColor: matchedLayer.options?.fillColor
-          };
-        }
-
-        if (typeof matchedLayer.setStyle === 'function') {
-          matchedLayer.setStyle({
-            color: '#ffd166',
-            weight: 2.2,
-            fillOpacity: 0.9
-          });
-        }
-
-        if (typeof matchedLayer.getBounds === 'function') {
-          map.fitBounds(matchedLayer.getBounds(), { maxZoom: 14, animate: true, padding: [18, 18] });
-        }
-
-        if (typeof matchedLayer.openPopup === 'function') {
-          matchedLayer.openPopup();
-          matchedLayer.__storyOpenedPopup = true;
-        }
-
-        state.highlightedLayers.push(matchedLayer);
-      } catch (e) {}
-
-      break;
+  function applyStoryScene(slide, fc) {
+  // ── 1. Year-slider ────────────────────────────────────────────────
+  if (slide?.year !== undefined) {
+    const slider = document.getElementById('year-slider');
+    const display = document.getElementById('year-display');
+    if (slider) {
+      slider.value = String(slide.year);
+      if (display) display.textContent = String(slide.year);
+      state._storyDrivenYearChange = true;
+      slider.dispatchEvent(new Event('input',  { bubbles: true }));
+      slider.dispatchEvent(new Event('change', { bubbles: true }));
+      state._storyDrivenYearChange = false;
     }
   }
+
+  // ── 2. Palet ─────────────────────────────────────────────────────
+  if (slide?.palette) {
+    const paletteSelect = document.getElementById('palette-select');
+    if (paletteSelect) paletteSelect.value = slide.palette;
+  }
+
+  // ── 3. Variabelen resetten + instellen ────────────────────────────
+  if (slide?.field && typeof window.addFieldSelector === 'function') {
+    const selectorsDiv = document.getElementById('selectors-div');
+    if (selectorsDiv) selectorsDiv.innerHTML = '';
+
+    const slideFields = (slide?.stats || [])
+    .map(s => s.field)
+    .filter(f => f && (window.availableFields || []).includes(f));
+
+    // Bouw rijen handmatig zonder herllaadVisualisatie te triggeren
+    
+const container = document.getElementById('field-select');
+if (selectorsDiv && container) {
+  slideFields.forEach(field => {
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
+
+    const sel = document.createElement('select');
+    sel.className = 'field-select-item';
+    sel.style.minWidth = '180px';
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '-- geen --';
+    sel.appendChild(noneOpt);
+
+    (window.availableFields || []).forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      if (f === field) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    // Luistert naar gebruikerswijzigingen — niet naar story-initialisatie
+    sel.addEventListener('change', () => window.herllaadVisualisatie?.());
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Verwijder';
+    removeBtn.addEventListener('click', () => {
+      row.remove();
+      window.herllaadVisualisatie?.();
+    });
+
+    row.appendChild(sel);
+    row.appendChild(removeBtn);
+    selectorsDiv.appendChild(row);
+  });
+}
+  }
+
+  // ── 4. Kaart + choropleth ─────────────────────────────────────────
+  const map = getMap();
+  clearHighlights(state);
+  if (!map || !slide) return;
+
+  if (slide.kind === 'map' && slide.field && typeof window.toonChoropleth === 'function') {
+    const method  = document.getElementById('method-select')?.value || 'quantile';
+    const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
+    const opacity = parseFloat(document.getElementById('opacity-range')?.value || '0.65');
+
+    window.toonChoropleth(fc, slide.field, {
+      method,
+      palette,
+      opacity: Number.isFinite(opacity) ? opacity : 0.65,
+      classes: 5
+    });
+  }
+
+  // ── 5. Focus + highlight ──────────────────────────────────────────
+  if (!slide.focus) return;
+  const focusFeature = findFeatureInCollection(fc, slide.focus);
+  if (!focusFeature?.properties) return;
+
+  const focusField = slide.focus.field || 'buurtnaam';
+  const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
+  if (!focusValue) return;
+
+  const candidates = getStoryLayerCandidates();
+  for (const rootLayer of candidates) {
+    if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
+
+    let matchedLayer = null;
+    rootLayer.eachLayer(layer => {
+      if (matchedLayer || !layer?.feature?.properties) return;
+      const props = layer.feature.properties;
+      const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
+      if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
+        matchedLayer = layer;
+      }
+    });
+
+    if (!matchedLayer) continue;
+
+    try {
+      if (!matchedLayer.__storyOriginalStyle && typeof matchedLayer.setStyle === 'function') {
+        matchedLayer.__storyOriginalStyle = {
+          color: matchedLayer.options?.color,
+          weight: matchedLayer.options?.weight,
+          fillOpacity: matchedLayer.options?.fillOpacity,
+          fillColor: matchedLayer.options?.fillColor
+        };
+      }
+      if (typeof matchedLayer.setStyle === 'function') {
+        matchedLayer.setStyle({ color: '#ffd166', weight: 2.2, fillOpacity: 0.9 });
+      }
+      if (typeof matchedLayer.getBounds === 'function') {
+        map.fitBounds(matchedLayer.getBounds(), { maxZoom: 14, animate: true, padding: [18, 18] });
+      }
+      if (typeof matchedLayer.openPopup === 'function') {
+        matchedLayer.openPopup();
+        matchedLayer.__storyOpenedPopup = true;
+      }
+      state.highlightedLayers.push(matchedLayer);
+    } catch (e) {}
+
+    break;
+  }
+}
 
   function resolveSlideFeature(slide, fc) {
     if (!slide) return null;
@@ -554,7 +641,7 @@
     if (!slide) return;
 
     ensureOverlay(state);
-    const fc = await ensureStoryDataCollection();
+    const fc = await ensureStoryDataCollection(slide.year);
 
     const background = slide.kind === 'hero' 
       ? (slide.backgroundImage || createBackdrop(slide.title || story.title, slide.body, story.colors))
@@ -669,7 +756,9 @@
     document.getElementById('apply-filter')?.addEventListener('click', refreshOpenStory);
     document.getElementById('clear-filter')?.addEventListener('click', refreshOpenStory);
     document.getElementById('filter-negative')?.addEventListener('click', refreshOpenStory);
-    document.getElementById('year-slider')?.addEventListener('change', refreshOpenStory);
+    document.getElementById('year-slider')?.addEventListener('change', () => {
+      if (!state._storyDrivenYearChange) refreshOpenStory();
+    });
   });
 
   window.startStory = openStory;

@@ -826,10 +826,8 @@ button:focus-visible {
 
 .story-scrim {
   background:
-    radial-gradient(circle at top left, rgba(255,209,102,0.18), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(11,114,133,0.20), transparent 28%),
-    linear-gradient(180deg, rgba(3,10,17,0.40), rgba(3,10,17,0.66));
-  backdrop-filter: none;
+    radial-gradient(circle at top left, rgba(255,209,102,0.18), transparent 100%),
+    radial-gradient(circle at bottom right, rgba(11,114,133,0.20), transparent 100%),
 }
 
 .story-shell {

@@ -63,6 +63,96 @@ body.story-open {
   z-index: 250;
 }
 
+/* ========== Sidebar Toggle ========== */
+#sidebar-toggle {
+  position: fixed;
+  top: 50%;
+  right: var(--breedte-zijbalk);
+  transform: translateY(-50%);
+  z-index: 400;
+  width: 20px;
+  height: 48px;
+  padding: 0;
+  margin: 0;
+  border-radius: 6px 0 0 6px;
+  background: var(--kleur-paneel);
+  color: var(--kleur-primair);
+  border: 1px solid var(--kleur-rand);
+  border-right: none;
+  box-shadow: -2px 0 6px rgba(15,23,42,0.10);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: right 0.3s ease;
+}
+
+#sidebar-toggle:hover {
+  background: var(--kleur-paneel-zacht);
+}
+
+#app.sidebar-collapsed #sidebar-toggle {
+  right: 0;
+  transform: translateY(-50%);
+  border-radius: 0 6px 6px 0;
+  border: 1px solid var(--kleur-rand);
+  border-left: none;
+}
+
+html.sidebar-left #sidebar-toggle {
+  right: auto;
+  left: var(--breedte-zijbalk);
+  border-radius: 0 6px 6px 0;
+  border: 1px solid var(--kleur-rand);
+  border-left: none;
+  transition: left 0.3s ease;
+}
+
+html.sidebar-left #app.sidebar-collapsed #sidebar-toggle {
+  left: 0;
+  transform: translateY(-50%) scaleX(1);
+}
+
+#sidebar-toggle:hover {
+  background: var(--kleur-paneel-zacht);
+}
+
+/* Gesloten staat */
+#app.sidebar-collapsed #sidebar {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#app.sidebar-collapsed #sidebar-toggle {
+  right: 0;
+}
+
+/* Pijl omdraaien als gesloten */
+#app.sidebar-collapsed #sidebar-toggle {
+  transform: translateY(-50%) scaleX(-1);
+}
+
+/* Sidebar animatie */
+#sidebar {
+  transition: width 0.3s ease, padding 0.3s ease;
+}
+
+/* sidebar-left variant */
+html.sidebar-left #sidebar-toggle {
+  right: auto;
+  left: var(--breedte-zijbalk);
+  border-radius: 0 6px 6px 0;
+  border: 1px solid var(--kleur-rand);
+  border-left: none;
+}
+
+html.sidebar-left #app.sidebar-collapsed #sidebar-toggle {
+  left: 0;
+}
+
 #sidebar {
   width: var(--breedte-zijbalk);
   padding: var(--ruimte-3);

@@ -560,3 +560,31 @@ async function handleFileImport(file) {
     alert('Importer module niet geladen.');
   }
 }
+
+
+
+
+
+// ========== Sidebar Toggle ==========
+(function () {
+  const app = document.getElementById('app');
+  const btn = document.getElementById('sidebar-toggle');
+  if (!app || !btn) return;
+
+  const isSidebarLeft = document.documentElement.classList.contains('sidebar-left');
+
+  // Zet juiste beginpijl
+  btn.innerHTML = isSidebarLeft ? '&#8249;' : '&#8250;';
+
+  btn.addEventListener('click', () => {
+    const collapsed = app.classList.toggle('sidebar-collapsed');
+    btn.innerHTML = isSidebarLeft
+  ? (collapsed ? '&#8250;' : '&#8249;')
+  : (collapsed ? '&#8250;' : '&#8249;');
+    setTimeout(() => {
+      if (window.appData?.map) {
+        window.appData.map.invalidateSize();
+      }
+    }, 310);
+  });
+})();

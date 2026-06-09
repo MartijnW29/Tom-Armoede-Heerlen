@@ -9,8 +9,8 @@
 // ============================================================================
 
 const MULTI_LOADER_CONFIG = {
-  minYear: 1950,
-  maxYear: 2050,
+  minYear: 2015,
+  maxYear: 2030,
   yearField: 'jaar',  // Veldnaam om naar te zoeken
   yearFields: ['jaar', 'year', 'Jaar', 'Year', 'JAAR', 'jaa r'],  // Mogelijke veldnamen
 };

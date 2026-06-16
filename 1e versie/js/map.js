@@ -223,7 +223,7 @@ const HOVER_CHART_CONFIG = {
   marginRight: 14,
   marginBottom: 36,
   marginLeft: 42,
-  hideDelayMs: 80,
+  hideDelayMs: 650, // Delay voordat hover chart verdwijnt na muis weg (ms)
   identityFields: [
     'code', 'id', 'buurtcode', 'wijkcode',
     'buurtnaam', 'wijknaam', 'naam', 'name'
@@ -249,10 +249,19 @@ function getHoverChartPanel() {
   panel = document.createElement('section');
   panel.id = 'hover-timeseries-panel';
   panel.className = 'hover-timeseries-panel';
-  panel.innerHTML = [
-    '<div class="hover-timeseries-title"></div>',
+panel.innerHTML = [
+    '<div class="hover-timeseries-header">',
+    '  <div class="hover-timeseries-title"></div>',
+    '  <span class="hover-timeseries-chevron">Inklappen ▼</span>',
+    '</div>',
     '<div class="hover-timeseries-body"></div>'
   ].join('');
+
+  const header = panel.querySelector('.hover-timeseries-header');
+  header.addEventListener('click', () => {
+    const collapsed = panel.classList.toggle('is-collapsed');
+    panel.querySelector('.hover-timeseries-chevron').textContent = collapsed ? 'Uitklappen ▲' : 'Inklappen ▼';
+  });
 
   panel.addEventListener('mouseenter', () => {
     mouseIsOverPanel = true;

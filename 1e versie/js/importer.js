@@ -1,30 +1,32 @@
 // ============================================================================
-// IMPORTER.JS — Heerlen Opportunity Atlas
-// ============================================================================
-// Bestand voor: CSV en GeoJSON bestandsimport met herprojectie-ondersteuning
+// importer.js — Heerlen Opportunity Atlas
+// CSV- en GeoJSON-bestandsimport met herprojectie-ondersteuning
 // ============================================================================
 
+
 // ============================================================================
-// CONFIGURATIE — Pas hier aan voor je eigen project
+// CONFIGURATIE — Pas hier de importinstellingen aan
 // ============================================================================
 
 const IMPORTER_CONFIG = {
-  // Ondersteunde veldnamen voor coördinaten
+
+  // --- Kolomnamen die herkend worden als breedtegraad (lat) ---
   breedtevelden: ['lat', 'latitude', 'breedtegraad'],
+
+  // --- Kolomnamen die herkend worden als lengtegraad (lon) ---
   lengdevelden: ['lon', 'lng', 'longitude', 'lengtegraad'],
-  
-  // Projectie-detectie
-  geprojecteeerdBoven: 1000,   // Coördinaten boven deze waarde zijn waarschijnlijk geprojecteerd (RD/meters)
 };
 
+
 // ============================================================================
-// HULPFUNCTIES — Bestandsverwerking
+// CSV-PARSING
 // ============================================================================
 
 /**
- * Zoek breedtegraad-kolomindex in CSV-headers
- * @param {Array} headers - Genormaliseerde header-rij
- * @return {number} Index of -1 if not found
+ * Zoekt de kolomindex van de breedtegraad in de gestandaardiseerde header-rij.
+ * Geeft -1 terug als er geen overeenkomst gevonden wordt.
+ * @param {string[]} headers - Genormaliseerde (lowercase) headerwaarden
+ * @returns {number}
  */
 function vindBreedtegraadKolom(headers) {
   for (const veld of IMPORTER_CONFIG.breedtevelden) {
@@ -35,9 +37,10 @@ function vindBreedtegraadKolom(headers) {
 }
 
 /**
- * Zoek lengtegraad-kolomindex in CSV-headers
- * @param {Array} headers - Genormaliseerde header-rij
- * @return {number} Index or -1 if not found
+ * Zoekt de kolomindex van de lengtegraad in de gestandaardiseerde header-rij.
+ * Geeft -1 terug als er geen overeenkomst gevonden wordt.
+ * @param {string[]} headers - Genormaliseerde (lowercase) headerwaarden
+ * @returns {number}
  */
 function vindLengtegraadKolom(headers) {
   for (const veld of IMPORTER_CONFIG.lengdevelden) {
@@ -48,259 +51,167 @@ function vindLengtegraadKolom(headers) {
 }
 
 /**
- * Parseer CSV-tekst naar Feature array
- * @param {string} tekst - CSV-inhoud
- * @return {Array} Features of empty array if parsing failed
+ * Parseert CSV-tekst naar een array van GeoJSON-features.
+ * Verwacht minimaal één kolom voor lat én één voor lon (zie IMPORTER_CONFIG).
+ * Alle overige kolommen worden opgeslagen als feature-properties.
+ * Rijen met ontbrekende of ongeldige coördinaten worden overgeslagen.
+ * @param {string} tekst - Ruwe CSV-inhoud
+ * @returns {GeoJSON.Feature[]}
  */
 function parseCSV(tekst) {
   const rijen = tekst.split('\n')
     .map(r => r.split(',').map(cel => cel.trim()))
     .filter(r => r.length > 0);
-  
+
   if (rijen.length < 2) return [];
-  
-  // Headers
+
   const headers = rijen[0].map(h => h.toLowerCase());
-  const latIdx = vindBreedtegraadKolom(headers);
-  const lonIdx = vindLengtegraadKolom(headers);
-  
-  if (latIdx < 0 || lonIdx < 0) {
-    return []; // Geen lat/lon gevonden
-  }
-  
-  // Zet alle rijen om naar Features
+  const latIdx  = vindBreedtegraadKolom(headers);
+  const lonIdx  = vindLengtegraadKolom(headers);
+
+  if (latIdx < 0 || lonIdx < 0) return [];
+
   const features = [];
   for (let i = 1; i < rijen.length; i++) {
     const rij = rijen[i];
     if (rij.length <= Math.max(latIdx, lonIdx)) continue;
-    
+
     const lat = parseFloat(rij[latIdx]);
     const lon = parseFloat(rij[lonIdx]);
-    
     if (isNaN(lat) || isNaN(lon)) continue;
-    
-    // Bouw properties van alle kolommen
+
+    // Alle overige kolommen worden properties
     const props = {};
-    for (let j = 0; j < headers.length; j++) {
-      if (j !== latIdx && j !== lonIdx) {
-        props[headers[j]] = rij[j];
-      }
-    }
-    
+    headers.forEach((h, j) => { if (j !== latIdx && j !== lonIdx) props[h] = rij[j]; });
+
     features.push({
       type: 'Feature',
       properties: props,
-      geometry: {
-        type: 'Point',
-        coordinates: [lon, lat]
-      }
+      geometry: { type: 'Point', coordinates: [lon, lat] },
     });
   }
-  
+
   return features;
 }
 
+
+// ============================================================================
+// DATA WEERGEVEN
+// ============================================================================
+
 /**
- * Toon data als generieke laag op kaart + update veldenselectie
- * @param {GeoJSON FeatureCollection} fc
- * @param {Object} context - {map, dataLayer}
- * @param {boolean} compareMode - OF dit de tweede dataset is
+ * Toont een GeoJSON FeatureCollection als grijze laag op de kaart
+ * en koppelt de data aan de app-status.
+ *
+ * Vergelijkmodus: als window.appData.compareMode actief is én er al een
+ * eerste dataset is, wordt de nieuw geladen dataset als compareFC opgeslagen
+ * en worden de vergelijkgrafieken getekend.
+ *
+ * @param {GeoJSON.FeatureCollection} fc
+ * @param {{ map: L.Map, dataLayer: L.LayerGroup }} context
+ * @param {boolean} vergelijkModus
  */
-function toonDataOmgeving(fc, context, compareMode) {
-  if (!fc || !fc.features || fc.features.length === 0) {
-    alert('Geen features gevonden in geïmporteerde data.');
+function toonDataOmgeving(fc, context, vergelijkModus) {
+  if (!fc?.features?.length) {
+    alert('Geen features gevonden in de geïmporteerde data.');
     return;
   }
-  
-  // Toon als grijze laag
-  const laag = L.geoJSON(fc, {
-    style: { color: '#888', weight: 1, fillOpacity: 0.3 }
-  }).addTo(context.dataLayer);
-  
-  try {
-    context.map.fitBounds(laag.getBounds());
-  } catch (e) { /* Negeren */ }
-  
-  // Update app-status
+
+  const laag = L.geoJSON(fc, { style: { color: '#888', weight: 1, fillOpacity: 0.3 } })
+    .addTo(context.dataLayer);
+
+  window.bringSmallPolygonsToFront?.(context.dataLayer);
+  try { context.map.fitBounds(laag.getBounds()); } catch (_) {}
+
   window.appData = window.appData || {};
-  
-  if (compareMode && window.appData.lastFC) {
-    window.appData.compareFC = fc;
+
+  if (vergelijkModus && window.appData.lastFC) {
+    // Tweede dataset geladen: sla op als compareFC en teken vergelijkgrafieken
+    window.appData.compareFC   = fc;
     window.appData.compareMode = false;
-    
+
     const veld = document.getElementById('field-select')?.value;
     if (window.createCompareCharts && veld) {
       window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, veld);
     } else {
-      alert('Vergelijkmodus: tweede dataset geladen. Kies eerst een variabele.');
+      alert('Vergelijkmodus: tweede dataset geladen. Kies eerst een variabele in het keuzemenu.');
     }
   } else {
+    // Eerste (of enige) dataset: sla op als hoofddata en vul veldkeuze
     window.appData.lastFC = fc;
-    if (window.populateFieldSelect) window.populateFieldSelect(fc);
+    window.populateFieldSelect?.(fc);
   }
 }
 
+
 // ============================================================================
-// HOOFD-IMPORT-FUNCTIE
+// HOOFD-IMPORTFUNCTIE
 // ============================================================================
 
 /**
- * Importeer file (GeoJSON of CSV) en voeg toe aan kaart
- * @param {File} file
- * @param {Object} context - Kaart-context {map, dataLayer}
+ * Verwerkt een geüpload bestand en voegt het toe aan de kaart.
+ * Ondersteunde formaten: GeoJSON (.geojson / .json), CSV (.csv / .txt).
+ * GeoJSON wordt automatisch hergeprojecteerd van RD naar WGS84 indien nodig
+ * (via window.herprojecteerAlsNodig, gedefinieerd in een aparte module).
+ *
+ * @param {File}   bestand  - Het geüploade bestand
+ * @param {{ map: L.Map, dataLayer: L.LayerGroup }} context - Kaartcontext
  */
-window.handleImportFile = async function(file, context) {
-  const bestandsnaam = file.name.toLowerCase();
-  
+window.handleImportFile = async function (bestand, context) {
+  const naam = bestand.name.toLowerCase();
+
   try {
-    const tekst = await file.text();
-    
-    // ===== GEOJSON IMPORT =====
-    if (bestandsnaam.endsWith('.geojson') || bestandsnaam.endsWith('.json') || tekst.trim().startsWith('{')) {
+    const tekst = await bestand.text();
+    const vergelijkModus = window.appData?.compareMode ?? false;
+
+    // ----- GeoJSON -----
+    if (naam.endsWith('.geojson') || naam.endsWith('.json') || tekst.trim().startsWith('{')) {
       try {
         const fc = JSON.parse(tekst);
-        
-        // Controleer of het geldige GeoJSON is
-        if (fc.type === 'FeatureCollection' && Array.isArray(fc.features)) {
-          // Herprojecteer als nodig (RD -> WGS84)
-          if (window.herprojecteerAlsNodig) {
-            const geherprojecteerd = window.herprojecteerAlsNodig(fc);
-            toonDataOmgeving(geherprojecteerd, context, window.appData?.compareMode);
-          } else {
-            toonDataOmgeving(fc, context, window.appData?.compareMode);
-          }
-          return;
-        }
+        if (fc.type !== 'FeatureCollection' || !Array.isArray(fc.features)) throw new Error('Geen geldige FeatureCollection.');
+
+        // Herprojecteer van RD Nieuwe (meters) naar WGS84 (graden) indien nodig
+        const verwerkt = window.herprojecteerAlsNodig ? window.herprojecteerAlsNodig(fc) : fc;
+        toonDataOmgeving(verwerkt, context, vergelijkModus);
       } catch (err) {
         console.error('GeoJSON parse-fout:', err);
-        alert('Fout: Kan GeoJSON niet parseren.\n' + err.message);
-        return;
+        alert('Fout: kan GeoJSON niet parseren.\n' + err.message);
       }
+      return;
     }
-    
-    // ===== CSV IMPORT =====
-    if (bestandsnaam.endsWith('.csv') || bestandsnaam.endsWith('.txt')) {
+
+    // ----- CSV -----
+    if (naam.endsWith('.csv') || naam.endsWith('.txt')) {
       const features = parseCSV(tekst);
-      
-      if (features.length === 0) {
-        alert('Fout: Kan geen lat/lon-kolommen vinden in CSV. Gebruik: "lat", "lon" (of "latitude", "longitude")');
+      if (!features.length) {
+        alert('Fout: geen lat/lon-kolommen gevonden in het CSV-bestand.\nGebruik kolomnamen zoals "lat", "lon", "latitude" of "longitude".');
         return;
       }
-      
-      const fc = {
-        type: 'FeatureCollection',
-        features: features
-      };
-      
-      toonDataOmgeving(fc, context, window.appData?.compareMode);
+      toonDataOmgeving({ type: 'FeatureCollection', features }, context, vergelijkModus);
       return;
     }
-    
-    // ===== ZIP IMPORT (TOEKOMSTIGE UITBREIDING) =====
-    if (bestandsnaam.endsWith('.zip')) {
-      alert('ZIP-bestanden worden momenteel niet ondersteund.\nGebruik GeoJSON (.geojson, .json) of CSV (.csv).');
+
+    // ----- ZIP (nog niet ondersteund) -----
+    if (naam.endsWith('.zip')) {
+      alert('ZIP-bestanden worden momenteel niet ondersteund.\nGebruik GeoJSON (.geojson / .json) of CSV (.csv).');
       return;
     }
-    
-    // ===== ONBEKEND BESTANDSTYPE =====
-    alert('Bestandstype niet ondersteund.\nGebruik: .geojson, .json, .csv');
-    
+
+    // ----- Onbekend formaat -----
+    alert('Bestandstype niet ondersteund.\nGebruik: .geojson, .json of .csv');
+
   } catch (err) {
     console.error('Bestandimport-fout:', err);
-    alert('Fout bij bestandlezen: ' + err.message);
+    alert('Fout bij het lezen van het bestand: ' + err.message);
   }
 };
-// Importer: ondersteunt GeoJSON en CSV (basis lat/lon) voor de proefversie
 
-window.handleImportFile = async function(file, ctx){
-  const name = file.name.toLowerCase();
-  const text = await file.text();
-  // Als de tekst op GeoJSON lijkt
-  if (name.endsWith('.geojson') || text.trim().startsWith('{')){
-    try{
-      const fc = JSON.parse(text);
-      const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
-      if (window.bringSmallPolygonsToFront) {
-        window.bringSmallPolygonsToFront(ctx.dataLayer);
-      }
-      try{ map.fitBounds(layer.getBounds()); }catch(e){}
-
-      // App-status + D3-koppelingen
-      window.appData = window.appData || {};
-      if(window.appData.compareMode && window.appData.lastFC){
-        window.appData.compareFC = fc;
-        window.appData.compareMode = false;
-        const sel = document.getElementById('field-select');
-        const field = sel?.value;
-        if(window.createCompareCharts && field){
-          window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, field);
-        } else {
-          alert('Vergelijkmodus: tweede bestand geladen. Kies eerst een variabele in het keuzemenu.');
-        }
-      } else {
-        window.appData.lastFC = fc;
-        if(window.populateFieldSelect) window.populateFieldSelect(fc);
-      }
-      return;
-    }catch(err){
-      console.error('Fout bij het parsen van GeoJSON-tekst', err);
-      alert('Fout bij parsen van GeoJSON.');
-      return;
-    }
-  }
-
-  if (name.endsWith('.csv') || name.endsWith('.txt')){
-    // Eenvoudige CSV-parsing: verwacht lat/lon- of lon/lat-kolommen
-    const rows = text.split('\n').map(r=>r.split(','));
-    // find lat/lon headers
-    const headers = rows[0].map(h=>h.trim().toLowerCase());
-    const latIdx = headers.indexOf('lat');
-    const lonIdx = headers.indexOf('lon') >=0 ? headers.indexOf('lon') : headers.indexOf('lng');
-    if (latIdx>=0 && lonIdx>=0){
-      const feats = rows.slice(1).filter(r=>r.length>Math.max(latIdx,lonIdx)).map(r=>({
-        type:'Feature', properties:{}, geometry:{ type:'Point', coordinates:[+r[lonIdx], +r[latIdx]] }
-      }));
-      const fc = { type:'FeatureCollection', features: feats };
-        const layer = L.geoJSON(fc).addTo(ctx.dataLayer);
-        if (window.bringSmallPolygonsToFront) {
-          window.bringSmallPolygonsToFront(ctx.dataLayer);
-        }
-        try{ map.fitBounds(layer.getBounds()); }catch(e){}
-
-        window.appData = window.appData || {};
-        if(window.appData.compareMode && window.appData.lastFC){
-          window.appData.compareFC = fc;
-          window.appData.compareMode = false;
-          const sel = document.getElementById('field-select');
-          const field = sel?.value;
-          if(window.createCompareCharts && field){
-            window.createCompareCharts(window.appData.lastFC, window.appData.compareFC, field);
-          } else {
-            alert('Vergelijkmodus: tweede bestand geladen. Kies eerst een variabele in het keuzemenu.');
-          }
-        } else {
-          window.appData.lastFC = fc;
-          if(window.populateFieldSelect) window.populateFieldSelect(fc);
-        }
-
-        return;
-    }
-
-    if(name.endsWith('.zip')){
-        alert('Zip-bestanden worden in deze frontend-only versie niet ondersteund. Gebruik GeoJSON of CSV.');
-      return;
-      }
-  }
-
-      alert('Bestandstype niet ondersteund door de importer van de proefversie.');
-};
 
 // ============================================================================
-// EXPORT GLOBALE FUNCTIES — Voor compatibiliteit met multi-loader.js
+// GLOBALE EXPORTS — Beschikbaar voor multi-loader.js en andere modules
 // ============================================================================
 
-window.parseCSV = parseCSV;
+window.parseCSV              = parseCSV;
 window.vindBreedtegraadKolom = vindBreedtegraadKolom;
-window.vindLengtegraadKolom = vindLengtegraadKolom;
-window.toonDataOmgeving = toonDataOmgeving;
-
+window.vindLengtegraadKolom  = vindLengtegraadKolom;
+window.toonDataOmgeving      = toonDataOmgeving;

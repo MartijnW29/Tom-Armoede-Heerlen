@@ -1,159 +1,267 @@
-// Provide default steps if none exist (previous custom tour defined these)
+// ============================================================
+// CONFIGURATIE — pas hier de rondleiding aan
+// ============================================================
+
+// Stap-definities voor de rondleiding.
+// Beschikbare velden per stap:
+//   id        – unieke naam (wordt ook als CSS-selector gebruikt als er geen selector is)
+//   selector  – optionele CSS-selector voor het element dat gehighlight wordt
+//   title     – titel in het tooltip
+//   content   – tekst in het tooltip
+//   center    – [lat, lng] om de kaart te centreren op deze stap
+//   zoom      – zoomniveau bij bovenstaande center
+//   fitBounds – [[z,w],[n,o]] om de kaart op een gebied te zoomen
 window.tourSteps = window.tourSteps || [
-  { id: 'welcome', title: 'Welkom', content: 'Welkom. Deze korte rondleiding laat rustig de belangrijkste bedieningselementen zien.' },
-  { id: 'sidebar', title: 'Zijbalk', content: 'Hier staan legenda, variabele keuze en filters.' },
-  { id: 'year-filter-area', selector: '#year-filter-area', title: 'Filter op jaar', content: 'Met deze schuifregelaar kun je het jaar filteren.' },
-  { id: 'controls', title: 'Variabelen', content: 'Voeg hier extra variabelen toe en pas kleuren/opacity aan.' },
-  { id: 'map', title: 'Kaart', content: 'De kaart toont de gebieden. Hover over een gebied voor een mini-grafiek.', center: [50.8889,5.9794], zoom: 12 },
-  { id: 'end', title: 'Klaar', content: 'Dat is alles — je kunt de rondleiding altijd opnieuw starten.' }
+  {
+    id:      'welcome',
+    title:   'Welkom',
+    content: 'Welkom. Deze korte rondleiding laat rustig de belangrijkste bedieningselementen zien.'
+  },
+  {
+    id:      'sidebar',
+    title:   'Zijbalk',
+    content: 'Hier staan legenda, variabele keuze en filters.'
+  },
+  {
+    id:       'year-filter-area',
+    selector: '#year-filter-area',
+    title:    'Filter op jaar',
+    content:  'Met deze schuifregelaar kun je het jaar filteren.'
+  },
+  {
+    id:      'controls',
+    title:   'Variabelen',
+    content: 'Voeg hier extra variabelen toe en pas kleuren/opacity aan.'
+  },
+  {
+    id:      'map',
+    title:   'Kaart',
+    content: 'De kaart toont de gebieden. Hover over een gebied voor een mini-grafiek.',
+    center:  [50.8889, 5.9794],
+    zoom:    12
+  },
+  {
+    id:      'end',
+    title:   'Klaar',
+    content: 'Dat is alles — je kunt de rondleiding altijd opnieuw starten.'
+  }
 ];
 
-(function(){
-  function buildSteps(){
-    const out = [];
-    (window.tourSteps||[]).forEach(s=>{
-      const selector = s.selector || ('#'+s.id);
-      const el = document.querySelector(selector);
-      const step = { intro: s.content||'', title: s.title||'' };
-      if (el) step.element = selector;
-      if (s.position) step.position = s.position;
-      if (s.disableInteraction) step.disableInteraction = !!s.disableInteraction;
-      // custom fields supported by our adapter (not intro.js native)
-      if (s.center) step.__center = s.center;
-      if (s.zoom) step.__zoom = s.zoom;
-      if (s.fitBounds) step.__fitBounds = s.fitBounds;
-      out.push(step);
+// CSS voor de navigatie-bolletjes (bullets) in de rondleiding
+// De actieve stap krijgt een geel kleurverloop; inactieve stappen zijn lichtgrijs
+const BULLET_CSS = `
+  .introjs-bullets ul li a,
+  .introjs-bullets ul li {
+    display: block !important; width: 14px !important; height: 14px !important;
+    border-radius: 50% !important; background: #f1f6f8 !important;
+    border: 1px solid rgba(8,24,48,0.06) !important;
+    box-shadow: 0 4px 10px rgba(8,24,48,0.06) !important;
+  }
+  .introjs-bullets ul li a.active,
+  .introjs-bullets ul li.introjs-active a,
+  .introjs-bullets ul li.introjs-active {
+    background-image: linear-gradient(90deg,#ffd166,#ffb703) !important;
+    background-color: transparent !important;
+    box-shadow: 0 12px 28px rgba(255,167,29,0.18) !important;
+    transform: scale(1.35) !important;
+    border-color: transparent !important;
+  }
+  .introjs-bullets ul li a:hover,
+  .introjs-bullets ul li a:focus {
+    transform: translateY(-3px) scale(1.05) !important;
+    box-shadow: 0 8px 20px rgba(8,24,48,0.08) !important;
+  }
+`;
+
+// ============================================================
+// RONDLEIDING LOGICA
+// ============================================================
+
+(function () {
+
+  // Bouwt de stappen-array op die intro.js verwacht, op basis van tourSteps
+  function buildSteps() {
+    return (window.tourSteps || []).map(s => {
+      const selector = s.selector || ('#' + s.id);
+      const el       = document.querySelector(selector);
+      const stap     = { intro: s.content || '', title: s.title || '' };
+
+      if (el)                stap.element           = selector;
+      if (s.position)        stap.position          = s.position;
+      if (s.disableInteraction) stap.disableInteraction = true;
+
+      // Eigen velden voor kaartbediening (niet native intro.js)
+      if (s.center)     stap.__center    = s.center;
+      if (s.zoom)       stap.__zoom      = s.zoom;
+      if (s.fitBounds)  stap.__fitBounds = s.fitBounds;
+
+      return stap;
     });
-    return out;
   }
 
-  function dispatchEvent(name, detail){
-    try { window.dispatchEvent(new CustomEvent(name, { detail })); } catch(e){}
-    try { if (window.dataLayer && typeof window.dataLayer.push === 'function') window.dataLayer.push(Object.assign({ event: name }, detail || {})); } catch(e){}
-    try { if (window.ga && typeof window.ga === 'function') window.ga('send', 'event', 'tour', name, JSON.stringify(detail || {})); } catch(e){}
-    try { console.log('tour.event', name, detail || {}); } catch(e){}
+  // Stuur een event naar de browser én optioneel naar analytics
+  function dispatchTourEvent(naam, detail) {
+    try { window.dispatchEvent(new CustomEvent(naam, { detail })); } catch (e) {}
+    try { window.dataLayer?.push(Object.assign({ event: naam }, detail || {})); } catch (e) {}
+    try { window.ga?.('send', 'event', 'tour', naam, JSON.stringify(detail || {})); } catch (e) {}
+    console.log('tour.event', naam, detail || {});
   }
 
-  window.startIntroTour = function(){
-    if (typeof introJs !== 'function' && typeof introJs === 'undefined') return;
-    const steps = buildSteps();
-    const intro = introJs();
+  // Haal de actieve Leaflet-kaart op
+  function getMap() {
+    return window.appData?.map || window.map || null;
+  }
+
+  // Pas de kaartpositie aan op basis van de stap-definitie
+  function pasKaartAan(stapDef) {
+    const map = getMap();
+    if (!map || !stapDef) return;
+    try {
+      if (Array.isArray(stapDef.__center) && stapDef.__center.length === 2) {
+        const zoom = typeof stapDef.__zoom === 'number'
+          ? stapDef.__zoom
+          : (window.APP_CONFIG?.standaardZoom || 12);
+        map.setView(stapDef.__center, zoom, { animate: true });
+      }
+      if (Array.isArray(stapDef.__fitBounds) && stapDef.__fitBounds.length) {
+        map.fitBounds(stapDef.__fitBounds, { animate: true, padding: [20, 20] });
+      }
+    } catch (e) { /* kaartfouten negeren */ }
+  }
+
+  // Verwijder alle tour-highlight klassen van de pagina
+  function clearHighlights() {
+    document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+  }
+
+  // Pas inline stijlen toe op de bullet-punten.
+  // Dit is nodig omdat intro.js de DOM herschrijft en CSS-overrides soms worden overschreven.
+  function applyBulletInlineStyles() {
+    document.querySelectorAll('.introjs-bullets ul li').forEach((li, i) => {
+      const node = li.querySelector('a') || li;
+      node.style.width        = '14px';
+      node.style.height       = '14px';
+      node.style.borderRadius = '50%';
+
+      const isActief = li.classList.contains('introjs-active') || node.classList.contains('active');
+      if (isActief) {
+        node.style.backgroundImage = 'linear-gradient(90deg,#ffd166,#ffb703)';
+        node.style.backgroundColor = 'transparent';
+        node.style.boxShadow       = '0 12px 28px rgba(255,167,29,0.18)';
+        node.style.transform       = 'scale(1.35)';
+        node.style.borderColor     = 'transparent';
+      } else {
+        // Reset naar CSS-standaard
+        ['backgroundImage', 'backgroundColor', 'boxShadow', 'transform', 'borderColor']
+          .forEach(p => node.style[p] = '');
+      }
+    });
+  }
+
+  // ============================================================
+  // RONDLEIDING STARTEN
+  // ============================================================
+
+  window.startIntroTour = function () {
+    if (typeof introJs !== 'function') return;
+
+    const stappen = buildSteps();
+    const intro   = introJs();
+
     intro.setOptions({
-      steps: steps,
-      showProgress: true,
-      showBullets: true,
-      exitOnOverlayClick: false,
-      exitOnEsc: true,
-      disableInteraction: false,
-      scrollToElement: true,
+      steps:               stappen,
+      showProgress:        true,
+      showBullets:         true,
+      exitOnOverlayClick:  false,
+      exitOnEsc:           true,
+      disableInteraction:  false,
+      scrollToElement:     true,
       nextLabel: 'Volgende',
       prevLabel: 'Vorige',
       doneLabel: 'Klaar'
     });
 
-    const constructedSteps = steps.slice();
+    // Helper: huidige stap-definitie ophalen
+    const getHuidigeStap = () => {
+      const idx = typeof intro._currentStep === 'number' ? intro._currentStep : null;
+      return idx !== null ? stappen[idx] : null;
+    };
 
-    intro.onstart(function(){ dispatchEvent('tour:start', {}); });
+    intro.onstart(() => dispatchTourEvent('tour:start', {}));
 
-    intro.onbeforechange(function(target){
-      const idx = (typeof intro._currentStep === 'number') ? intro._currentStep : null;
-      const stepDef = (idx !== null && constructedSteps[idx]) ? constructedSteps[idx] : null;
-      try {
-        const m = (window.appData && window.appData.map) || window.map;
-        if (m && stepDef) {
-          if (Array.isArray(stepDef.__center) && stepDef.__center.length === 2) {
-            const z = (typeof stepDef.__zoom === 'number') ? stepDef.__zoom : (window.APP_CONFIG && window.APP_CONFIG.standaardZoom) || 12;
-            if (typeof m.setView === 'function') m.setView(stepDef.__center, z, { animate: true });
-          }
-          if (Array.isArray(stepDef.__fitBounds) && stepDef.__fitBounds.length) {
-            if (typeof m.fitBounds === 'function') m.fitBounds(stepDef.__fitBounds, { animate: true, padding: [20,20] });
-          }
-        }
-      } catch (e) { /* ignore map errors */ }
-      dispatchEvent('tour:step:beforechange', { index: idx, step: stepDef });
+    intro.onbeforechange(() => {
+      const stapDef = getHuidigeStap();
+      pasKaartAan(stapDef);
+      dispatchTourEvent('tour:step:beforechange', { index: intro._currentStep, step: stapDef });
     });
 
-    intro.onchange(function(target){
-      try { document.querySelectorAll('.tour-highlight').forEach(el=>el.classList.remove('tour-highlight')); } catch(e) {}
-      const idx = (typeof intro._currentStep === 'number') ? intro._currentStep : null;
-      const stepDef = (idx !== null && constructedSteps[idx]) ? constructedSteps[idx] : null;
-      if (stepDef && stepDef.element) {
-        try { const tgt = document.querySelector(stepDef.element); if (tgt && tgt.classList) tgt.classList.add('tour-highlight'); } catch(e) {}
+    intro.onchange(() => {
+      clearHighlights();
+      const stapDef = getHuidigeStap();
+
+      // Highlight het actieve element
+      if (stapDef?.element) {
+        document.querySelector(stapDef.element)?.classList.add('tour-highlight');
       }
-      // Ensure intro.js bullets show our gradient color even if other styles override them.
-      try {
-        const bullets = Array.from(document.querySelectorAll('.introjs-bullets li'));
-        bullets.forEach((li, i) => {
-          const node = li.querySelector('a') || li;
-          if (typeof idx === 'number' && i === idx) {
-            node.style.backgroundImage = 'linear-gradient(90deg,#ffd166,#ffb703)';
-            node.style.backgroundColor = 'transparent';
-            node.style.boxShadow = '0 12px 28px rgba(255,167,29,0.18)';
-            node.style.transform = 'scale(1.35)';
-            node.style.borderColor = 'transparent';
-          } else {
-            node.style.backgroundImage = '';
-            node.style.backgroundColor = '';
-            node.style.boxShadow = '';
-            node.style.transform = '';
-            node.style.borderColor = '';
-          }
-        });
-      } catch(e) { /* ignore */ }
 
-      dispatchEvent('tour:step:changed', { index: idx, step: stepDef });
+      // Bullet-stijlen inline bijwerken (intro.js kan CSS overschrijven)
+      applyBulletInlineStyles();
+
+      dispatchTourEvent('tour:step:changed', { index: intro._currentStep, step: stapDef });
     });
 
-    intro.onexit(function(){ try { document.querySelectorAll('.tour-highlight').forEach(el=>el.classList.remove('tour-highlight')); } catch(e){}; dispatchEvent('tour:exit', {}); });
-    intro.oncomplete(function(){ try { document.querySelectorAll('.tour-highlight').forEach(el=>el.classList.remove('tour-highlight')); } catch(e){}; dispatchEvent('tour:complete', {}); });
+    // Opruimen bij afsluiten of voltooien
+    const opruimen = (eventNaam) => () => {
+      clearHighlights();
+      dispatchTourEvent(eventNaam, {});
+    };
+    intro.onexit(opruimen('tour:exit'));
+    intro.oncomplete(opruimen('tour:complete'));
 
     intro.start();
   };
 
-  // keep compatibility
+  // Achterwaartse compatibiliteit
   window.startTour = window.startIntroTour;
 
-  document.addEventListener('DOMContentLoaded', ()=>{
-    const b = document.getElementById('start-tour'); if (b) b.addEventListener('click', ()=>{ window.startIntroTour(); try{sessionStorage.setItem('tourStarted','1')}catch(e){} });
-    const yes = document.getElementById('tour-yes'); if (yes) yes.onclick = ()=>{ const modal = document.getElementById('tour-modal'); if (modal) modal.hidden=true; window.startIntroTour(); try{sessionStorage.setItem('tourStarted','1')}catch(e){} };
-    const no = document.getElementById('tour-no'); if (no) no.onclick = ()=>{ const modal = document.getElementById('tour-modal'); if (modal) modal.hidden=true; try{sessionStorage.setItem('tourDeclined','1')}catch(e){} };
+  // ============================================================
+  // INITIALISATIE NA LADEN DOM
+  // ============================================================
 
-    // Inject a high-specificity CSS override to ensure bullets show the gradient color.
+  document.addEventListener('DOMContentLoaded', () => {
+
+    // Knop om rondleiding te starten
+    document.getElementById('start-tour')?.addEventListener('click', () => {
+      window.startIntroTour();
+      try { sessionStorage.setItem('tourStarted', '1'); } catch (e) {}
+    });
+
+    // Knoppen in het welkomst-modal
+    document.getElementById('tour-yes')?.addEventListener('click', () => {
+      document.getElementById('tour-modal').hidden = true;
+      window.startIntroTour();
+      try { sessionStorage.setItem('tourStarted', '1'); } catch (e) {}
+    });
+    document.getElementById('tour-no')?.addEventListener('click', () => {
+      document.getElementById('tour-modal').hidden = true;
+      try { sessionStorage.setItem('tourDeclined', '1'); } catch (e) {}
+    });
+
+    // Injecteer bullet CSS in de <head>
     try {
-      const css = `
-      .introjs-bullets ul li a, .introjs-bullets ul li { display:block !important; width:14px !important; height:14px !important; border-radius:50% !important; background:#f1f6f8 !important; border:1px solid rgba(8,24,48,0.06) !important; box-shadow: 0 4px 10px rgba(8,24,48,0.06) !important; }
-      .introjs-bullets ul li a.active, .introjs-bullets ul li.introjs-active a, .introjs-bullets ul li.introjs-active { background-image: linear-gradient(90deg,#ffd166,#ffb703) !important; background-color: transparent !important; box-shadow: 0 12px 28px rgba(255,167,29,0.18) !important; transform: scale(1.35) !important; border-color: transparent !important; }
-      .introjs-bullets ul li a:hover, .introjs-bullets ul li a:focus { transform: translateY(-3px) scale(1.05) !important; box-shadow: 0 8px 20px rgba(8,24,48,0.08) !important; }
-      `;
-      const style = document.createElement('style'); style.setAttribute('data-generated','tour-bullet-overrides'); style.appendChild(document.createTextNode(css));
+      const style = document.createElement('style');
+      style.setAttribute('data-generated', 'tour-bullet-overrides');
+      style.textContent = BULLET_CSS;
       document.head.appendChild(style);
+    } catch (e) {}
 
-      // Observe DOM changes to re-apply inline styles if intro.js rewrites bullets
-      const applyBulletInline = () => {
-        const bullets = Array.from(document.querySelectorAll('.introjs-bullets ul li'));
-        bullets.forEach((li, i) => {
-          const node = li.querySelector('a') || li;
-          node.style.width = '14px'; node.style.height = '14px'; node.style.borderRadius = '50%';
-          if (li.classList.contains('introjs-active') || node.classList.contains('active')) {
-            node.style.backgroundImage = 'linear-gradient(90deg,#ffd166,#ffb703)';
-            node.style.backgroundColor = 'transparent';
-            node.style.boxShadow = '0 12px 28px rgba(255,167,29,0.18)';
-            node.style.transform = 'scale(1.35)';
-            node.style.borderColor = 'transparent';
-          } else {
-            node.style.backgroundImage = '';
-            node.style.backgroundColor = '';
-            node.style.boxShadow = '';
-            node.style.transform = '';
-            node.style.borderColor = '';
-          }
-        });
-      };
-
-      const mo = new MutationObserver((mutations) => { applyBulletInline(); });
-      mo.observe(document.body, { childList: true, subtree: true, attributes: true });
-      // Also run once now in case the tour is already present
-      setTimeout(applyBulletInline, 200);
-    } catch(e) { /* ignore injection errors */ }
+    // MutationObserver: hertoepassen van bullet-stijlen als intro.js de DOM herschrijft
+    // Dit is nodig omdat intro.js actief klassen en stijlen kan overschrijven
+    try {
+      const observer = new MutationObserver(applyBulletInlineStyles);
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      setTimeout(applyBulletInlineStyles, 200); // Eenmalige run voor het geval de tour al actief is
+    } catch (e) {}
   });
+
 })();

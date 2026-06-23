@@ -2,41 +2,53 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Opportunity Atlas — Heerlen proefversie</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Opportunity Atlas — Heerlen</title>
+
+  <!--
+    Vroege initialisatie: sidebar-positie en split-screen instellen via URL-parameters.
+    Dit moet vóór de CSS laden om layout-flicker te voorkomen.
+    Ondersteunde parameters:
+      ?sidebar=left   → sidebar aan de linkerkant
+      ?split=1        → split-screen modus (twee kaarten naast elkaar)
+  -->
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('sidebar') === 'left') {
-        document.documentElement.classList.add('sidebar-left');
-      }
-      if (params.get('split') === '1') {
-        document.documentElement.classList.add('split-pane');
-      }
+      if (params.get('sidebar') === 'left') document.documentElement.classList.add('sidebar-left');
+      if (params.get('split')   === '1')    document.documentElement.classList.add('split-pane');
     })();
   </script>
+
+  <!-- Externe stijlen -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/intro.js/minified/introjs.min.css" />
+
+  <!-- Projectstijlen -->
   <link rel="stylesheet" href="css/app.css" />
 </head>
+
 <body>
-  <!--
-    OPBOUW
-    - #map blijft hoofdkaartcontainer voor Leaflet
-    - #sidebar bevat alle bedieningselementen
-    - IDs blijven gelijk voor bestaande JavaScript-koppelingen
-  -->
   <div id="app">
+
+    <!-- ── KAART ─────────────────────────────────────────────────────────── -->
     <main id="map" aria-label="Kaartweergave"></main>
+
+    <!-- Knop om sidebar in/uit te klappen -->
     <button id="sidebar-toggle" type="button" aria-label="Sidebar in/uitklappen">&#8250;</button>
+
+    <!-- ── SIDEBAR ───────────────────────────────────────────────────────── -->
     <aside id="sidebar" aria-label="Bedieningspaneel">
+
       <header class="paneel-kop">
         <h2>Instellingen</h2>
       </header>
 
+      <!-- Legenda — gevuld door kaart.js -->
       <section id="legend" class="kaart-paneel" aria-hidden="false"></section>
 
-      <section id="year-filter-area" class="kaart-paneel" >
+      <!-- Jaarfilter — slider met streepjesweergave -->
+      <section id="year-filter-area" class="kaart-paneel">
         <h3>Filter op jaar</h3>
         <div class="slider-container">
           <div class="year-slider-control">
@@ -45,12 +57,16 @@
           </div>
           <span id="year-display">2024</span>
         </div>
-        <!-- <button id="year-filter-clear" hidden style="margin-top: var(--ruimte-2);" aria-hidden="true">Wis jaarfilter</button> -->
+        <!-- Wis-knop wordt zichtbaar zodra een jaar geselecteerd is (via multi-loader.js) -->
+        <!-- <button id="year-filter-clear" hidden aria-hidden="true">Wis jaarfilter</button> -->
       </section>
 
+      <!-- Visualisatie-instellingen -->
       <section id="visual-options" class="kaart-paneel">
         <h3>Visualisatie</h3>
-         <label for="method-select" style="display:none;">Classificatie:</label>
+
+        <!-- Classificatiemethode: verborgen — staat standaard op 'quantile' -->
+        <label for="method-select" class="sr-only">Classificatie:</label>
         <select id="method-select" hidden>
           <option value="quantile">Kwantiel</option>
           <option value="equal">Equal interval</option>
@@ -66,47 +82,53 @@
 
         <label for="opacity-range">Dekking:</label>
         <input id="opacity-range" type="range" min="0" max="1" step="0.05" />
-        <div style="margin-top:10px;">
+
+        <div class="actie-rij">
           <button id="start-tour" type="button">Rondleiding starten</button>
           <button id="open-split-screen" type="button">Splitscherm</button>
         </div>
       </section>
 
+      <!-- Variabele-selectie — selectoren worden dynamisch aangemaakt door app.js -->
       <section id="controls" class="kaart-paneel">
         <h3>Variabele</h3>
         <label for="field-select">Selecteer variabele(s):</label>
         <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
-          <div class="hint">Klik op "Variabele toevoegen" om een extra keuzelijst te maken en een variabele toe te voegen aan de gebieden.</div>
+          <div class="hint">Klik op "Variabele toevoegen" om een variabele aan de kaart toe te voegen.</div>
         </div>
-        <div style="margin-top:6px;">
+        <div class="actie-rij">
           <button id="add-variable">Variabele toevoegen</button>
         </div>
       </section>
 
+      <!-- Stories — menu wordt gevuld door stories.js -->
       <section id="stories-area" class="kaart-paneel stories-paneel">
         <h3>Stories</h3>
-        <p class="uitleg-compact">Kies een verhaal om een fullscreen beeld, kaartfocus en statistieken in een vaste volgorde te tonen.</p>
+        <p class="uitleg-compact">
+          Kies een verhaal om een fullscreen beeld, kaartfocus en statistieken
+          in een vaste volgorde te tonen.
+        </p>
         <div id="stories-menu" class="stories-menu" aria-label="Stories menu"></div>
       </section>
 
+      <!-- Filter op waarde / uitschieters — standaard verborgen -->
       <section id="filter-area" class="kaart-paneel kaart-paneel-filter" hidden>
         <h3>Filter en uitschieters</h3>
         <p class="uitleg-compact">
-          De verdeling van de gekozen variabele kan worden beinvloed door extreme waarden.
-          Gebruik filters of percentiel-clips om uitschieters te dempen.
+          Extreme waarden kunnen de kleurverdeling vertekenen.
+          Gebruik min/max of percentielgrenzen om uitschieters te beperken.
         </p>
 
         <div class="filter-rij">
           <label for="filter-min">Min:</label>
-          <input id="filter-min" value="0.01" type="number" />
-
+          <input id="filter-min" type="number" value="0.01" />
           <label for="filter-max">Max:</label>
           <input id="filter-max" type="number" />
         </div>
 
         <div class="filter-rij filter-rij-percentiel">
           <label for="filter-lowpct">Trim percentielen:</label>
-          <input id="filter-lowpct" type="number" min="0" max="50" step="1" placeholder="onder %" />
+          <input id="filter-lowpct" type="number" min="0"  max="50"  step="1" placeholder="onder %" />
           <input id="filter-highpct" type="number" min="50" max="100" step="1" placeholder="boven %" />
         </div>
 
@@ -117,26 +139,38 @@
         </div>
       </section>
 
+      <!-- API-laden — PDOK-URLs zijn vooringevuld, extra URLs kunnen toegevoegd worden -->
       <section id="api-area" class="kaart-paneel">
-        <h3>API's - Laad meerdere tegelijk</h3>
+        <h3>API's laden</h3>
         <div class="multi-api-controls">
           <div id="api-urls-list" class="api-urls-list">
+
+            <!-- Vooringevulde PDOK-buurten URL (Heerlen) -->
             <div class="api-url-item" data-api="pdok-buurten">
-              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" /> //readonly
+              <input type="text" class="api-url-input" readonly
+                value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" />
               <label class="api-url-label">PDOK Buurten (Heerlen)</label>
             </div>
+
+            <!-- Vooringevulde PDOK-wijken URL (Heerlen) -->
             <div class="api-url-item" data-api="pdok-wijken">
-              <input type="text" class="api-url-input" value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json"  /> //readonly
+              <input type="text" class="api-url-input" readonly
+                value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" />
               <label class="api-url-label">PDOK Wijken (Heerlen)</label>
             </div>
+
           </div>
-          <div style="margin-top: var(--ruimte-2);">
+
+          <div class="actie-rij">
             <button id="add-api-url">Voeg API URL toe</button>
             <button id="load-all-apis">Laad alle API's</button>
+            <!-- Koppelt CBS-kerncijfers (84799NED) aan de geladen geometrielaag -->
+            <button id="load-cbs-data">CBS kerncijfers laden</button>
           </div>
         </div>
       </section>
 
+      <!-- Bestandimport — standaard verborgen -->
       <section id="import-area" class="kaart-paneel" hidden>
         <h3>Bestand importeren</h3>
         <input id="file-input" type="file" />
@@ -147,10 +181,24 @@
         </div>
       </section>
 
-      
     </aside>
-  </div>
+    <!-- einde #sidebar -->
 
+  </div>
+  <!-- einde #app -->
+
+
+  <!-- ── SCRIPTS ───────────────────────────────────────────────────────────
+    Volgorde is belangrijk:
+    1. Leaflet + D3 + Proj4  — externe bibliotheken
+    2. app.js                — kaart-initialisatie en globale state (eerst)
+    3. tour-introjs.js       — rondleiding (na intro.js)
+    4. map.js / kaart.js     — choropleth-visualisatie
+    5. importer.js           — bestandimport
+    6. multi-loader.js       — API-laden en jaarfilter
+    7. d3_charts.js          — vergelijkgrafieken
+    8. stories.js            — verhalen/stories
+  ─────────────────────────────────────────────────────────────────────── -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/vendor/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
@@ -163,17 +211,24 @@
   <script src="js/d3_charts.js"></script>
   <script src="js/stories.js"></script>
 
-  <!-- Tour modal -->
+
+  <!-- ── TOUR MODAL ────────────────────────────────────────────────────────
+    Wordt getoond bij eerste bezoek. Zichtbaarheid wordt beheerd door tour-introjs.js.
+  ─────────────────────────────────────────────────────────────────────── -->
   <div id="tour-modal" class="tour-modal" hidden aria-hidden="true">
     <div class="tour-modal-overlay"></div>
     <div class="tour-modal-panel" role="dialog" aria-modal="true" aria-labelledby="tour-title">
       <h2 id="tour-title">Rondleiding</h2>
-      <p id="tour-message">Wil je een korte rondleiding door de interface? De rondleiding legt rustig uit wat elke controle doet en is makkelijk aan te passen.</p>
+      <p id="tour-message">
+        Wil je een korte rondleiding door de interface?
+        De rondleiding legt uit wat elke knop doet en is makkelijk te sluiten.
+      </p>
       <div class="tour-modal-actions">
         <button id="tour-yes">Ja, start rondleiding</button>
         <button id="tour-no">Nee, bedankt</button>
       </div>
     </div>
   </div>
+
 </body>
 </html>

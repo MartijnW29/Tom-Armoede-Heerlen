@@ -3,29 +3,54 @@
 // Gelijktijdig laden van meerdere bestanden/API's en jaar-filtering
 // ============================================================================
 
+
 // ============================================================================
-// CONFIGURATIE — Pas hier aan voor jouw project
+// CONFIGURATIE — Pas hier de laderinstellingen aan
 // ============================================================================
 
 const MULTI_LOADER_CONFIG = {
-  minYear:    2015,                                           // Vroegste jaar in de slider
-  maxYear:    2030,                                           // Laatste jaar in de slider
-  yearField:  'jaar',                                         // Primaire veldnaam voor jaar
-  yearFields: ['jaar', 'year', 'Jaar', 'Year', 'JAAR'],      // Alle mogelijke jaar-veldnamen
+
+  // --- Jaarslider ---
+  minYear:   2015,                                        // Vroegste jaar in de slider
+  maxYear:   2030,                                        // Laatste jaar in de slider
+
+  // --- Jaar-veldnamen (in volgorde van prioriteit) ---
+  yearField:  'jaar',
+  yearFields: ['jaar', 'year', 'Jaar', 'Year', 'JAAR'],
+
+  // --- CBS OData API (kerncijfers wijken en buurten) ---
+  // De server gebruikt ODataApi v3 (herkenbaar aan "odata.metadata" zonder @).
+  // Tabelcodes per jaar:
+  //   84799NED = 2020 | 85619NED = 2021 | 85959NED = 2022 | 86005NED = 2023 | 85984NED = 2024
+  cbsOdataUrl: 'https://opendata.cbs.nl/ODataApi/OData/84799NED/TypedDataSet',
+
+  // Gemeentecode voor Heerlen — wordt gebruikt om CBS-rijen te filteren in JS
+  // (server-side $filter werkt niet betrouwbaar door trailing spaties in CBS-codes)
+  cbsGemeenteCode: '0917',
+
+  // Veld in CBS-data dat overeenkomt met de buurt/wijkcode in de PDOK-geometrielaag
+  cbsKoppelveld:    'WijkenEnBuurten',  // CBS-kant  (wordt getrimd voor vergelijking)
+  pdokKoppelveld:   'statcode',         // PDOK-kant (wordt getrimd voor vergelijking)
+
+  // Velden die NIET als datavariabelen getoond worden (identificatie/meta)
+  cbsUitsluitVelden: ['ID', 'WijkenEnBuurten', 'Codering_3'],
 };
+
 
 // ============================================================================
 // GLOBALE STATE — Gedeeld tussen alle loader-functies
 // ============================================================================
 
 window.multiLoaderState = {
-  selectedFiles:  [],     // Geselecteerde bestanden (File-objecten)
-  apiUrls:        [],     // Ingevoerde API-URL's
-  mergedData:     null,   // Samengevoegde FeatureCollection (na laden)
-  originalData:   null,   // Originele data vóór jaarfiltering
-  yearFilter:     null,   // Actief geselecteerd jaar (null = alle jaren)
-  availableYears: [],     // Unieke jaren aanwezig in de data
+  selectedFiles:  [],   // Geselecteerde bestanden (File-objecten)
+  apiUrls:        [],   // Ingevoerde API-URL's
+  mergedData:     null, // Samengevoegde FeatureCollection (na laden)
+  originalData:   null, // Originele data vóór jaarfiltering
+  yearFilter:     null, // Actief geselecteerd jaar (null = alle jaren)
+  availableYears: [],   // Unieke jaren aanwezig in de data
+  cbsData:        null, // Geladen CBS-kerncijfers (als object: code → properties)
 };
+
 
 // ============================================================================
 // HULPFUNCTIES — Jaar-detectie
@@ -64,6 +89,7 @@ function getAvailableYears(fc) {
   return Array.from(jaren).sort((a, b) => a - b);
 }
 
+
 // ============================================================================
 // HULPFUNCTIES — Data-samenvoeging
 // ============================================================================
@@ -89,14 +115,152 @@ function filterFeaturesByYear(fc, year) {
   };
 }
 
+
+// ============================================================================
+// CBS ODATA — Laden en koppelen van kerncijfers
+// ============================================================================
+
+/**
+ * Haalt CBS-kerncijfers op via de ODataApi v3 en retourneert een opzoektabel:
+ *   { [buurt/wijkcode]: { ...numerieke velden... } }
+ *
+ * Belangrijke eigenaardigheden van de CBS v3 API:
+ *   - Paginering via "odata.nextLink" (zonder @, dat is v4-syntax).
+ *   - $filter met substringof() werkt WEL in v3 (startswith() niet).
+ *   - CBS-codes bevatten trailing spaties (bijv. 'GM0917    ') — altijd trimmen.
+ *   - Respons heeft `value`-array met alle rijen.
+ *
+ * @returns {Promise<Object>} Opzoektabel geïndexeerd op getrimde buurt/wijkcode
+ */
+async function laadCbsKerncijfers() {
+  const uitsluit     = new Set(MULTI_LOADER_CONFIG.cbsUitsluitVelden);
+  const gemeenteCode = MULTI_LOADER_CONFIG.cbsGemeenteCode;
+  const opzoek       = {};
+
+  // substringof is de v3-manier om op een deelstring te filteren.
+  // We filteren op de gemeentecode zodat we alleen Heerlen-rijen ophalen.
+  const filter = encodeURIComponent(`substringof('${gemeenteCode}',WijkenEnBuurten)`);
+  let url = `${MULTI_LOADER_CONFIG.cbsOdataUrl}?$filter=${filter}&$format=json`;
+
+  // Pagineer via odata.nextLink (v3 gebruikt geen @ prefix)
+  while (url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`CBS API fout: HTTP ${res.status}`);
+    const json = await res.json();
+
+    for (const rij of (json.value || [])) {
+      // Trim trailing spaties uit de CBS-code
+      const cbsCode = (rij[MULTI_LOADER_CONFIG.cbsKoppelveld] || '').trim();
+      if (!cbsCode) continue;
+
+      // Sla alleen numerieke velden op; sla meta-velden over
+      const props = {};
+      for (const [k, v] of Object.entries(rij)) {
+        if (uitsluit.has(k)) continue;
+        if (typeof v === 'number') {
+          props[k] = v;
+        } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v.trim())) {
+          props[k] = +v.trim();
+        }
+      }
+      opzoek[cbsCode] = props;
+    }
+
+    // v3 paginering: "odata.nextLink" (zonder @)
+    url = json['odata.nextLink'] || json['@odata.nextLink'] || null;
+  }
+
+  if (!Object.keys(opzoek).length) {
+    throw new Error(
+      `Geen CBS-data gevonden voor gemeente ${gemeenteCode}. ` +
+      'Controleer de tabelcode in cbsOdataUrl (bijv. 85984NED voor 2024).'
+    );
+  }
+
+  return opzoek;
+}
+
+/**
+ * Koppelt CBS-kerncijfers aan een PDOK GeoJSON FeatureCollection.
+ * Zoekt per feature de bijbehorende CBS-rij op via de buurt/wijkcode
+ * (beide kanten worden getrimd om spatie-mismatches te voorkomen).
+ * CBS-velden worden alleen geschreven als het veld nog niet bestaat in PDOK-data.
+ *
+ * @param {GeoJSON.FeatureCollection} fc        - PDOK-geometrielaag
+ * @param {Object}                    cbsOpzoek - Opzoektabel uit laadCbsKerncijfers()
+ */
+function koppelCbsAanGeometrie(fc, cbsOpzoek) {
+  if (!fc?.features || !cbsOpzoek) return;
+
+  let gekoppeld = 0;
+  for (const feature of fc.features) {
+    const props = feature.properties || {};
+
+    // Probeer meerdere PDOK-veldnamen voor de buurtcode; trim altijd
+    const code = (
+      props[MULTI_LOADER_CONFIG.pdokKoppelveld] ||
+      props.buurtcode || props.wijkcode ||
+      props.statcode  || props.code || ''
+    ).trim();
+
+    if (!code) continue;
+    const cbsProps = cbsOpzoek[code];
+    if (!cbsProps) continue;
+
+    // Voeg CBS-velden toe zonder bestaande PDOK-velden te overschrijven
+    for (const [k, v] of Object.entries(cbsProps)) {
+      if (!(k in props)) props[k] = v;
+    }
+    feature.properties = props;
+    gekoppeld++;
+  }
+
+  console.log(`CBS-koppeling: ${gekoppeld} van ${fc.features.length} features gekoppeld`);
+}
+
+/**
+ * Laad CBS-kerncijfers en koppel ze aan de actieve geometrielaag.
+ * Vereist dat er al een PDOK-geometrielaag geladen is (via loadAllAPIs).
+ * Geeft statusfeedback in de knoptekst.
+ */
+async function laadEnKoppelCbs() {
+  const btn       = document.getElementById('load-cbs-data');
+  const origTekst = btn?.textContent || 'CBS laden';
+  if (btn) { btn.disabled = true; btn.textContent = 'CBS data laden…'; }
+
+  try {
+    const opzoek = await laadCbsKerncijfers();
+    window.multiLoaderState.cbsData = opzoek;
+
+    const fc = window.multiLoaderState.originalData || window.appData?.lastFC;
+    if (!fc) {
+      alert('Laad eerst een geometrielaag (PDOK buurten/wijken) voordat CBS data gekoppeld kan worden.');
+      if (btn) { btn.disabled = false; btn.textContent = origTekst; }
+      return;
+    }
+
+    koppelCbsAanGeometrie(fc, opzoek);
+
+    // Herlaad veldselectoren en visualisatie zodat CBS-velden zichtbaar worden
+    window.populateFieldSelect?.(fc);
+    window.herllaadVisualisatie?.();
+
+    if (btn) btn.textContent = `✓ CBS gekoppeld (${Object.keys(opzoek).length} gebieden)`;
+  } catch (err) {
+    console.error('CBS laden mislukt:', err);
+    alert('Fout bij laden CBS-data: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = origTekst; }
+  }
+}
+
+
 // ============================================================================
 // SPATIAL HELPERS — Centroid en point-in-polygon (zonder Turf.js)
 // ============================================================================
 
 /**
- * Bereken het centroid (zwaartepunt) van een Polygon of MultiPolygon.
- * Methode: gemiddelde van alle coördinaten van de buitenring(en).
- * Dit is een benadering, maar snel genoeg voor de wijk-buurt matching.
+ * Berekent het centroid van een Polygon of MultiPolygon als gemiddelde
+ * van alle buitenring-coördinaten. Snelle benadering, geen exacte formule.
  */
 function getFeatureCentroid(feature) {
   const geom = feature?.geometry;
@@ -115,18 +279,15 @@ function getFeatureCentroid(feature) {
 
 /**
  * Ray-casting algoritme: bepaalt of een punt binnen een polygoonring valt.
- * Schiet een horizontale straal vanuit het punt en telt kruisingen met de ring.
- * Oneven aantal kruisingen = binnen de polygoon.
+ * Schiet een horizontale straal vanuit het punt en telt kruisingen.
+ * Oneven aantal kruisingen = het punt ligt binnen de ring.
  */
 function pointInRing(point, ring) {
   const [x, y] = point;
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
@@ -139,16 +300,16 @@ function pointInGeometry(point, geom) {
   return false;
 }
 
-/** Geef de meest beschrijvende naam van een feature terug (volgorde: wijknaam → naam → buurtnaam → code). */
+/** Geef de meest beschrijvende naam van een feature terug (wijknaam → naam → buurtnaam → code). */
 function getFeatureName(f) {
   const p = f?.properties || {};
   return p.wijknaam || p.naam || p.name || p.buurtnaam || p.buurt || p.code || null;
 }
 
 /**
- * Koppel wijknamen aan buurten via centroid → point-in-polygon matching.
- * Schrijft het resultaat als `overlapping_wijken` array op elke buurt-feature.
- * Wordt aangeroepen nadat zowel buurten- als wijken-data geladen is.
+ * Koppelt wijknamen aan buurten via centroid → point-in-polygon matching.
+ * Schrijft het resultaat als `overlapping_wijken`-array op elke buurt-feature.
+ * Wordt aangeroepen nadat zowel buurten- als wijken-data geladen zijn.
  */
 function addWijkenToBuurten(buurtenFC, wijkenFC) {
   if (!buurtenFC?.features || !wijkenFC?.features) return;
@@ -168,6 +329,7 @@ function addWijkenToBuurten(buurtenFC, wijkenFC) {
 }
 
 window.addWijkenToBuurten = addWijkenToBuurten;
+
 
 // ============================================================================
 // BESTANDEN LADEN — Meerdere lokale bestanden tegelijk
@@ -207,8 +369,9 @@ async function loadMultipleFiles() {
   }
 }
 
+
 // ============================================================================
-// API LADEN — Meerdere API-eindpunten tegelijk
+// API LADEN — Meerdere PDOK/GeoJSON-eindpunten tegelijk
 // ============================================================================
 
 /**
@@ -231,7 +394,11 @@ function expandUrlsForYearRange(urls) {
   return Array.from(out);
 }
 
-/** Laad alle ingevoerde API-URL's gelijktijdig en toon de data op de kaart. */
+/**
+ * Laad alle ingevoerde API-URL's gelijktijdig en toon de data op de kaart.
+ * Ondersteunt PDOK OGC API (geeft `items`) en standaard GeoJSON (geeft `features`).
+ * Na het laden wordt CBS-data automatisch gekoppeld als die al eerder geladen was.
+ */
 async function loadAllAPIs() {
   const urls = Array.from(document.querySelectorAll('.api-url-input'))
     .map(i => i.value?.trim()).filter(Boolean);
@@ -239,10 +406,24 @@ async function loadAllAPIs() {
   if (!urls.length) { alert('Voer minstens één API-URL in'); return; }
 
   try {
-    // Haal alle URL's (incl. jaar-varianten) gelijktijdig op
     const expandedUrls = expandUrlsForYearRange(urls);
+
+    // CBS OData URLs geven geen GeoJSON — die worden apart afgehandeld via laadEnKoppelCbs().
+    // Filter ze hier weg zodat ze de GeoJSON-parser niet laten crashen.
+    const geoJsonUrls = expandedUrls.filter(u => !u.includes('opendata.cbs.nl'));
+    const cbsUrls     = expandedUrls.filter(u =>  u.includes('opendata.cbs.nl'));
+
+    if (cbsUrls.length) {
+      console.info('CBS-URLs worden overgeslagen in loadAllAPIs — gebruik de "CBS laden" knop:', cbsUrls);
+    }
+
+    if (!geoJsonUrls.length) {
+      alert('Alle ingevoerde URLs zijn CBS OData URLs. Gebruik de "CBS laden" knop om CBS-kerncijfers te koppelen.');
+      return;
+    }
+
     const results = await Promise.all(
-      expandedUrls.map(url =>
+      geoJsonUrls.map(url =>
         fetch(url)
           .then(res => { if (!res.ok) throw new Error(`Status ${res.status}`); return res.json(); })
           .catch(err => { console.warn(`Fout bij laden ${url}:`, err); return null; })
@@ -252,15 +433,15 @@ async function loadAllAPIs() {
     const collections = results
       .filter(Boolean)
       .map(r => {
-        // OGC API Features gebruikt `items` in plaats van `features`
+        // PDOK OGC API gebruikt `items`, standaard GeoJSON gebruikt `features`
         if (!r.features && Array.isArray(r.items)) return { type: 'FeatureCollection', features: r.items };
         return r;
       })
       .filter(fc => Array.isArray(fc?.features));
 
-    if (!collections.length) { alert("Geen geldige data ontvangen van API's"); return; }
+    if (!collections.length) { alert("Geen geldige GeoJSON data ontvangen van de API's"); return; }
 
-    // Koppel wijknamen aan buurten als beide aanwezig zijn (PDOK data)
+    // Koppel wijknamen aan buurten als beide datasets aanwezig zijn (PDOK)
     try {
       const buurtFC = collections.find(fc => fc.features.some(f => f.properties?.buurt || f.properties?.buurtnaam));
       const wijkFC  = collections.find(fc => fc.features.some(f => f.properties?.wijk  || f.properties?.wijknaam));
@@ -271,12 +452,22 @@ async function loadAllAPIs() {
       }
     } catch (e) { console.warn('Kon wijk-buurt overlaps niet berekenen:', e); }
 
-    verwerkGeladen(mergeFeatureCollections(collections));
+    const samengevoegd = mergeFeatureCollections(collections);
+    verwerkGeladen(samengevoegd);
+
+    // Als CBS-data al eerder geladen was, direct koppelen aan de nieuwe geometrie
+    if (window.multiLoaderState.cbsData) {
+      koppelCbsAanGeometrie(samengevoegd, window.multiLoaderState.cbsData);
+      window.populateFieldSelect?.(samengevoegd);
+      window.herllaadVisualisatie?.();
+    }
+
   } catch (err) {
     console.error('Fout bij multi-API loading:', err);
     alert("Fout bij laden van API's: " + err.message);
   }
 }
+
 
 // ============================================================================
 // VERWERKING — Na laden: opslaan, tonen, slider updaten
@@ -296,7 +487,6 @@ function verwerkGeladen(merged) {
 
 /** Toon een FeatureCollection als grijze basislaag op de kaart en zoom ernaar. */
 function toonGemergedData(fc) {
-  // Verwijder vorige lagen
   for (const sleutel of ['baseGeoLayer', 'choroplethLayer']) {
     if (window.appData[sleutel]) {
       window.appData.dataLayer.removeLayer(window.appData[sleutel]);
@@ -310,8 +500,9 @@ function toonGemergedData(fc) {
   window.bringSmallPolygonsToFront?.(window.appData.dataLayer);
   window.appData.baseGeoLayer = laag;
 
-  try { window.appData.map.fitBounds(laag.getBounds(), { maxZoom: 14 }); } catch (e) { /* negeren */ }
+  try { window.appData.map.fitBounds(laag.getBounds(), { maxZoom: 14 }); } catch (_) {}
 }
+
 
 // ============================================================================
 // JAAR-SLIDER — Initialiseren, renderen en filteren
@@ -319,10 +510,10 @@ function toonGemergedData(fc) {
 
 /** Initialiseer de jaarslider op basis van beschikbare jaren in de data. */
 function updateYearSlider(fc) {
-  const slider       = document.getElementById('year-slider');
-  const display      = document.getElementById('year-display');
-  const clearButton  = document.getElementById('year-filter-clear');
-  const jaarRange    = getYearRange(fc);
+  const slider      = document.getElementById('year-slider');
+  const display     = document.getElementById('year-display');
+  const clearButton = document.getElementById('year-filter-clear');
+  const jaarRange   = getYearRange(fc);
   if (!jaarRange || !slider) return;
 
   const alleJaren = getAvailableYears(fc).filter(
@@ -334,12 +525,10 @@ function updateYearSlider(fc) {
   ].filter(Number.isFinite);
 
   window.multiLoaderState.availableYears = jaren;
+  slider.min  = String(jaren[0]);
+  slider.max  = String(jaren.at(-1));
+  slider.step = '1';
 
-  slider.min   = String(jaren[0]);
-  slider.max   = String(jaren.at(-1));
-  slider.step  = '1';
-
-  // Standaard jaar: 2024 als beschikbaar, anders het laatste jaar
   const standaardJaar = jaren.includes(2024) ? 2024 : jaren.at(-1);
   slider.value = String(standaardJaar);
 
@@ -352,15 +541,15 @@ function updateYearSlider(fc) {
 
 /**
  * Teken streepjes en labels onder de jaarslider.
- * Bij meer dan 16 jaren worden labels uitgedund om overbodige overlap te voorkomen.
+ * Bij meer dan 16 jaren worden labels uitgedund om overlapping te voorkomen.
  */
 function renderYearTicks(slider, jaren) {
   const container = document.getElementById('year-ticks');
   if (!container || !slider || !jaren?.length) return;
 
-  const minJ     = parseInt(slider.min, 10);
-  const maxJ     = parseInt(slider.max, 10);
-  const span     = Math.max(maxJ - minJ, 1);
+  const minJ      = parseInt(slider.min, 10);
+  const maxJ      = parseInt(slider.max, 10);
+  const span      = Math.max(maxJ - minJ, 1);
   const labelStap = jaren.length <= 16 ? 1 : Math.ceil(jaren.length / 12);
 
   container.innerHTML = '';
@@ -370,18 +559,17 @@ function renderYearTicks(slider, jaren) {
 
     const tick = document.createElement('span');
     Object.assign(tick, { className: 'year-tick', title: String(jaar) });
-    tick.style.left = left;
+    tick.style.left   = left;
     tick.dataset.year = String(jaar);
     tick.dataset.edge = edge;
 
     const label = document.createElement('span');
-    label.className   = 'year-tick-label';
-    label.style.left  = left;
+    label.className    = 'year-tick-label';
+    label.style.left   = left;
     label.dataset.edge = edge;
-    label.textContent = (i % labelStap === 0 || i === jaren.length - 1) ? String(jaar) : '';
+    label.textContent  = (i % labelStap === 0 || i === jaren.length - 1) ? String(jaar) : '';
 
-    container.appendChild(tick);
-    container.appendChild(label);
+    container.append(tick, label);
   });
 }
 
@@ -396,15 +584,13 @@ function updateYearTickHighlight(jaar) {
 }
 
 /**
- * Snap een jaar naar het dichtstbijzijnde beschikbare jaar in de data.
- * Voorkomt dat de slider op een jaar staat waarvoor geen data is.
+ * Snap een jaar naar het dichtstbijzijnde beschikbare jaar.
+ * Voorkomt dat de slider op een jaar staat waarvoor geen data beschikbaar is.
  */
 function snapYearToAvailableYear(jaar) {
   const jaren = window.multiLoaderState.availableYears || [];
   if (!Number.isFinite(jaar) || !jaren.length) return Number.isFinite(jaar) ? jaar : null;
-  return jaren.reduce((best, kandidaat) =>
-    Math.abs(kandidaat - jaar) < Math.abs(best - jaar) ? kandidaat : best
-  , jaren[0]);
+  return jaren.reduce((best, k) => Math.abs(k - jaar) < Math.abs(best - jaar) ? k : best, jaren[0]);
 }
 
 /** Lees de sliderwaarde, snap naar beschikbaar jaar en pas het filter toe. */
@@ -431,10 +617,9 @@ function applyYearFilter(jaar) {
   const original = window.multiLoaderState.originalData || window.appData.lastFC;
   if (!original) return;
 
-  window.multiLoaderState.yearFilter = jaar;
-  window.appData = window.appData || {};
-  window.appData.lastFC              = filterFeaturesByYear(original, jaar);
-  window.appData.skipFitOnNextRender = true;  // Voorkomt ongewenste zoom-reset
+  window.multiLoaderState.yearFilter    = jaar;
+  window.appData.lastFC                 = filterFeaturesByYear(original, jaar);
+  window.appData.skipFitOnNextRender    = true;  // Voorkomt ongewenste zoom-reset
 
   window.herllaadVisualisatie?.();
 }
@@ -455,6 +640,7 @@ function clearYearFilter() {
   window.herllaadVisualisatie?.();
 }
 
+
 // ============================================================================
 // UI-BEHEER — API-URL velden dynamisch toevoegen/verwijderen
 // ============================================================================
@@ -465,7 +651,7 @@ function addApiUrlInput() {
   if (!list) return;
 
   const item = document.createElement('div');
-  item.className = 'api-url-item';
+  item.className     = 'api-url-item';
   item.style.cssText = 'display:flex;align-items:center;gap:var(--ruimte-2)';
 
   const input = document.createElement('input');
@@ -474,8 +660,8 @@ function addApiUrlInput() {
   input.placeholder = `API URL ${list.children.length + 1}`;
 
   const verwijderBtn = document.createElement('button');
-  verwijderBtn.type      = 'button';
-  verwijderBtn.className = 'remove-api-url';
+  verwijderBtn.type        = 'button';
+  verwijderBtn.className   = 'remove-api-url';
   verwijderBtn.textContent = 'Verwijder';
   verwijderBtn.addEventListener('click', () => { item.remove(); updateRemoveButtons(); });
 
@@ -495,7 +681,7 @@ function updateRemoveButtons() {
 
 /** Update de weergave van geselecteerde bestanden onder het bestandsinvoerveld. */
 function updateFileList() {
-  const files   = document.getElementById('multi-file-input')?.files;
+  const files    = document.getElementById('multi-file-input')?.files;
   const fileList = document.getElementById('file-list');
   if (!fileList) return;
 
@@ -510,23 +696,28 @@ function updateFileList() {
   }
 }
 
+
 // ============================================================================
 // INITIALISATIE — Event-listeners koppelen na laden van de pagina
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('load-multiple-files')?.addEventListener('click', loadMultipleFiles);
-  document.getElementById('multi-file-input')?.addEventListener('change', updateFileList);
-  document.getElementById('add-api-url')?.addEventListener('click', addApiUrlInput);
-  document.getElementById('load-all-apis')?.addEventListener('click', loadAllAPIs);
-  document.getElementById('year-slider')?.addEventListener('input', updateYearDisplay);
-  document.getElementById('year-filter-clear')?.addEventListener('click', clearYearFilter);
+  document.getElementById('load-multiple-files')?.addEventListener('click',  loadMultipleFiles);
+  document.getElementById('multi-file-input')?.addEventListener('change',    updateFileList);
+  document.getElementById('add-api-url')?.addEventListener('click',          addApiUrlInput);
+  document.getElementById('load-all-apis')?.addEventListener('click',        loadAllAPIs);
+  document.getElementById('year-slider')?.addEventListener('input',          updateYearDisplay);
+  document.getElementById('year-filter-clear')?.addEventListener('click',    clearYearFilter);
+
+  // CBS-knop: voeg toe in HTML als <button id="load-cbs-data">CBS kerncijfers laden</button>
+  document.getElementById('load-cbs-data')?.addEventListener('click', laadEnKoppelCbs);
 
   updateRemoveButtons();
 
-  // Automatisch laden bij start (kleine vertraging zodat andere scripts klaar zijn)
+  // Automatisch laden bij start (korte vertraging zodat andere scripts klaar zijn)
   setTimeout(() => { try { loadAllAPIs(); } catch (e) { console.warn('Auto-load mislukt:', e); } }, 200);
 });
+
 
 // ============================================================================
 // GLOBALE EXPORTS — Beschikbaar maken voor andere scripts
@@ -535,6 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
 Object.assign(window, {
   loadMultipleFiles,
   loadAllAPIs,
+  laadEnKoppelCbs,
   applyYearFilter,
   clearYearFilter,
   getYearFromFeature,

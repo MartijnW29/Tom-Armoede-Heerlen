@@ -311,7 +311,7 @@
     `;
   }
 
-  // ==================== OVERIGE FUNCTIES (uit jouw origineel) ====================
+  // ==================== OVERIGE FUNCTIES ====================
   function ensureOverlay(state) {
     if (state.overlay) return state.overlay;
 

@@ -10,13 +10,7 @@
   const NF_CURRENCY = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
   const NO_DATA_TEXT = 'geen data';
 
-  function getStoryDataUrl(year) {
-  if (!year) {
-    const slider = document.getElementById('year-slider');
-    year = slider ? parseInt(slider.value, 10) : null;
-  }
-  return year ? `data/heerlen_buurten_${year}.geojson` : 'data/heerlen_buurten.geojson';
-}
+  const STORY_DATA_URL = 'data/heerlen_buurten.geojson';
 
 
   let storyDataCache = null;
@@ -143,38 +137,48 @@
     return storyDataCache;
   }
 
-  async function ensureStoryDataCollection(year) {
-  // Haal altijd de originele (ongefilterde) data op
-  const original = window.multiLoaderState?.originalData || null;
-
-  if (original && Array.isArray(original.features) && original.features.length > 0) {
-    // Filter op jaar als opgegeven
-    if (year && typeof window.filterFeaturesByYear === 'function') {
-      const filtered = window.filterFeaturesByYear(original, year);
-      console.log(`📅 Story data gefilterd op jaar ${year}: ${filtered.features.length} features`);
-      return filtered;
+  function getStoryDataUrl(year) {
+    if (!year) {
+      const slider = document.getElementById('year-slider');
+      year = slider ? parseInt(slider.value, 10) : null;
     }
-    return original;
+    return year ? `data/heerlen_buurten_${year}.geojson` : STORY_DATA_URL;
   }
 
-  // Geen data in memory: gebruik cache of laad standaard bestand
-  if (storyDataCache) return storyDataCache;
-  if (storyDataPromise) return storyDataPromise;
+  /**
+   * Haal de FeatureCollection op die de story moet gebruiken.
+   * - Met jaar: filtert de originele (ongefilterde) dataset op dat jaar.
+   * - Zonder jaar: gebruikt bestaande cache of laadt het standaardbestand.
+   */
+  async function ensureStoryDataCollection(year) {
+    const original = window.multiLoaderState?.originalData || null;
 
-  storyDataPromise = fetch(getStoryDataUrl(), { cache: 'no-cache' })
-    .then(r => r.ok ? r.json() : Promise.reject())
-    .then(fc => {
-      console.log(`✅ ${fc.features.length} buurten geladen`);
-      return setStoryDataCache(fc);
-    })
-    .catch(() => setStoryDataCache(null))
-    .finally(() => {
-      storyDataPromise = null;
-      dispatchStoryEvent('story:data-ready', { ready: true });
-    });
+    if (original && Array.isArray(original.features) && original.features.length > 0) {
+      if (year && typeof window.filterFeaturesByYear === 'function') {
+        const filtered = window.filterFeaturesByYear(original, year);
+        console.log(`📅 Story data gefilterd op jaar ${year}: ${filtered.features.length} features`);
+        return filtered;
+      }
+      return original;
+    }
 
-  return storyDataPromise;
-}
+    if (storyDataCache) return storyDataCache;
+    if (storyDataPromise) return storyDataPromise;
+
+    storyDataPromise = fetch(getStoryDataUrl(), { cache: 'no-cache' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(fc => {
+        console.log(`✅ ${fc.features.length} buurten geladen`);
+        return setStoryDataCache(fc);
+      })
+      .catch(() => setStoryDataCache(null))
+      .finally(() => {
+        storyDataPromise = null;
+        dispatchStoryEvent('story:data-ready', { ready: true });
+      });
+
+    return storyDataPromise;
+  }
 
   function getMap() {
     return window.appData?.map || window.map || null;
@@ -192,7 +196,7 @@
     return String(value ?? '').trim().toLowerCase();
   }
 
-  // ==================== VERBETERDE FEATURE MATCHING ====================
+  // ==================== FEATURE MATCHING ====================
   function findFeatureInCollection(fc, focus) {
     if (!fc?.features || !focus) return null;
 
@@ -311,7 +315,7 @@
     `;
   }
 
-  // ==================== OVERIGE FUNCTIES ====================
+  // ==================== OVERLAY & MENU OPBOUW ====================
   function ensureOverlay(state) {
     if (state.overlay) return state.overlay;
 
@@ -380,10 +384,10 @@
     return state.menu;
   }
 
-  // ==================== MOOIE ARMOEDE STORY ====================
+  // ==================== STORY CATALOGUS ====================
   function storyCatalog() {
     return [
-      // === NIEUW VERHAAL: ARMOEDE IN HEERLEN ===
+      // === VERHAAL: ARMOEDE IN HEERLEN ===
       {
         id: 'armoede-heerlen',
         title: 'Armoede in Heerlen',
@@ -391,7 +395,7 @@
         colors: ['#1a3a5e', '#e63946', '#f4a261'],
         slides: [
           {
-            slide_type: 'voorpagina',
+            kind: 'hero',
             overline: 'Verhaal over onze stad',
             title: 'Armoede in Heerlen',
             body: 'Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.',
@@ -399,48 +403,48 @@
             backgroundImage: createBackdrop('Armoede in Heerlen', 'De onzichtbare realiteit achter de cijfers', ['#1a3a5e', '#e63946', '#f4a261'])
           },
           {
-            slide_type: 'kaart',
+            kind: 'map',
             year: 2024,
             overline: 'De realiteit',
             title: 'Waar armoede het hardst toeslaat',
-            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, slide_typeeren en ouderen.',
+            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
             anchor: 'bottom-left',
             field: 'aantal_huishoudens',
-            palette: 'Oranges',
-            focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
+            palette: 'oranges',
+            focus: { field: 'buurtnaam', value: 'Heksenberg' },
             stats: [
-              { label: 'Inwoners', field: 'aantal_inwoners'},
-              { label: 'Huishoudens', field: 'aantal_huishoudens'},
-              { label: 'Werklozen', field: 'aantal_personen_met_een_aow_uitkering_totaal'},
-              { label: 'Gemiddeld inkomen', field: 'gemiddeld_inkomen_per_inwoner'}
+              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
+              { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
+              { label: 'Werklozen', field: 'werkloosheid', suffix: '' },
+              { label: 'Gemiddeld inkomen', field: 'inkomen_mediaan', format: 'currency' }
             ],
             mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
           },
           {
-            slide_type: 'kaart',
+            kind: 'map',
             year: 2024,
-            overline: 'slide_typeeren in armoede',
+            overline: 'Kinderen in armoede',
             title: 'De toekomst mag niet verloren gaan',
-            body: 'slide_typeeren die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
-            anchor: 'bottom-left',
-            field: 'aantal_inwoners',
-            palette: 'Blues',
+            body: 'Kinderen die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
+            anchor: 'middle-right',
+            field: 'aantal_jongeren_met_jeugdzorg_in_natura',
+            palette: 'oranges',
             focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
             stats: [
-              { label: 'Inwoners', field: 'aantal_inwoners'},
-              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum'},
-              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura'}
+              { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
+              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', format: 'integer' },
+              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' }
             ]
           },
           {
-            slide_type: 'summary',
+            kind: 'summary',
             year: 2024,
             overline: 'Hoop en actie',
             title: 'Heerlen kan het beter',
             body: 'Armoede is niet onvermijdelijk. Door samen te werken — gemeente, bewoners, bedrijven en organisaties — kunnen we de cirkel doorbreken. Veel buurten laten al zien dat het anders kan.',
-            anchor: 'top-left',
+            anchor: 'top-right',
             stats: [
-              { label: '', field: ''}
+              { label: 'Samen kunnen we', value: 'meer', note: 'Ondersteuning, onderwijs en werkgelegenheid zijn de sleutels' }
             ]
           }
         ]
@@ -454,14 +458,16 @@
     prevButton: null, nextButton: null, closeButton: null,
     card: null, kicker: null, title: null, copy: null,
     stats: null, note: null, menu: null,
-    storyId: null, slideIndex: 0, highlightedLayers: [], keyHandler: null
+    storyId: null, slideIndex: 0, highlightedLayers: [], keyHandler: null,
+    _storyDrivenYearChange: false,
+    _focusRenderToken: 0 // voorkomt dat een oude/trage retry een nieuwere slide overschrijft
   };
 
   function getStoryById(id) {
     return storyCatalog().find(s => s.id === id) || null;
   }
 
-  function buildStoryMenu() { /* ... jouw originele buildStoryMenu ... */ 
+  function buildStoryMenu() {
     const menu = ensureMenu(state);
     if (!menu) return;
     const current = getFeatureCollection();
@@ -486,86 +492,113 @@
     });
   }
 
-  function applyStoryScene(slide, fc) {
-  // ── 1. Year-slider ────────────────────────────────────────────────
-  if (slide?.year !== undefined) {
+  // ==================== SCENE TOEPASSING — gestructureerd in duidelijke stappen ====================
+
+  /**
+   * Stap 1: Year-slider synchroniseren met de slide.
+   *
+   * Vuurt de input/change-events ALLEEN af als het jaar daadwerkelijk
+   * wijzigt. Twee opeenvolgende slides met hetzelfde jaar (zoals slide 2
+   * en 3 in "Armoede in Heerlen", beide year: 2024) lieten deze events
+   * vroeger toch afgaan — en als de multi-loader daar zelf (los van onze
+   * eigen refreshOpenStory-listener, die we al onderdrukken via
+   * _storyDrivenYearChange) op reageert met een eigen herlaad/redraw van
+   * de kaartdata, is dat een goede kandidaat voor een ongewenste
+   * fitBounds-naar-volledige-extent — zichtbaar als "uitzoomen" bij het
+   * doorklikken naar een slide met hetzelfde jaar als de vorige.
+   */
+  function applyYearToSlider(slide) {
+    if (slide?.year === undefined) return;
+
     const slider = document.getElementById('year-slider');
     const display = document.getElementById('year-display');
-    if (slider) {
-      slider.value = String(slide.year);
-      if (display) display.textContent = String(slide.year);
-      state._storyDrivenYearChange = true;
-      slider.dispatchEvent(new Event('input',  { bubbles: true }));
-      slider.dispatchEvent(new Event('change', { bubbles: true }));
-      state._storyDrivenYearChange = false;
-    }
+    if (!slider) return;
+
+    const newYear = String(slide.year);
+    const yearOngewijzigd = slider.value === newYear;
+
+    slider.value = newYear;
+    if (display) display.textContent = newYear;
+
+    if (yearOngewijzigd) return;
+
+    // Onderdruk de change-listener van multi-loader zodat er geen
+    // dubbele/oneindige render-cyclus ontstaat.
+    state._storyDrivenYearChange = true;
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    slider.dispatchEvent(new Event('change', { bubbles: true }));
+    state._storyDrivenYearChange = false;
   }
 
-  // ── 2. Palet ─────────────────────────────────────────────────────
-  if (slide?.palette) {
+  /**
+   * Stap 2: Palet synchroniseren met de slide.
+   */
+  function applyPaletteToUi(slide) {
+    if (!slide?.palette) return;
     const paletteSelect = document.getElementById('palette-select');
     if (paletteSelect) paletteSelect.value = slide.palette;
   }
 
-  // ── 3. Variabelen resetten + instellen ────────────────────────────
-  if (slide?.field && typeof window.addFieldSelector === 'function') {
+  /**
+   * Stap 3: Variabelen-selectors vervangen door de stats-fields van de slide,
+   * in de volgorde waarin ze in slide.stats staan.
+   */
+  function applyVariablesToUi(slide) {
     const selectorsDiv = document.getElementById('selectors-div');
-    if (selectorsDiv) selectorsDiv.innerHTML = '';
+    if (!selectorsDiv) return;
 
-    const slideFields = (slide?.stats || [])
-    .map(s => s.field)
-    .filter(f => f && (window.availableFields || []).includes(f));
+    selectorsDiv.innerHTML = '';
 
-    // Bouw rijen handmatig zonder herllaadVisualisatie te triggeren
-    
-const container = document.getElementById('field-select');
-if (selectorsDiv && container) {
-  slideFields.forEach(field => {
-    const row = document.createElement('div');
-    row.className = 'field-row';
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
+    const statsFields = (slide?.stats || [])
+      .map(s => s.field)
+      .filter(f => f && (window.availableFields || []).includes(f));
 
-    const sel = document.createElement('select');
-    sel.className = 'field-select-item';
-    sel.style.minWidth = '180px';
+    statsFields.forEach(field => {
+      const row = document.createElement('div');
+      row.className = 'field-row';
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
 
-    const noneOpt = document.createElement('option');
-    noneOpt.value = '';
-    noneOpt.textContent = '-- geen --';
-    sel.appendChild(noneOpt);
+      const sel = document.createElement('select');
+      sel.className = 'field-select-item';
+      sel.style.minWidth = '180px';
 
-    (window.availableFields || []).forEach(f => {
-      const opt = document.createElement('option');
-      opt.value = f;
-      opt.textContent = f;
-      if (f === field) opt.selected = true;
-      sel.appendChild(opt);
+      const noneOpt = document.createElement('option');
+      noneOpt.value = '';
+      noneOpt.textContent = '-- geen --';
+      sel.appendChild(noneOpt);
+
+      (window.availableFields || []).forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        if (f === field) opt.selected = true;
+        sel.appendChild(opt);
+      });
+
+      // Luistert alleen naar handmatige gebruikerswijzigingen, niet naar
+      // de story-initialisatie zelf (die roept toonChoropleth rechtstreeks aan).
+      sel.addEventListener('change', () => window.herllaadVisualisatie?.());
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = 'Verwijder';
+      removeBtn.addEventListener('click', () => {
+        row.remove();
+        window.herllaadVisualisatie?.();
+      });
+
+      row.appendChild(sel);
+      row.appendChild(removeBtn);
+      selectorsDiv.appendChild(row);
     });
-
-    // Luistert naar gebruikerswijzigingen — niet naar story-initialisatie
-    sel.addEventListener('change', () => window.herllaadVisualisatie?.());
-
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.textContent = 'Verwijder';
-    removeBtn.addEventListener('click', () => {
-      row.remove();
-      window.herllaadVisualisatie?.();
-    });
-
-    row.appendChild(sel);
-    row.appendChild(removeBtn);
-    selectorsDiv.appendChild(row);
-  });
-}
   }
 
-  // ── 4. Kaart + choropleth ─────────────────────────────────────────
-  const map = getMap();
-  clearHighlights(state);
-  if (!map || !slide) return;
+  /**
+   * Stap 4: Choropleth-laag tekenen voor deze slide.
+   */
+  function drawChoroplethForSlide(slide, fc) {
+    if (slide.kind !== 'map' || !slide.field || typeof window.toonChoropleth !== 'function') return;
 
-  if (slide.slide_type === 'kaart' && slide.field && typeof window.toonChoropleth === 'function') {
     const method  = document.getElementById('method-select')?.value || 'quantile';
     const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
     const opacity = parseFloat(document.getElementById('opacity-range')?.value || '0.65');
@@ -578,31 +611,79 @@ if (selectorsDiv && container) {
     });
   }
 
-  // ── 5. Focus + highlight ──────────────────────────────────────────
-  if (!slide.focus) return;
-  const focusFeature = findFeatureInCollection(fc, slide.focus);
-  if (!focusFeature?.properties) return;
+  /**
+   * Stap 5: Zoek de Leaflet-laag die bij de focus-feature van de slide hoort.
+   * Doorzoekt alle candidate-lagen (choropleth-laag, basis-laag).
+   */
+  function findFocusLayer(slide, fc) {
+    if (!slide.focus) return null;
 
-  const focusField = slide.focus.field || 'buurtnaam';
-  const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
-  if (!focusValue) return;
+    const focusFeature = findFeatureInCollection(fc, slide.focus);
+    if (!focusFeature?.properties) return null;
 
-  const candidates = getStoryLayerCandidates();
-  for (const rootLayer of candidates) {
-    if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
+    const focusField = slide.focus.field || 'buurtnaam';
+    const focusValue = normalizeText(focusFeature.properties[focusField] || slide.focus.value);
+    if (!focusValue) return null;
 
-    let matchedLayer = null;
-    rootLayer.eachLayer(layer => {
-      if (matchedLayer || !layer?.feature?.properties) return;
-      const props = layer.feature.properties;
-      const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
-      if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
-        matchedLayer = layer;
-      }
-    });
+    const candidates = getStoryLayerCandidates();
+    for (const rootLayer of candidates) {
+      if (!rootLayer || typeof rootLayer.eachLayer !== 'function') continue;
 
-    if (!matchedLayer) continue;
+      let matchedLayer = null;
+      rootLayer.eachLayer(layer => {
+        if (matchedLayer || !layer?.feature?.properties) return;
+        const props = layer.feature.properties;
+        const probe = normalizeText(props[focusField] || props.buurtnaam || props.naam || props.wijknaam || props.buurt);
+        if (probe && (probe === focusValue || probe.includes(focusValue) || focusValue.includes(probe))) {
+          matchedLayer = layer;
+        }
+      });
 
+      if (matchedLayer) return matchedLayer;
+    }
+
+    return null;
+  }
+
+  /**
+   * Stap 5b: Bounds van de focus-feature berekenen direct vanuit de ruwe
+   * GeoJSON-geometrie (via Leaflet), ZONDER te wachten op de gerenderde
+   * choropleth-laag.
+   *
+   * Waarom dit nodig is: toonChoropleth() bouwt de kaartlaag opnieuw op en
+   * lijkt daarbij zelf ook de view aan te passen (richting de volledige
+   * gemeente-extent). Onze oude aanpak wachtte met zoomen tot de nieuwe
+   * Leaflet-laag gevonden was (via requestAnimationFrame-retries in Stap 7),
+   * maar dat is een race condition: als toonChoropleth() iets trager is dan
+   * onze eerste paar pogingen, "wint" de volledige-extent-zoom van
+   * toonChoropleth() alsnog en lijkt de kaart bij de volgende slide
+   * onverwacht uit te zoomen. Door de bounds direct uit de feature-geometrie
+   * te halen (die we al hebben, los van of de laag al getekend is) kunnen we
+   * synchroon en direct na het tekenen van de choropleth naar de focus-buurt
+   * zoomen — vóórdat er ruimte is voor zo'n race condition.
+   */
+  function computeFocusBoundsFromFeature(focusFeature) {
+    if (!focusFeature?.geometry || typeof window.L === 'undefined' || !window.L.geoJSON) return null;
+    try {
+      const bounds = window.L.geoJSON(focusFeature).getBounds();
+      return bounds && bounds.isValid() ? bounds : null;
+    } catch (e) {
+      console.warn('⚠️ Kon bounds niet berekenen uit focus-feature:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Stap 6: Highlight + popup voor de gevonden laag.
+   *
+   * Let op: het zoomen/fitBounds gebeurt hier NIET meer. Dat gebeurt nu
+   * synchroon in applyStoryScene() (zie computeFocusBoundsFromFeature),
+   * direct na het tekenen van de choropleth — vóór deze functie überhaupt
+   * wordt aangeroepen. Deze functie regelt alleen nog de visuele highlight
+   * (kleur) en de popup, die wél kunnen wachten tot de Leaflet-laag
+   * daadwerkelijk bestaat.
+   */
+  function highlightFocusLayer(map, matchedLayer) {
     try {
       if (!matchedLayer.__storyOriginalStyle && typeof matchedLayer.setStyle === 'function') {
         matchedLayer.__storyOriginalStyle = {
@@ -612,27 +693,213 @@ if (selectorsDiv && container) {
           fillColor: matchedLayer.options?.fillColor
         };
       }
+
       if (typeof matchedLayer.setStyle === 'function') {
         matchedLayer.setStyle({ color: '#ffd166', weight: 2.2, fillOpacity: 0.9 });
       }
-      if (typeof matchedLayer.getBounds === 'function') {
-        map.fitBounds(matchedLayer.getBounds(), { maxZoom: 14, animate: true, padding: [18, 18] });
-      }
+
       if (typeof matchedLayer.openPopup === 'function') {
         matchedLayer.openPopup();
         matchedLayer.__storyOpenedPopup = true;
       }
-      state.highlightedLayers.push(matchedLayer);
-    } catch (e) {}
 
-    break;
+      state.highlightedLayers.push(matchedLayer);
+      return true;
+    } catch (e) {
+      console.warn('⚠️ Highlight mislukt:', e);
+      return false;
+    }
   }
-}
+
+  /**
+   * Stap 7: Robuuste retry-wrapper rondom het zoeken naar de focus-laag.
+   *
+   * De choropleth-laag wordt door Leaflet niet synchroon in dezelfde
+   * microtaak opgebouwd als waarin toonChoropleth() wordt aangeroepen.
+   * Eén enkele poging direct na het tekenen leidde daardoor tot de
+   * 50/50 bug: soms was de laag al klaar (alles werkte), soms nog niet
+   * (geen highlight, geen hover-grafiek).
+   *
+   * We proberen daarom een paar keer met telkens een nieuw animatieframe,
+   * en stoppen meteen zodra de laag gevonden is. Een token voorkomt dat
+   * een trage, oude retry-cyclus de inmiddels nieuwere slide overschrijft
+   * (bijvoorbeeld als de gebruiker snel meerdere keren doorklikt).
+   *
+   * De zoom zelf is hier inmiddels weggehaald (zie Stap 5b) — deze functie
+   * regelt alleen nog de highlight-styling, popup en hover-grafiek.
+   */
+  function focusOnSlideWithRetry(slide, fc, renderToken, attemptsLeft = 8) {
+    if (renderToken !== state._focusRenderToken) return; // er is al een nieuwere slide actief
+
+    const map = getMap();
+    if (!map || !slide?.focus) return;
+
+    const matchedLayer = findFocusLayer(slide, fc);
+
+    if (matchedLayer) {
+      highlightFocusLayer(map, matchedLayer);
+
+      if (typeof window.toonHoverJarenGrafiek === 'function') {
+        window.toonHoverJarenGrafiek(matchedLayer.feature, slide.field);
+      }
+      return;
+    }
+
+    if (attemptsLeft <= 0) {
+      console.warn('⚠️ Focus-laag niet gevonden na meerdere pogingen voor:', slide.focus);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      focusOnSlideWithRetry(slide, fc, renderToken, attemptsLeft - 1);
+    });
+  }
+
+  /**
+   * Stap 5c: Zoom naar de focus-bounds en HERBEVESTIG dit een paar keer kort
+   * daarna ("lock").
+   *
+   * Waarom: ondanks de directe, synchrone fitBounds-call uit Stap 5b bleef
+   * de kaart bij sommige overgangen toch uitzoomen. Dat betekent dat er
+   * ná onze fitBounds-call nog iets anders de view aanpast — vermoedelijk
+   * iets in toonChoropleth() zelf dat asynchroon werkt (bv. na het laden
+   * van de laag, of via een eigen timer), waardoor het ons eigen
+   * call-volgorde-argument ("wij roepen als laatste fitBounds aan") niet
+   * standhoudt.
+   *
+   * In plaats van te blijven zoeken naar exact wélke code dat doet, dwingen
+   * we onze gewenste view een paar keer kort na elkaar af. Als niemand de
+   * view ondertussen heeft aangepast, zijn dit no-ops (de kaart staat al
+   * goed, dus er gebeurt visueel niets). Als er wél iets tussendoor de view
+   * heeft veranderd, wordt die binnen ~0,5 seconde weer teruggezet —
+   * zonder animatie, dus zonder zichtbare "knipper".
+   *
+   * De renderToken-check zorgt ervoor dat dit stopt zodra de gebruiker
+   * doorklikt naar een andere slide.
+   */
+  /**
+   * Stap 5c: Pan/zoom-animaties van de Leaflet-kaart tijdelijk uitzetten.
+   *
+   * Leaflet beslist of een fitBounds/setView geanimeerd wordt aan de hand
+   * van een MAP-BREDE vlag (options.zoomAnimation, en de intern gecachete
+   * _zoomAnimated) — niet aan de hand van wie de aanroep doet. Door deze
+   * vlag even op false te zetten, wordt ELKE view-wijziging tijdens dit
+   * venster een instante sprong in plaats van een animatie. Dat geldt dus
+   * ook voor een eventuele fitBounds/setView die toonChoropleth() zelf
+   * (asynchroon) uitvoert, zonder dat wij die code hoeven aan te passen of
+   * zelfs te kennen.
+   *
+   * Resultaat: als er tussendoor alsnog kort wordt "uitgezoomd" doordat iets
+   * buiten ons bereik de view aanpast, gebeurt dat zo snel dat het visueel
+   * niet meer als animatie te zien is — in plaats van de zichtbare
+   * uit-dan-weer-inzoom-beweging van voorheen.
+   *
+   * Geeft een restore-functie terug om de oorspronkelijke staat terug te zetten.
+   */
+  function suspendZoomAnimation(map) {
+    const hadZoomAnimationOption = map.options.zoomAnimation;
+    const hadZoomAnimatedFlag = map._zoomAnimated;
+
+    map.options.zoomAnimation = false;
+    if (hadZoomAnimatedFlag !== undefined) map._zoomAnimated = false;
+
+    return function restoreZoomAnimation() {
+      map.options.zoomAnimation = hadZoomAnimationOption;
+      if (hadZoomAnimatedFlag !== undefined) map._zoomAnimated = hadZoomAnimatedFlag;
+    };
+  }
+
+  /**
+   * Stap 5d: Zoom naar de focus-bounds en HERBEVESTIG dit een paar keer kort
+   * daarna ("lock").
+   *
+   * Waarom: ondanks de directe, synchrone fitBounds-call uit Stap 5b bleef
+   * de kaart bij sommige overgangen toch uitzoomen. Dat betekent dat er
+   * ná onze fitBounds-call nog iets anders de view aanpast — vermoedelijk
+   * iets in toonChoropleth() zelf dat asynchroon werkt (bv. na het laden
+   * van de laag, of via een eigen timer), waardoor het ons eigen
+   * call-volgorde-argument ("wij roepen als laatste fitBounds aan") niet
+   * standhoudt.
+   *
+   * In plaats van te blijven zoeken naar exact wélke code dat doet, dwingen
+   * we onze gewenste view een paar keer kort na elkaar af. Dit gebeurt
+   * altijd zonder animatie (animate: false) — gecombineerd met
+   * suspendZoomAnimation() in applyStoryScene is élke correctie hierdoor
+   * een instante sprong, dus zonder de zichtbare "uitzoomen en dan weer
+   * inzoomen"-beweging.
+   *
+   * De renderToken-check zorgt ervoor dat dit stopt zodra de gebruiker
+   * doorklikt naar een andere slide.
+   */
+  function lockFocusZoom(map, bounds, renderToken) {
+    map.fitBounds(bounds, { maxZoom: 14, animate: false, padding: [18, 18] });
+
+    [40, 100, 200, 400, 700].forEach(delay => {
+      setTimeout(() => {
+        if (renderToken !== state._focusRenderToken) return; // andere slide actief, stop
+        map.fitBounds(bounds, { maxZoom: 14, animate: false, padding: [18, 18] });
+      }, delay);
+    });
+  }
+
+
+  function applyStoryScene(slide, fc) {
+    if (!slide) return;
+
+    clearHighlights(state);
+
+    applyYearToSlider(slide);
+    applyPaletteToUi(slide);
+    applyVariablesToUi(slide);
+
+    const map = getMap();
+    if (!map) return;
+
+    if (!slide.focus) {
+      drawChoroplethForSlide(slide, fc);
+      return;
+    }
+
+    // Nieuw token: elke aanroep van applyStoryScene "annuleert" lopende
+    // retry-cycli van een vorige slide.
+    const renderToken = ++state._focusRenderToken;
+
+    // Animaties van de kaart tijdelijk uitzetten — zie Stap 5c — zodat een
+    // eventuele ongewenste tussenstap (uitzoomen) niet animeert en dus niet
+    // zichtbaar is.
+    const restoreZoomAnimation = suspendZoomAnimation(map);
+
+    drawChoroplethForSlide(slide, fc);
+
+    // Zoom naar de focus-buurt, op basis van de ruwe GeoJSON-geometrie —
+    // zie Stap 5b voor waarom dit niet wacht op de gerenderde
+    // choropleth-laag, en Stap 5d voor de "lock"-herbevestiging.
+    const focusFeature = findFeatureInCollection(fc, slide.focus);
+    const focusBounds = computeFocusBoundsFromFeature(focusFeature);
+    if (focusBounds) {
+      lockFocusZoom(map, focusBounds, renderToken);
+    }
+
+    // Highlight-styling, popup en hover-grafiek wachten wél op de
+    // gerenderde Leaflet-laag — dat kan best een paar frames duren.
+    requestAnimationFrame(() => {
+      focusOnSlideWithRetry(slide, fc, renderToken);
+    });
+
+    // Animaties pas weer aanzetten nadat de laatste 'lock'-poging is geweest
+    // (zie lockFocusZoom) — anders zou een héél late, trage aanpassing
+    // daarna nog wél geanimeerd kunnen uitzoomen.
+    setTimeout(() => {
+      if (renderToken === state._focusRenderToken) restoreZoomAnimation();
+    }, 900);
+  }
 
   function resolveSlideFeature(slide, fc) {
     if (!slide) return null;
     return slide.focus ? findFeatureInCollection(fc, slide.focus) : null;
   }
+
+  // ==================== RENDER / NAVIGATIE ====================
 
   async function renderSlide() {
     const story = getStoryById(state.storyId);
@@ -643,14 +910,14 @@ if (selectorsDiv && container) {
     ensureOverlay(state);
     const fc = await ensureStoryDataCollection(slide.year);
 
-    const background = slide.slide_type === 'voorpagina' 
+    const background = slide.kind === 'hero'
       ? (slide.backgroundImage || createBackdrop(slide.title || story.title, slide.body, story.colors))
       : 'none';
 
-    state.overlay.dataset.slide_type = slide.slide_type;
+    state.overlay.dataset.kind = slide.kind;
     state.overlay.hidden = false;
     state.backdrop.style.backgroundImage = background;
-    state.backdrop.style.opacity = slide.slide_type === 'voorpagina' ? '1' : '0.14';
+    state.backdrop.style.opacity = slide.kind === 'hero' ? '1' : '0.14';
 
     state.chip.textContent = slide.overline || story.title;
     state.counter.textContent = `${state.slideIndex + 1} / ${story.slides.length}`;
@@ -661,9 +928,9 @@ if (selectorsDiv && container) {
     state.prevButton.disabled = state.slideIndex === 0;
     state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
     state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');
-    state.card.classList.toggle('is-voorpagina', slide.slide_type === 'voorpagina');
-    state.card.classList.toggle('is-map', slide.slide_type === 'kaart');
-    state.card.classList.toggle('is-summary', slide.slide_type === 'summary');
+    state.card.classList.toggle('is-hero', slide.kind === 'hero');
+    state.card.classList.toggle('is-map', slide.kind === 'map');
+    state.card.classList.toggle('is-summary', slide.kind === 'summary');
 
     state.kicker.textContent = slide.overline || story.title;
     state.title.textContent = slide.title || story.title;
@@ -699,7 +966,7 @@ if (selectorsDiv && container) {
     state.overlay.hidden = false;
 
     try {
-      const fc = await ensureStoryDataCollection();
+      await ensureStoryDataCollection();
     } catch (e) {}
 
     if (!state.keyHandler) {
@@ -737,8 +1004,8 @@ if (selectorsDiv && container) {
     renderSlide();
   }
 
-  // ==================== START ====================
-  console.log('%c✅ Mooi armoede-verhaal toegevoegd', 'color:#e63946; font-weight:bold');
+  // ==================== INITIALISATIE ====================
+  console.log('%c✅ Stories module geladen (robuuste focus/zoom/hover)', 'color:#0b7285; font-weight:bold');
 
   document.addEventListener('DOMContentLoaded', () => {
     ensureOverlay(state);
@@ -756,6 +1023,9 @@ if (selectorsDiv && container) {
     document.getElementById('apply-filter')?.addEventListener('click', refreshOpenStory);
     document.getElementById('clear-filter')?.addEventListener('click', refreshOpenStory);
     document.getElementById('filter-negative')?.addEventListener('click', refreshOpenStory);
+
+    // Onderdruk re-render als de year-slider-change door de story zelf
+    // werd veroorzaakt (zie applyYearToSlider) — voorkomt een oneindige lus.
     document.getElementById('year-slider')?.addEventListener('change', () => {
       if (!state._storyDrivenYearChange) refreshOpenStory();
     });

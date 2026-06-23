@@ -223,6 +223,10 @@ document.getElementById('open-split-screen')?.addEventListener('click', () => {
  * Toont ook grafieken voor alle geselecteerde velden.
  */
 function herllaadVisualisatie() {
+  // Werk eerst de veldselectoren bij: velden zonder (gefilterde) data worden
+  // uitgeschakeld zodat ze niet meer gekozen kunnen worden.
+  window.vernieuwVeldSelecties?.();
+
   const geselecteerde = window.getSelectedFields?.() || [];
   const veld = geselecteerde[0] || document.getElementById('field-select')?.value;
   const fc   = window.appData?.lastFC;
@@ -257,28 +261,89 @@ window.getSelectedFields = function () {
     .filter(Boolean);
 };
 
-/** Maakt een <select> element aan gevuld met alle beschikbare velden */
-function maakSelectElement(standaardWaarde) {
-  const sel = document.createElement('select');
-  sel.className = 'field-select-item';
-  sel.style.minWidth = '180px';
+/**
+ * Bepaalt of een veld bruikbare data heeft in de momenteel geladen dataset.
+ * Een veld is alleen "bruikbaar" (selecteerbaar) als er:
+ *   1. minstens één niet-lege, numerieke waarde voor bestaat, EN
+ *   2. — als er een actief filter is (min/max of percentiel) — minstens één
+ *      van die waarden ook daadwerkelijk door dat filter heen komt.
+ * Zo worden velden die volledig leeg zijn, of waarvan alle waarden door het
+ * actieve filter worden uitgesloten, niet meer selecteerbaar in de dropdown.
+ */
+function veldHeeftBeschikbareData(veld) {
+  const fc = window.appData?.lastFC;
+  if (!fc || typeof window.haalNumeriekeWaarden !== 'function') return true;
+
+  const alleWaarden = window.haalNumeriekeWaarden(fc, veld);
+  if (!alleWaarden.length) return false;
+
+  const filter = window.appData?.filter || null;
+  if (!filter || typeof window.waardePasseertFilter !== 'function') return true;
+
+  return alleWaarden.some(w => window.waardePasseertFilter(w, alleWaarden, filter));
+}
+
+/**
+ * (Her)vult een bestaand <select>-element met alle beschikbare velden.
+ * Velden zonder bruikbare (gefilterde) data worden toegevoegd als uitgeschakelde
+ * optie met de toevoeging "(geen data)", zodat ze zichtbaar maar niet
+ * selecteerbaar zijn. Een eerder geselecteerde waarde die niet langer bruikbaar
+ * is, wordt teruggezet naar "-- geen --".
+ * @param {HTMLSelectElement} sel
+ * @param {string} [forceerWaarde] - Optioneel: forceer deze waarde als selectie (bij eerste opbouw)
+ */
+function vulVeldSelect(sel, forceerWaarde) {
+  const huidigeWaarde = forceerWaarde !== undefined ? forceerWaarde : sel.value;
+  sel.innerHTML = '';
 
   const legeOptie = document.createElement('option');
   legeOptie.value = '';
   legeOptie.textContent = '-- geen --';
   sel.appendChild(legeOptie);
 
+  let huidigeNogBruikbaar = false;
+
   (window.availableFields || []).forEach(veld => {
-    const opt = document.createElement('option');
-    opt.value = veld;
-    opt.textContent = veld;
-    if (veld === standaardWaarde) opt.selected = true;
-    sel.appendChild(opt);
-  });
+  const heeftData = veldHeeftBeschikbareData(veld);
+  if (!heeftData) return;                          // ← gewoon overslaan
+
+  const opt = document.createElement('option');
+  opt.value = veld;
+  opt.textContent = veld;
+
+  if (veld === huidigeWaarde) {
+    opt.selected = true;
+    huidigeNogBruikbaar = true;
+  }
+  sel.appendChild(opt);
+});
+
+  // Val terug op "-- geen --" als de gewenste waarde niet (meer) bruikbaar is
+  if (huidigeWaarde && !huidigeNogBruikbaar) sel.value = '';
+}
+
+/** Maakt een <select> element aan gevuld met alle beschikbare velden */
+function maakSelectElement(standaardWaarde) {
+  const sel = document.createElement('select');
+  sel.className = 'field-select-item';
+  sel.style.minWidth = '180px';
+
+  vulVeldSelect(sel, standaardWaarde);
 
   sel.addEventListener('change', herllaadVisualisatie);
   return sel;
 }
+
+/**
+ * Werkt alle bestaande veldselectoren in de sidebar bij op basis van de actuele
+ * data en het actieve filter. Wordt aangeroepen vanuit herllaadVisualisatie,
+ * dus telkens wanneer het jaar, het waardefilter of de dataset wijzigt.
+ */
+window.vernieuwVeldSelecties = function () {
+  document.querySelectorAll('#selectors-div select.field-select-item').forEach(sel => {
+    vulVeldSelect(sel);
+  });
+};
 
 /**
  * Voegt een nieuwe veldselector-rij toe aan de sidebar.
@@ -341,9 +406,10 @@ window.initFieldSelectors = function (velden) {
     container.appendChild(selectorsDiv);
   }
 
-  // Voeg twee standaard selectoren toe
-  const heeftVeld1 = window.availableFields.includes(APP_CONFIG.standaardVeld1);
-  const heeftVeld2 = window.availableFields.includes(APP_CONFIG.standaardVeld2);
+  // Voeg twee standaard selectoren toe — alleen als die velden ook daadwerkelijk
+  // bruikbare data hebben; anders start de selector leeg ("-- geen --")
+  const heeftVeld1 = window.availableFields.includes(APP_CONFIG.standaardVeld1) && veldHeeftBeschikbareData(APP_CONFIG.standaardVeld1);
+  const heeftVeld2 = window.availableFields.includes(APP_CONFIG.standaardVeld2) && veldHeeftBeschikbareData(APP_CONFIG.standaardVeld2);
   window.addFieldSelector(heeftVeld1 ? APP_CONFIG.standaardVeld1 : undefined);
   window.addFieldSelector(heeftVeld2 ? APP_CONFIG.standaardVeld2 : undefined);
 

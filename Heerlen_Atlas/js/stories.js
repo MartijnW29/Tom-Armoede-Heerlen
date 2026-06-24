@@ -395,7 +395,7 @@
         colors: ['#1a3a5e', '#e63946', '#f4a261'],
         slides: [
           {
-            kind: 'hero',
+            paginatype: 'voorpagina',
             overline: 'Verhaal over onze stad',
             title: 'Armoede in Heerlen',
             body: 'Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.',
@@ -403,11 +403,11 @@
             backgroundImage: createBackdrop('Armoede in Heerlen', 'De onzichtbare realiteit achter de cijfers', ['#1a3a5e', '#e63946', '#f4a261'])
           },
           {
-            kind: 'map',
+            paginatype: 'map',
             year: 2024,
             overline: 'De realiteit',
             title: 'Waar armoede het hardst toeslaat',
-            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, kinderen en ouderen.',
+            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, paginatypeeren en ouderen.',
             anchor: 'bottom-left',
             field: 'aantal_huishoudens',
             palette: 'oranges',
@@ -421,11 +421,11 @@
             mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
           },
           {
-            kind: 'map',
+            paginatype: 'map',
             year: 2024,
-            overline: 'Kinderen in armoede',
+            overline: 'paginatypeeren in armoede',
             title: 'De toekomst mag niet verloren gaan',
-            body: 'Kinderen die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
+            body: 'paginatypeeren die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
             anchor: 'middle-right',
             field: 'aantal_jongeren_met_jeugdzorg_in_natura',
             palette: 'oranges',
@@ -437,7 +437,7 @@
             ]
           },
           {
-            kind: 'summary',
+            paginatype: 'summary',
             year: 2024,
             overline: 'Hoop en actie',
             title: 'Heerlen kan het beter',
@@ -597,7 +597,7 @@
    * Stap 4: Choropleth-laag tekenen voor deze slide.
    */
   function drawChoroplethForSlide(slide, fc) {
-    if (slide.kind !== 'map' || !slide.field || typeof window.toonChoropleth !== 'function') return;
+    if (slide.paginatype !== 'map' || !slide.field || typeof window.toonChoropleth !== 'function') return;
 
     const method  = document.getElementById('method-select')?.value || 'quantile';
     const palette = slide.palette || document.getElementById('palette-select')?.value || 'viridis';
@@ -910,14 +910,14 @@
     ensureOverlay(state);
     const fc = await ensureStoryDataCollection(slide.year);
 
-    const background = slide.kind === 'hero'
+    const background = slide.paginatype === 'voorpagina'
       ? (slide.backgroundImage || createBackdrop(slide.title || story.title, slide.body, story.colors))
       : 'none';
 
-    state.overlay.dataset.kind = slide.kind;
+    state.overlay.dataset.paginatype = slide.paginatype;
     state.overlay.hidden = false;
     state.backdrop.style.backgroundImage = background;
-    state.backdrop.style.opacity = slide.kind === 'hero' ? '1' : '0.14';
+    state.backdrop.style.opacity = slide.paginatype === 'voorpagina' ? '1' : '0.14';
 
     state.chip.textContent = slide.overline || story.title;
     state.counter.textContent = `${state.slideIndex + 1} / ${story.slides.length}`;
@@ -928,9 +928,9 @@
     state.prevButton.disabled = state.slideIndex === 0;
     state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
     state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');
-    state.card.classList.toggle('is-hero', slide.kind === 'hero');
-    state.card.classList.toggle('is-map', slide.kind === 'map');
-    state.card.classList.toggle('is-summary', slide.kind === 'summary');
+    state.card.classList.toggle('is-voorpagina', slide.paginatype === 'voorpagina');
+    state.card.classList.toggle('is-map', slide.paginatype === 'map');
+    state.card.classList.toggle('is-summary', slide.paginatype === 'summary');
 
     state.kicker.textContent = slide.overline || story.title;
     state.title.textContent = slide.title || story.title;

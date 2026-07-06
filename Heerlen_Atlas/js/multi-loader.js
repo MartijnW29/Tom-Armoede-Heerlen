@@ -395,9 +395,24 @@ function expandUrlsForYearRange(urls) {
 }
 
 /**
+ * Verwijdert de standaard PDOK-bronnen uit de lijst na het laden van de basisdata.
+ * Dit houdt de interface schoon nadat CBS-kerncijfers zijn gekoppeld.
+ */
+function verwijderStandaardApiBronnen() {
+  const list = document.getElementById('api-urls-list');
+  if (!list) return;
+
+  const standaardItems = Array.from(list.querySelectorAll('.api-url-item'))
+    .filter(item => ['pdok-buurten', 'pdok-wijken'].includes(item.dataset.api));
+
+  standaardItems.slice(0, 2).forEach(item => item.remove());
+  updateRemoveButtons();
+}
+
+/**
  * Laad alle ingevoerde API-URL's gelijktijdig en toon de data op de kaart.
  * Ondersteunt PDOK OGC API (geeft `items`) en standaard GeoJSON (geeft `features`).
- * Na het laden wordt CBS-data automatisch gekoppeld als die al eerder geladen was.
+ * Na het laden worden CBS-kerncijfers gekoppeld en worden de standaard bronregels verwijderd.
  */
 async function loadAllAPIs() {
   const urls = Array.from(document.querySelectorAll('.api-url-input'))
@@ -454,6 +469,10 @@ async function loadAllAPIs() {
 
     const samengevoegd = mergeFeatureCollections(collections);
     verwerkGeladen(samengevoegd);
+
+    // Laad CBS-kerncijfers en koppel ze aan de nieuwe geometrie.
+    await laadEnKoppelCbs();
+    verwijderStandaardApiBronnen();
 
     // Als CBS-data al eerder geladen was, direct koppelen aan de nieuwe geometrie
     if (window.multiLoaderState.cbsData) {

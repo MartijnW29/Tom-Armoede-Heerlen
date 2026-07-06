@@ -258,6 +258,27 @@ html.split-pane #open-split-screen {
   font-size: 14px;
 }
 
+.custom-fields-section {
+  margin: 0 0 var(--ruimte-2);
+  padding: var(--ruimte-2);
+  border: 1px solid rgba(11, 114, 133, 0.24);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(11, 114, 133, 0.08), rgba(11, 114, 133, 0.02));
+}
+
+.custom-fields-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kleur-primair);
+  margin-bottom: 4px;
+}
+
+.custom-fields-section-text {
+  font-size: 11px;
+  color: var(--kleur-tekst-zacht);
+  line-height: 1.4;
+}
+
 .stapel-klein {
   margin-top: var(--ruimte-2);
 }
@@ -267,6 +288,57 @@ label {
   margin-bottom: 4px;
   font-size: var(--grootte-label);
   color: var(--kleur-tekst-zacht);
+}
+
+.formula-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formula-operators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.formula-op {
+  min-width: 38px;
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 14px;
+  background: var(--kleur-paneel);
+  color: var(--kleur-tekst);
+  border: 1px solid var(--kleur-rand);
+}
+
+.formula-op.is-active {
+  background: var(--kleur-primair);
+  color: #ffffff;
+  border-color: var(--kleur-primair);
+}
+
+.formula-preview {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(11, 114, 133, 0.08);
+  color: var(--kleur-primair);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.formula-status {
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.formula-status.is-success {
+  color: #1f7a1f;
+}
+
+.formula-status.is-error {
+  color: #b42318;
 }
 
 button {

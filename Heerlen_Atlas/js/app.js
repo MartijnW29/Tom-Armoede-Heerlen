@@ -252,7 +252,51 @@ document.getElementById('start-compare')?.remove();
 // VELDSELECTOREN — Dynamisch beheer van variabele-dropdowns
 // ============================================================================
 
+// ============================================================================
+// VELDSELECTOREN — Dynamisch beheer van variabele-dropdowns
+// ============================================================================
+
 window.availableFields = window.availableFields || [];
+window.customFieldNames = window.customFieldNames || [];
+
+function isCustomField(veld) {
+  return Boolean(veld) && (window.customFieldNames || []).includes(veld);
+}
+
+window.getFieldGroupsForUi = function () {
+  const fields = [...new Set((window.availableFields || []).filter(Boolean))];
+  return {
+    custom: fields.filter(isCustomField),
+    standard: fields.filter(veld => !isCustomField(veld))
+  };
+};
+
+function renderCustomFieldNotice() {
+  const container = document.getElementById('field-select');
+  if (!container) return;
+
+  const existing = container.querySelector('.custom-fields-section');
+  if (existing) existing.remove();
+
+  const { custom } = window.getFieldGroupsForUi();
+  if (!custom.length) return;
+
+  const section = document.createElement('div');
+  section.className = 'custom-fields-section';
+
+  const title = document.createElement('div');
+  title.className = 'custom-fields-section-title';
+  title.textContent = 'Zelfgemaakte variabelen';
+
+  const text = document.createElement('div');
+  text.className = 'custom-fields-section-text';
+  text.textContent = 'Deze berekende variabelen staan bovenaan voor snelle selectie.';
+
+  section.append(title, text);
+  const hint = container.querySelector('.hint');
+  if (hint) container.insertBefore(section, hint);
+  else container.prepend(section);
+}
 
 /** Geeft alle momenteel geselecteerde veldwaarden terug als array */
 window.getSelectedFields = function () {
@@ -302,21 +346,30 @@ function vulVeldSelect(sel, forceerWaarde) {
   sel.appendChild(legeOptie);
 
   let huidigeNogBruikbaar = false;
+  const { custom, standard } = window.getFieldGroupsForUi();
 
-  (window.availableFields || []).forEach(veld => {
-  const heeftData = veldHeeftBeschikbareData(veld);
-  if (!heeftData) return;                          // ← gewoon overslaan
+  const voegGroepToe = (groepsLabel, velden) => {
+    const bruikbareVelden = velden.filter(veld => veldHeeftBeschikbareData(veld));
+    if (!bruikbareVelden.length) return;
 
-  const opt = document.createElement('option');
-  opt.value = veld;
-  opt.textContent = veld;
+    const group = document.createElement('optgroup');
+    group.label = groepsLabel;
+    bruikbareVelden.forEach(veld => {
+      const opt = document.createElement('option');
+      opt.value = veld;
+      opt.textContent = veld;
 
-  if (veld === huidigeWaarde) {
-    opt.selected = true;
-    huidigeNogBruikbaar = true;
-  }
-  sel.appendChild(opt);
-});
+      if (veld === huidigeWaarde) {
+        opt.selected = true;
+        huidigeNogBruikbaar = true;
+      }
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  };
+
+  voegGroepToe('Zelfgemaakte variabelen', custom);
+  voegGroepToe('Basisvariabelen', standard);
 
   // Val terug op "-- geen --" als de gewenste waarde niet (meer) bruikbaar is
   if (huidigeWaarde && !huidigeNogBruikbaar) sel.value = '';
@@ -399,6 +452,8 @@ window.initFieldSelectors = function (velden) {
   const hint = container.querySelector('.hint');
   Array.from(container.children).forEach(kind => { if (kind !== hint) kind.remove(); });
 
+  renderCustomFieldNotice();
+
   let selectorsDiv = document.getElementById('selectors-div');
   if (!selectorsDiv) {
     selectorsDiv = document.createElement('div');
@@ -444,6 +499,7 @@ window.initFieldSelectors = function (velden) {
   }, 120);
 
   document.getElementById('add-variable').disabled = false;
+  refreshEquationFieldOptions();
 
   // Trigger visualisatie nadat de DOM klaar is
   setTimeout(() => window.herllaadVisualisatie?.(), 100);
@@ -453,7 +509,6 @@ document.getElementById('add-variable')?.addEventListener('click', (e) => {
   e.preventDefault();
   window.addFieldSelector();
 });
-
 
 // ============================================================================
 // FILTER — Toepassen en wissen

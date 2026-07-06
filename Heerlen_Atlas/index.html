@@ -101,6 +101,40 @@
         </div>
       </section>
 
+      <!-- Wiskundige berekening met variabelen — formulebuilder voor nieuwe variabelen -->
+      <section id="formula-area" class="kaart-paneel">
+        <h3>Nieuwe berekende variabele</h3>
+        <p class="uitleg-compact">
+          Combineer twee bestaande variabelen tot één nieuwe variabele met een simpele berekening.
+        </p>
+
+        <div class="formula-builder">
+          <label for="formula-field-a">Variabele 1</label>
+          <select id="formula-field-a"></select>
+
+          <div class="formula-operators" role="group" aria-label="Rekenoperatoren">
+            <button type="button" class="formula-op is-active" data-op="+">+</button>
+            <button type="button" class="formula-op" data-op="-">−</button>
+            <button type="button" class="formula-op" data-op="*">×</button>
+            <button type="button" class="formula-op" data-op="/">÷</button>
+          </div>
+
+          <label for="formula-field-b">Variabele 2</label>
+          <select id="formula-field-b"></select>
+
+          <label for="formula-name">Naam nieuwe variabele</label>
+          <input id="formula-name" type="text" placeholder="bijv. inwoners_per_huishouden" />
+
+          <div id="formula-preview" class="formula-preview">Voorbeeld: Variabele 1 + Variabele 2</div>
+
+          <div class="actie-rij">
+            <button id="create-formula-variable" type="button">Maak nieuwe variabele</button>
+          </div>
+
+          <div id="formula-status" class="formula-status" aria-live="polite"></div>
+        </div>
+      </section>
+
       <!-- Stories — menu wordt gevuld door stories.js -->
       <section id="stories-area" class="kaart-paneel stories-paneel">
         <h3>Stories</h3>
@@ -203,6 +237,7 @@
   <script src="js/vendor/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/wiskunde.js"></script>
   <script src="https://unpkg.com/intro.js/minified/intro.min.js"></script>
   <script src="js/tour-introjs.js"></script>
   <script src="js/map.js"></script>

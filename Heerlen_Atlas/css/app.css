@@ -258,6 +258,37 @@ html.split-pane #open-split-screen {
   font-size: 14px;
 }
 
+/* ========== In-/uitklapbare hoofdpanelen (sidebar) ========== */
+/* Elke <section class="kaart-paneel"> is in-/uitklapbaar via klik op de kop (h3). */
+.kaart-paneel > h3 {
+  position: relative;
+  padding-right: 22px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kaart-paneel > h3::after {
+  content: '▾';
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 12px;
+  transition: transform 0.15s ease;
+}
+
+.kaart-paneel.is-ingeklapt > h3 {
+  margin-bottom: 0;
+}
+
+.kaart-paneel.is-ingeklapt > h3::after {
+  transform: rotate(-90deg);
+}
+
+/* Verberg alle inhoud behalve de kop wanneer het paneel is ingeklapt */
+.kaart-paneel.is-ingeklapt > :not(h3) {
+  display: none !important;
+}
+
 .custom-fields-section {
   margin: 0 0 var(--ruimte-2);
   padding: var(--ruimte-2);

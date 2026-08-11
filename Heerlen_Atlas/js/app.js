@@ -662,3 +662,24 @@ document.getElementById('filter-negative')?.addEventListener('click', () => {
     setTimeout(() => window.appData?.map?.invalidateSize(), 310);
   });
 })();
+
+
+// ============================================================================
+// HOOFDPANELEN IN-/UITKLAPBAAR — Klik op de kop van een sidebar-vak (Visualisatie,
+// Variabele, Nieuwe berekende variabele, Stories, Legenda, API's laden, enz.)
+// om de inhoud van dat vak te verbergen/tonen.
+// ============================================================================
+
+(function () {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  // Eén gedelegeerde listener: werkt ook voor de legenda-kop, die dynamisch
+  // opnieuw wordt getekend door map.js (elementen bestaan dan nog niet bij page-load).
+  sidebar.addEventListener('click', (e) => {
+    const kop = e.target.closest('.kaart-paneel > h3');
+    if (!kop) return;
+    const paneel = kop.parentElement;
+    paneel.classList.toggle('is-ingeklapt');
+  });
+})();

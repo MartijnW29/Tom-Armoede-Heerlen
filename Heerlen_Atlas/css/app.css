@@ -63,6 +63,70 @@ body.story-open {
   z-index: 250;
 }
 
+/* ========== Legenda-widget: "i"-icoon rechtsboven op de kaart ========== */
+.legend-widget {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+}
+
+.legend-icon-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: none;
+  border-radius: 50%;
+  background: var(--kleur-primair);
+  color: #fff;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.25);
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.legend-icon-toggle:hover {
+  transform: scale(1.07);
+}
+
+.legend-icon-toggle[aria-expanded="true"] {
+  background: var(--kleur-primair-donker, #084c59);
+}
+
+.legend-floating-panel {
+  display: none;
+  position: absolute;
+  top: 40px;
+  right: 0;
+  min-width: 190px;
+  max-width: 260px;
+  padding: var(--ruimte-2);
+  border: 1px solid var(--kleur-rand);
+  border-radius: var(--radius);
+  background: var(--kleur-paneel);
+  box-shadow: var(--schaduw-paneel, 0 12px 30px rgba(15, 23, 42, 0.22));
+  font-size: 12px;
+}
+
+.legend-floating-panel.is-zichtbaar {
+  display: block;
+}
+
+.legend-floating-panel h3 {
+  margin: 0 0 var(--ruimte-2);
+  color: var(--kleur-tekst-zacht);
+  font-size: 14px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* ========== Hover Tijdreeks Paneel — Inklapbaar ========== */
 .hover-timeseries-header {
   display: flex;

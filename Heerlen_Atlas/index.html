@@ -32,7 +32,14 @@
   <div id="app">
 
     <!-- ── KAART ─────────────────────────────────────────────────────────── -->
-    <main id="map" aria-label="Kaartweergave"></main>
+    <main id="map" aria-label="Kaartweergave">
+      <!-- Legenda als in-/uitklapbaar "i"-icoon rechtsboven op de kaart -->
+      <div id="legend-widget" class="legend-widget">
+        <button id="legend-icon-toggle" type="button" class="legend-icon-toggle"
+                aria-label="Legenda tonen of verbergen" aria-expanded="false" title="Legenda">i</button>
+        <section id="legend" class="legend-floating-panel" aria-hidden="true"></section>
+      </div>
+    </main>
 
     <!-- Knop om sidebar in/uit te klappen -->
     <button id="sidebar-toggle" type="button" aria-label="Sidebar in/uitklappen">&#8250;</button>
@@ -43,9 +50,6 @@
       <header class="paneel-kop">
         <h2>Instellingen</h2>
       </header>
-
-      <!-- Legenda — gevuld door kaart.js -->
-      <section id="legend" class="kaart-paneel" aria-hidden="false"></section>
 
       <!-- Jaarfilter — slider met streepjesweergave -->
       <section id="year-filter-area" class="kaart-paneel">

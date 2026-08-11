@@ -674,12 +674,28 @@ document.getElementById('filter-negative')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
 
-  // Eén gedelegeerde listener: werkt ook voor de legenda-kop, die dynamisch
-  // opnieuw wordt getekend door map.js (elementen bestaan dan nog niet bij page-load).
+  // Eén gedelegeerde listener: werkt ook voor dynamisch toegevoegde secties.
   sidebar.addEventListener('click', (e) => {
     const kop = e.target.closest('.kaart-paneel > h3');
     if (!kop) return;
     const paneel = kop.parentElement;
     paneel.classList.toggle('is-ingeklapt');
+  });
+})();
+
+
+// ============================================================================
+// LEGENDA-WIDGET — "i"-icoon rechtsboven op de kaart, klik om legenda te tonen/verbergen
+// ============================================================================
+
+(function () {
+  const icon   = document.getElementById('legend-icon-toggle');
+  const paneel = document.getElementById('legend');
+  if (!icon || !paneel) return;
+
+  icon.addEventListener('click', () => {
+    const zichtbaar = paneel.classList.toggle('is-zichtbaar');
+    icon.setAttribute('aria-expanded', String(zichtbaar));
+    paneel.setAttribute('aria-hidden', String(!zichtbaar));
   });
 })();

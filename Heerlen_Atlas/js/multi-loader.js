@@ -643,6 +643,56 @@ function applyYearFilter(jaar) {
   window.herllaadVisualisatie?.();
 }
 
+// ============================================================================
+// JAAR-ANIMATIE — Automatisch afspelen door de beschikbare jaren
+// ============================================================================
+
+const YEAR_PLAY_CONFIG = { stepDelayMs: 1200 }; // tijd tussen twee jaren tijdens afspelen
+
+window.multiLoaderState.yearPlayTimer = window.multiLoaderState.yearPlayTimer || null;
+
+/** Start of stop het automatisch doorlopen van de jaren, afhankelijk van de huidige status. */
+function toggleYearPlay() {
+  window.multiLoaderState.yearPlayTimer ? stopYearPlay() : startYearPlay();
+}
+
+/** Start de jaar-animatie: loopt elke `stepDelayMs` naar het volgstende beschikbare jaar. */
+function startYearPlay() {
+  const jaren = window.multiLoaderState.availableYears || [];
+  const slider = document.getElementById('year-slider');
+  const knop = document.getElementById('year-play-toggle');
+  if (!slider || jaren.length < 2) return;
+
+  // Begin opnieuw vanaf het eerste jaar als de slider al op het laatste jaar staat
+  const huidig = snapYearToAvailableYear(parseInt(slider.value, 10));
+  if (huidig === jaren.at(-1)) {
+    slider.value = String(jaren[0]);
+    updateYearDisplay();
+  }
+
+  window.multiLoaderState.yearPlayTimer = setInterval(() => {
+    const jaren = window.multiLoaderState.availableYears || [];
+    const huidigJaar = snapYearToAvailableYear(parseInt(slider.value, 10));
+    const idx = jaren.indexOf(huidigJaar);
+    if (idx === -1) { stopYearPlay(); return; }
+    // Bij het laatste jaar: begin weer opnieuw vanaf het eerste (oneindige loop)
+    const volgendeIdx = idx >= jaren.length - 1 ? 0 : idx + 1;
+    slider.value = String(jaren[volgendeIdx]);
+    updateYearDisplay();
+  }, YEAR_PLAY_CONFIG.stepDelayMs);
+
+  if (knop) { knop.innerHTML = '&#10074;&#10074;'; knop.setAttribute('aria-pressed', 'true'); knop.title = 'Afspelen stoppen'; }
+}
+
+/** Stop de jaar-animatie. */
+function stopYearPlay() {
+  if (window.multiLoaderState.yearPlayTimer) clearInterval(window.multiLoaderState.yearPlayTimer);
+  window.multiLoaderState.yearPlayTimer = null;
+
+  const knop = document.getElementById('year-play-toggle');
+  if (knop) { knop.innerHTML = '&#9654;'; knop.setAttribute('aria-pressed', 'false'); knop.title = 'Automatisch afspelen door de jaren'; }
+}
+
 /** Zet het jaarfilter terug en toon alle jaren opnieuw. */
 function clearYearFilter() {
   const display     = document.getElementById('year-display');
@@ -726,7 +776,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('add-api-url')?.addEventListener('click',          addApiUrlInput);
   document.getElementById('load-all-apis')?.addEventListener('click',        loadAllAPIs);
   document.getElementById('year-slider')?.addEventListener('input',          updateYearDisplay);
+  document.getElementById('year-slider')?.addEventListener('pointerdown',    stopYearPlay); // handmatig schuiven stopt de animatie
   document.getElementById('year-filter-clear')?.addEventListener('click',    clearYearFilter);
+  document.getElementById('year-play-toggle')?.addEventListener('click',     toggleYearPlay);
 
   // CBS-knop: voeg toe in HTML als <button id="load-cbs-data">CBS kerncijfers laden</button>
   document.getElementById('load-cbs-data')?.addEventListener('click', laadEnKoppelCbs);

@@ -55,6 +55,30 @@ window.appData = window.appData || {};
 // HULPFUNCTIES — Basis operaties
 // ============================================================================
 
+/**
+ * Herken of een veldnaam een percentage/aandeel representeert (CBS-achtige data).
+ * Wordt gebruikt om de waarde in popups en legenda met een %-teken te tonen.
+ */
+function isPercentageVeld(veldnaam) {
+  if (!veldnaam) return false;
+  const naam = veldnaam.toLowerCase();
+  return /(percentage|perc\b|_pct|pct_|aandeel|%)/.test(naam);
+}
+
+/**
+ * Formatteer een numerieke waarde volgens Nederlandse notatie (komma als decimaalteken).
+ * Percentage-achtige velden krijgen 2 decimalen + %-teken (bv. "25,00%"),
+ * overige numerieke velden 2 decimalen zonder teken (bv. "1.234,56").
+ */
+function formatteerWaarde(waarde, veldnaam) {
+  if (waarde === null || waarde === undefined || waarde === '' || isNaN(+waarde)) return waarde;
+  const getal = +waarde;
+  if (isPercentageVeld(veldnaam)) {
+    return `${getal.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+  }
+  return getal.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /** Haal alle numerieke waarden op voor een veld uit een FeatureCollection. */
 function haalNumeriekeWaarden(fc, veld) {
   return fc.features
@@ -150,7 +174,7 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   // Overige voorkeursvelden (wijknaam overgeslagen om duplicaat te vermijden)
   KAART_CONFIG.voorkeurvelden.forEach(k => {
     if (k === 'wijknaam' || props[k] === undefined) return;
-    const txt = typeof props[k] === 'number' ? props[k].toFixed(2) : props[k];
+    const txt = typeof props[k] === 'number' ? formatteerWaarde(props[k], k) : props[k];
     rijen.push(`<b>${k}</b>: ${txt}`);
   });
 
@@ -164,7 +188,7 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
     const val = props[v];
     const tekst = (val === null || val === undefined || val === '')
       ? '<i>geen waarde</i>'
-      : (typeof val === 'number' ? val.toFixed(2) : val);
+      : (typeof val === 'number' ? formatteerWaarde(val, v) : val);
     const buiten = !waardePasseertFilter(val, alleWaarden, activeFilter) ? ' <i>(buiten filter)</i>' : '';
     rijen.push(`<b>${v}</b>: ${tekst}${buiten}`);
   }
@@ -525,6 +549,12 @@ function berekenBreaksEqualInterval(waarden, aantalKlassen) {
 // LEGENDA
 // ============================================================================
 
+/** Formatteer een klassegrens in de legenda: Nederlandse notatie, met %-teken indien van toepassing. */
+function formatteerGrensWaarde(getal, percentage) {
+  const tekst = getal.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return percentage ? `${tekst}%` : tekst;
+}
+
 /** Teken de kleurlegenda in het #legend element. */
 function tekenLegenda(breuken, kleuren, veldnaam) {
   const legendDiv = document.getElementById('legend');
@@ -533,7 +563,10 @@ function tekenLegenda(breuken, kleuren, veldnaam) {
 
   const titel = document.createElement('h3');
   titel.textContent = `Legenda: ${veldnaam}`;
+  titel.title = `Legenda: ${veldnaam}`; // volledige naam als tooltip wanneer afgebroken
   titel.style.margin = '0 0 8px 0';
+  titel.style.overflowWrap = 'break-word';
+  titel.style.wordBreak = 'break-word';
   legendDiv.appendChild(titel);
 
   // "Geen data" rij bovenaan
@@ -555,9 +588,10 @@ function tekenLegenda(breuken, kleuren, veldnaam) {
   legendDiv.appendChild(scheider);
 
   // Kleurklassen
+  const percentage = isPercentageVeld(veldnaam);
   for (let i = 0; i < kleuren.length; i++) {
-    const van = breuken[i]     != null ? breuken[i].toFixed(1)     : '';
-    const tot = breuken[i + 1] != null ? breuken[i + 1].toFixed(1) : '∞';
+    const van = breuken[i]     != null ? formatteerGrensWaarde(breuken[i], percentage)     : '';
+    const tot = breuken[i + 1] != null ? formatteerGrensWaarde(breuken[i + 1], percentage) : '∞';
     legendDiv.appendChild(maakRij(kleuren[i], `${van} – ${tot}`));
   }
 }

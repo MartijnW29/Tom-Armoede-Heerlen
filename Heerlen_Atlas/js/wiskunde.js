@@ -126,8 +126,10 @@
    * Werkt de voorbeeldtekst bij zodra de gebruiker een veld of operator kiest.
    */
   function updateFormulaPreview() {
-    const fieldA  = document.getElementById('formula-field-a')?.value || 'Variabele 1';
-    const fieldB  = document.getElementById('formula-field-b')?.value || 'Variabele 2';
+    const rawFieldA = document.getElementById('formula-field-a')?.value;
+    const rawFieldB = document.getElementById('formula-field-b')?.value;
+    const fieldA  = rawFieldA ? (window.mooieVeldnaam ? window.mooieVeldnaam(rawFieldA) : rawFieldA) : 'Variabele 1';
+    const fieldB  = rawFieldB ? (window.mooieVeldnaam ? window.mooieVeldnaam(rawFieldB) : rawFieldB) : 'Variabele 2';
     const op      = window.equationState?.operator || '+';
     const preview = document.getElementById('formula-preview');
 
@@ -161,7 +163,7 @@
       fields.forEach(veld => {
         const opt = document.createElement('option');
         opt.value = veld;
-        opt.textContent = veld;
+        opt.textContent = window.mooieVeldnaam ? window.mooieVeldnaam(veld) : veld;
         if (veld === currentValue) opt.selected = true;
         group.appendChild(opt);
       });

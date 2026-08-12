@@ -290,7 +290,7 @@
         : baseNote;
 
       return {
-        label: stat.label || stat.field || 'Statistiek',
+        label: stat.label || (stat.field && window.mooieVeldnaam ? window.mooieVeldnaam(stat.field) : stat.field) || 'Statistiek',
         value: noData ? NO_DATA_TEXT : formatValue(rawValue, stat),
         note: computedNote,
         isNoData: noData

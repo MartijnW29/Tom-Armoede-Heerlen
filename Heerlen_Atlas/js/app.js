@@ -3,6 +3,20 @@
 // Kaart-initialisatie, event-listeners, filter- en visualisatie-logica
 // ============================================================================
 
+/**
+ * Maak een technische veldnaam prettig leesbaar voor weergave aan de gebruiker:
+ * underscores worden spaties en de eerste letter wordt een hoofdletter
+ * (bv. "aantal_inwoners" → "Aantal inwoners"). De onderliggende data-sleutel
+ * (het veld zelf, gebruikt om waarden op te zoeken) blijft altijd ongewijzigd —
+ * dit is uitsluitend voor de weergave. Globaal beschikbaar voor alle scripts.
+ */
+window.mooieVeldnaam = function (veld) {
+  if (!veld || typeof veld !== 'string') return veld;
+  const metSpaties = veld.replace(/_/g, ' ').trim();
+  if (!metSpaties) return veld;
+  return metSpaties.charAt(0).toUpperCase() + metSpaties.slice(1);
+};
+
 
 // ============================================================================
 // CONFIGURATIE — Pas hier de projectinstellingen aan
@@ -357,7 +371,7 @@ function vulVeldSelect(sel, forceerWaarde) {
     bruikbareVelden.forEach(veld => {
       const opt = document.createElement('option');
       opt.value = veld;
-      opt.textContent = veld;
+      opt.textContent = window.mooieVeldnaam(veld);
 
       if (veld === huidigeWaarde) {
         opt.selected = true;

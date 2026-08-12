@@ -196,7 +196,7 @@ window.createCompareCharts = function (fcA, fcB, veld) {
   if (!container) return;
 
   const titel = document.createElement('h3');
-  titel.textContent = `Vergelijkmodus — ${veld}`;
+  titel.textContent = `Vergelijkmodus — ${window.mooieVeldnaam ? window.mooieVeldnaam(veld) : veld}`;
   container.appendChild(titel);
 
   const wrapper = document.createElement('div');

@@ -175,7 +175,7 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
   KAART_CONFIG.voorkeurvelden.forEach(k => {
     if (k === 'wijknaam' || props[k] === undefined) return;
     const txt = typeof props[k] === 'number' ? formatteerWaarde(props[k], k) : props[k];
-    rijen.push(`<b>${k}</b>: ${txt}`);
+    rijen.push(`<b>${mooieVeldnaam(k)}</b>: ${txt}`);
   });
 
   if (veldenToShow.length === 0) {
@@ -190,7 +190,7 @@ function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
       ? '<i>geen waarde</i>'
       : (typeof val === 'number' ? formatteerWaarde(val, v) : val);
     const buiten = !waardePasseertFilter(val, alleWaarden, activeFilter) ? ' <i>(buiten filter)</i>' : '';
-    rijen.push(`<b>${v}</b>: ${tekst}${buiten}`);
+    rijen.push(`<b>${mooieVeldnaam(v)}</b>: ${tekst}${buiten}`);
   }
 
   return rijen.join('<br/>');
@@ -494,7 +494,7 @@ function toonHoverJarenGrafiek(feature, defaultField) {
     const heeftData = (data.series[field] || []).length > 0;
     const item = legenda.append('span').attr('class', 'legend-item');
     item.append('i').style('background', kleuren(field)).style('opacity', heeftData ? 1 : 0.35);
-    item.append('b').text(field);
+    item.append('b').text(mooieVeldnaam(field));
   });
   legenda.transition().delay(700).duration(300).ease(d3.easeQuadOut).style('opacity', 1);
 
@@ -562,8 +562,8 @@ function tekenLegenda(breuken, kleuren, veldnaam) {
   legendDiv.innerHTML = '';
 
   const titel = document.createElement('h3');
-  titel.textContent = `Legenda: ${veldnaam}`;
-  titel.title = `Legenda: ${veldnaam}`; // volledige naam als tooltip wanneer afgebroken
+  titel.textContent = `Legenda: ${mooieVeldnaam(veldnaam)}`;
+  titel.title = `Legenda: ${mooieVeldnaam(veldnaam)}`; // volledige naam als tooltip wanneer afgebroken
   titel.style.margin = '0 0 8px 0';
   titel.style.overflowWrap = 'break-word';
   titel.style.wordBreak = 'break-word';

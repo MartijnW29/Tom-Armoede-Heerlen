@@ -110,7 +110,8 @@ window.populateFieldSelect = function (fc) {
   if (!fc?.features?.length) return;
   const numeriekeVelden = vindNumeriekeVelden(fc);
   window.availableFields = numeriekeVelden;
-  window.initFieldSelectors?.(numeriekeVelden);
+  window.herstelAangemaakteVariabelen?.(); // eerder gemaakte (cookie-opgeslagen) variabelen terugzetten
+  window.initFieldSelectors?.(window.availableFields);
 };
 
 

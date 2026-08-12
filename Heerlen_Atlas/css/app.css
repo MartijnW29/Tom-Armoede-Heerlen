@@ -521,6 +521,114 @@ button:focus-visible {
   margin-top: var(--ruimte-2);
 }
 
+/* ========== Veld-picker: custom dropdown met favoriet-ster en verwijderknop ========== */
+.veld-picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.veld-picker-trigger {
+  width: 100%;
+  padding: 5px 22px 5px 8px;
+  border: 1px solid var(--kleur-rand);
+  border-radius: var(--radius);
+  background: var(--kleur-paneel) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23888'/></svg>") no-repeat right 8px center;
+  background-size: 9px 6px;
+  color: var(--kleur-tekst, #1f2937);
+  font-size: 12px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.veld-picker-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1200;
+  min-width: 230px;
+  max-width: 300px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--kleur-rand);
+  border-radius: var(--radius);
+  background: var(--kleur-paneel);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.22);
+}
+
+.veld-picker-group-label {
+  margin: 6px 4px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--kleur-tekst-zacht);
+}
+
+.veld-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius);
+}
+
+.veld-picker-item:hover {
+  background: var(--kleur-paneel-zacht);
+}
+
+.veld-picker-item.is-geselecteerd .veld-picker-naam {
+  font-weight: 700;
+}
+
+.veld-ster {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+  color: #b3b3b3;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.veld-ster.is-actief {
+  color: #d4a017;
+}
+
+.veld-picker-naam {
+  flex: 1;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.veld-verwijder {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.65;
+}
+
+.veld-verwijder:hover {
+  opacity: 1;
+}
+
+.veld-picker-leeg {
+  padding: 6px 4px;
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+}
+
 #legend,
 #charts {
   font-size: 12px;

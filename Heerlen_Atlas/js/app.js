@@ -17,6 +17,42 @@ window.mooieVeldnaam = function (veld) {
   return metSpaties.charAt(0).toUpperCase() + metSpaties.slice(1);
 };
 
+// ============================================================================
+// COOKIES — Voorkeuren van de gebruiker onthouden (favorieten, aangemaakte variabelen)
+// ============================================================================
+
+/** Zet een cookie met een houdbaarheid in dagen (standaard 365 dagen). */
+window.zetCookie = function (naam, waarde, dagen = 365) {
+  const verloopt = new Date();
+  verloopt.setTime(verloopt.getTime() + dagen * 24 * 60 * 60 * 1000);
+  document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt.toUTCString()};path=/;SameSite=Lax`;
+};
+
+/** Leest een cookie-waarde. Geeft null terug als de cookie niet bestaat. */
+window.leesCookie = function (naam) {
+  const veilig = naam.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1');
+  const match  = document.cookie.match(new RegExp('(?:^|; )' + veilig + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+// ============================================================================
+// FAVORIETEN — Variabelen die de gebruiker met een ster heeft gemarkeerd
+// ============================================================================
+
+const FAVORIETEN_COOKIE_NAAM = 'atlas_favoriete_velden';
+
+window.favorieteVelden = new Set(
+  (window.leesCookie(FAVORIETEN_COOKIE_NAAM) || '').split(',').map(s => s.trim()).filter(Boolean)
+);
+
+/** Wisselt de favoriet-status van een veld om, onthoudt dit in een cookie en vernieuwt de UI. */
+window.toggleFavorietVeld = function (veld) {
+  if (!veld) return;
+  window.favorieteVelden.has(veld) ? window.favorieteVelden.delete(veld) : window.favorieteVelden.add(veld);
+  window.zetCookie(FAVORIETEN_COOKIE_NAAM, Array.from(window.favorieteVelden).join(','));
+  window.vernieuwVeldSelecties?.();
+};
+
 
 // ============================================================================
 // CONFIGURATIE — Pas hier de projectinstellingen aan
@@ -279,9 +315,12 @@ function isCustomField(veld) {
 
 window.getFieldGroupsForUi = function () {
   const fields = [...new Set((window.availableFields || []).filter(Boolean))];
+  const favorites = fields.filter(veld => window.favorieteVelden.has(veld));
+  const overig    = fields.filter(veld => !window.favorieteVelden.has(veld));
   return {
-    custom: fields.filter(isCustomField),
-    standard: fields.filter(veld => !isCustomField(veld))
+    favorites,
+    custom: overig.filter(isCustomField),
+    standard: overig.filter(veld => !isCustomField(veld))
   };
 };
 
@@ -360,7 +399,7 @@ function vulVeldSelect(sel, forceerWaarde) {
   sel.appendChild(legeOptie);
 
   let huidigeNogBruikbaar = false;
-  const { custom, standard } = window.getFieldGroupsForUi();
+  const { favorites, custom, standard } = window.getFieldGroupsForUi();
 
   const voegGroepToe = (groepsLabel, velden) => {
     const bruikbareVelden = velden.filter(veld => veldHeeftBeschikbareData(veld));
@@ -382,24 +421,169 @@ function vulVeldSelect(sel, forceerWaarde) {
     sel.appendChild(group);
   };
 
+  voegGroepToe('Favorieten', favorites);
   voegGroepToe('Zelfgemaakte variabelen', custom);
   voegGroepToe('Basisvariabelen', standard);
 
   // Val terug op "-- geen --" als de gewenste waarde niet (meer) bruikbaar is
   if (huidigeWaarde && !huidigeNogBruikbaar) sel.value = '';
+
+  // Custom veld-picker-UI (ster/prullenbak) in sync houden met deze select
+  vernieuwVeldPickerInhoud(sel);
 }
 
-/** Maakt een <select> element aan gevuld met alle beschikbare velden */
+/** Maakt een <select> element aan gevuld met alle beschikbare velden (verborgen; aangestuurd door de veld-picker-UI). */
 function maakSelectElement(standaardWaarde) {
   const sel = document.createElement('select');
   sel.className = 'field-select-item';
-  sel.style.minWidth = '180px';
+  sel.style.display = 'none'; // visueel vervangen door de veld-picker
 
   vulVeldSelect(sel, standaardWaarde);
 
   sel.addEventListener('change', herllaadVisualisatie);
   return sel;
 }
+
+// ============================================================================
+// VELD-PICKER — Custom dropdown met favoriet-ster en verwijder-knop voor
+// zelfgemaakte variabelen. Stuurt de bijbehorende (verborgen) <select> aan.
+// ============================================================================
+
+/**
+ * Bouwt een custom dropdown-widget die de opgegeven (verborgen) <select>
+ * aanstuurt. Elk veld krijgt een ster (favoriet toggelen); zelfgemaakte
+ * variabelen krijgen daarnaast een prullenbak om ze te verwijderen.
+ * @param {HTMLSelectElement} sel - De onderliggende, verborgen select
+ * @return {HTMLElement} de picker-wrapper, klaar om in de DOM te plaatsen
+ */
+function maakVeldPicker(sel) {
+  const wrap = document.createElement('div');
+  wrap.className = 'veld-picker';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'veld-picker-trigger';
+
+  const menu = document.createElement('div');
+  menu.className = 'veld-picker-menu';
+  menu.hidden = true;
+
+  wrap.append(trigger, menu);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasHidden = menu.hidden;
+    document.querySelectorAll('.veld-picker-menu').forEach(m => { m.hidden = true; });
+    menu.hidden = !wasHidden;
+  });
+
+  sel._picker = { trigger, menu };
+  vernieuwVeldPickerInhoud(sel);
+
+  return wrap;
+}
+
+// Eén gedelegeerde listener: klik buiten een veld-picker sluit het open menu.
+if (!window._veldPickerBuitenklikGebonden) {
+  window._veldPickerBuitenklikGebonden = true;
+  document.addEventListener('click', (e) => {
+    document.querySelectorAll('.veld-picker').forEach(wrap => {
+      if (!wrap.contains(e.target)) {
+        const menu = wrap.querySelector('.veld-picker-menu');
+        if (menu) menu.hidden = true;
+      }
+    });
+  });
+}
+
+/**
+ * (Her)bouwt de trigger-tekst en menu-items van de veld-picker die bij `sel` hoort.
+ * Wordt aangeroepen vanuit vulVeldSelect, dus telkens wanneer de beschikbare
+ * velden, favorieten of het actieve filter wijzigen.
+ * @param {HTMLSelectElement} sel
+ */
+function vernieuwVeldPickerInhoud(sel) {
+  const picker = sel._picker;
+  if (!picker) return; // picker bestaat pas nadat maakVeldPicker is aangeroepen
+  const { trigger, menu } = picker;
+
+  trigger.textContent = sel.value ? window.mooieVeldnaam(sel.value) : '-- geen --';
+  menu.innerHTML = '';
+
+  const { favorites, custom, standard } = window.getFieldGroupsForUi();
+  const bruikbaar = (lijst) => lijst.filter(veld => veldHeeftBeschikbareData(veld));
+
+  const voegGroepToe = (label, velden) => {
+    const bruikbareVelden = bruikbaar(velden);
+    if (!bruikbareVelden.length) return;
+
+    const kop = document.createElement('div');
+    kop.className = 'veld-picker-group-label';
+    kop.textContent = label;
+    menu.appendChild(kop);
+
+    bruikbareVelden.forEach(veld => {
+      const item = document.createElement('div');
+      item.className = 'veld-picker-item';
+      if (veld === sel.value) item.classList.add('is-geselecteerd');
+
+      const isFavoriet = window.favorieteVelden.has(veld);
+      const ster = document.createElement('button');
+      ster.type = 'button';
+      ster.className = 'veld-ster';
+      ster.classList.toggle('is-actief', isFavoriet);
+      ster.textContent = isFavoriet ? '★' : '☆';
+      ster.title = isFavoriet ? 'Verwijderen uit favorieten' : 'Toevoegen aan favorieten';
+      ster.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.toggleFavorietVeld(veld);
+      });
+
+      const naam = document.createElement('span');
+      naam.className = 'veld-picker-naam';
+      naam.textContent = window.mooieVeldnaam(veld);
+      naam.title = window.mooieVeldnaam(veld);
+      naam.addEventListener('click', () => {
+        sel.value = veld;
+        herllaadVisualisatie();
+        trigger.textContent = window.mooieVeldnaam(veld);
+        menu.hidden = true;
+      });
+
+      item.append(ster, naam);
+
+      if (isCustomField(veld)) {
+        const prullenbak = document.createElement('button');
+        prullenbak.type = 'button';
+        prullenbak.className = 'veld-verwijder';
+        prullenbak.textContent = '🗑';
+        prullenbak.title = 'Deze zelfgemaakte variabele verwijderen';
+        prullenbak.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (confirm(`Weet je zeker dat je de variabele "${window.mooieVeldnaam(veld)}" wilt verwijderen?`)) {
+            window.verwijderAangemaakteVariabele?.(veld);
+          }
+        });
+        item.appendChild(prullenbak);
+      }
+
+      menu.appendChild(item);
+    });
+  };
+
+  voegGroepToe('Favorieten', favorites);
+  voegGroepToe('Zelfgemaakte variabelen', custom);
+  voegGroepToe('Basisvariabelen', standard);
+
+  if (!menu.children.length) {
+    const leeg = document.createElement('div');
+    leeg.className = 'veld-picker-leeg';
+    leeg.textContent = 'Geen variabelen beschikbaar.';
+    menu.appendChild(leeg);
+  }
+}
+
+window.vernieuwVeldPickerInhoud = vernieuwVeldPickerInhoud;
 
 /**
  * Werkt alle bestaande veldselectoren in de sidebar bij op basis van de actuele
@@ -433,6 +617,9 @@ window.addFieldSelector = function (standaardWaarde) {
 
   const sel = maakSelectElement(standaardWaarde);
   rij.appendChild(sel);
+
+  const picker = maakVeldPicker(sel);
+  rij.appendChild(picker);
 
   const verwijderBtn = document.createElement('button');
   verwijderBtn.type = 'button';

@@ -216,36 +216,57 @@
   }
 
   // ============================================================================
+  // OPSLAG — Zelfgemaakte variabelen onthouden met een cookie
+  // ============================================================================
+
+  const AANGEMAAKTE_VARIABELEN_COOKIE = 'atlas_aangemaakte_variabelen';
+
+  /** Leest de lijst met opgeslagen formules (zelfgemaakte variabelen) uit de cookie. */
+  function leesOpgeslagenVariabelen() {
+    try {
+      const raw   = window.leesCookie?.(AANGEMAAKTE_VARIABELEN_COOKIE);
+      const lijst = raw ? JSON.parse(raw) : [];
+      return Array.isArray(lijst) ? lijst : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Schrijft de lijst met formules terug naar de cookie. */
+  function schrijfOpgeslagenVariabelen(lijst) {
+    window.zetCookie?.(AANGEMAAKTE_VARIABELEN_COOKIE, JSON.stringify(lijst));
+  }
+
+  /** Voegt een formule toe aan de opslag (werkt 'm bij als de naam al bestaat). */
+  function slaFormuleOp(outputField, fieldA, fieldB, op) {
+    const lijst = leesOpgeslagenVariabelen().filter(item => item.veld !== outputField);
+    lijst.push({ veld: outputField, a: fieldA, b: fieldB, op });
+    schrijfOpgeslagenVariabelen(lijst);
+  }
+
+  /** Verwijdert een formule uit de opslag. */
+  function verwijderFormuleUitOpslag(outputField) {
+    schrijfOpgeslagenVariabelen(leesOpgeslagenVariabelen().filter(item => item.veld !== outputField));
+  }
+
+  // ============================================================================
   // HOOFDFUNCTIE — Nieuwe berekende variabele aanmaken
   // ============================================================================
 
   /**
-   * Leest de UI-waarden uit, berekent per feature de nieuwe waarde,
-   * voegt het resultaat toe aan de dataset en herlaadt de visualisatie.
+   * Berekent per feature de nieuwe waarde voor een formule en registreert het
+   * resultaat als beschikbaar veld. Kern-logica, herbruikt door zowel de
+   * "Maak nieuwe variabele"-knop als het automatisch herstellen vanuit een cookie.
+   * @return {{ outputField: string, nullCount: number }|null}
    */
-  function createDerivedVariable() {
-    const fieldA = document.getElementById('formula-field-a')?.value;
-    const fieldB = document.getElementById('formula-field-b')?.value;
-    const op     = window.equationState?.operator || '+';
-    const fc     = window.appData?.lastFC;
+  function berekenEnRegistreerVariabele(fieldA, fieldB, op, outputFieldGewenst) {
+    const fc = window.appData?.lastFC;
+    if (!fc?.features?.length) return null;
 
-    // Validatie
-    if (!fieldA || !fieldB) {
-      setFormulaStatus('Kies eerst twee variabelen voor de berekening.', 'error');
-      return;
-    }
-    if (!fc?.features?.length) {
-      setFormulaStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
-      return;
-    }
-
-    // Naam bepalen
-    const requestedName = document.getElementById('formula-name')?.value;
-    const outputField   = ensureUniqueFieldName(
-      buildDerivedFieldName(fieldA, fieldB, op, requestedName),
+    const outputField = outputFieldGewenst || ensureUniqueFieldName(
+      buildDerivedFieldName(fieldA, fieldB, op),
       window.availableFields || []
     );
-    window.derivedFieldCounter += 1;
 
     // Bereken de nieuwe waarden (diepe kopie zodat de originele data intact blijft)
     const derivedFC = JSON.parse(JSON.stringify(fc));
@@ -270,26 +291,121 @@
     window.customFieldNames = Array.from(new Set([...(window.customFieldNames || []), outputField]));
     window.availableFields  = Array.from(new Set([...(window.availableFields  || []), outputField]));
 
+    return { outputField, nullCount };
+  }
+
+  /**
+   * Leest de UI-waarden uit, berekent per feature de nieuwe waarde,
+   * voegt het resultaat toe aan de dataset en herlaadt de visualisatie.
+   * Onthoudt de formule ook in een cookie zodat de variabele terugkomt
+   * bij een volgend bezoek.
+   */
+  function createDerivedVariable() {
+    const fieldA = document.getElementById('formula-field-a')?.value;
+    const fieldB = document.getElementById('formula-field-b')?.value;
+    const op     = window.equationState?.operator || '+';
+
+    // Validatie
+    if (!fieldA || !fieldB) {
+      setFormulaStatus('Kies eerst twee variabelen voor de berekening.', 'error');
+      return;
+    }
+    if (!window.appData?.lastFC?.features?.length) {
+      setFormulaStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
+      return;
+    }
+
+    // Naam bepalen
+    const requestedName      = document.getElementById('formula-name')?.value;
+    const outputFieldGewenst = ensureUniqueFieldName(
+      buildDerivedFieldName(fieldA, fieldB, op, requestedName),
+      window.availableFields || []
+    );
+    window.derivedFieldCounter += 1;
+
+    const resultaat = berekenEnRegistreerVariabele(fieldA, fieldB, op, outputFieldGewenst);
+    if (!resultaat) {
+      setFormulaStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
+      return;
+    }
+    const { outputField, nullCount } = resultaat;
+
+    // Onthoud de formule zodat de variabele terugkomt bij een volgend bezoek
+    slaFormuleOp(outputField, fieldA, fieldB, op);
+
     // Vernieuw UI
     window.initFieldSelectors?.(window.availableFields);
     refreshEquationFieldOptions();
 
     // Selecteer het nieuwe veld in de eerste variabele-dropdown
     const firstSelector = document.querySelector('#selectors-div select.field-select-item');
-    if (firstSelector) firstSelector.value = outputField;
+    if (firstSelector) {
+      firstSelector.value = outputField;
+      window.vernieuwVeldPickerInhoud?.(firstSelector);
+    }
 
     // Statusbericht
-    const opLabel  = op === '%'
-      ? `% van`
-      : getEquationOperatorLabel(op);
+    const mooi     = window.mooieVeldnaam || (v => v);
+    const opLabel  = op === '%' ? `% van` : getEquationOperatorLabel(op);
     const nullNote = nullCount > 0 ? ` (${nullCount} feature(s) hebben geen geldige waarde)` : '';
     setFormulaStatus(
-      `Nieuwe variabele aangemaakt: "${outputField}" (${fieldA} ${opLabel} ${fieldB})${nullNote}.`,
+      `Nieuwe variabele aangemaakt: "${mooi(outputField)}" (${mooi(fieldA)} ${opLabel} ${mooi(fieldB)})${nullNote}.`,
       'success'
     );
 
     window.herllaadVisualisatie?.();
   }
+
+  /**
+   * Herstelt eerder aangemaakte (via cookie onthouden) berekende variabelen
+   * voor de zojuist geladen dataset. Formules waarvan de brongegevens niet
+   * (meer) beschikbaar zijn, of die al bestaan, worden overgeslagen.
+   * Wordt aangeroepen nadat een nieuwe dataset is geladen.
+   */
+  window.herstelAangemaakteVariabelen = function () {
+    const opgeslagen = leesOpgeslagenVariabelen();
+    if (!opgeslagen.length) return;
+
+    opgeslagen.forEach(({ veld, a, b, op }) => {
+      if (!veld || !a || !b) return;
+      if ((window.availableFields || []).includes(veld)) return; // al aanwezig
+      if (!(window.availableFields || []).includes(a)) return;   // brondata niet beschikbaar
+      if (!(window.availableFields || []).includes(b)) return;
+      berekenEnRegistreerVariabele(a, b, op, veld);
+    });
+  };
+
+  /**
+   * Verwijdert een zelfgemaakte variabele: haalt 'm uit de beschikbare velden,
+   * favorieten en de cookie-opslag, en reset selectoren die er nog naar wijzen.
+   * @param {string} veld
+   */
+  window.verwijderAangemaakteVariabele = function (veld) {
+    if (!veld) return;
+
+    window.customFieldNames = (window.customFieldNames || []).filter(v => v !== veld);
+    window.availableFields  = (window.availableFields  || []).filter(v => v !== veld);
+
+    if (window.favorieteVelden?.has(veld)) {
+      window.favorieteVelden.delete(veld);
+      window.zetCookie?.('atlas_favoriete_velden', Array.from(window.favorieteVelden).join(','));
+    }
+
+    verwijderFormuleUitOpslag(veld);
+
+    // Selectoren die dit veld tonen terugzetten naar "-- geen --"
+    document.querySelectorAll('#selectors-div select.field-select-item').forEach(sel => {
+      if (sel.value === veld) sel.value = '';
+    });
+    [document.getElementById('formula-field-a'), document.getElementById('formula-field-b')].forEach(sel => {
+      if (sel && sel.value === veld) sel.value = '';
+    });
+
+    window.vernieuwVeldSelecties?.();
+    refreshEquationFieldOptions();
+    updateFormulaPreview();
+    window.herllaadVisualisatie?.();
+  };
 
   // ============================================================================
   // EVENT-LISTENERS

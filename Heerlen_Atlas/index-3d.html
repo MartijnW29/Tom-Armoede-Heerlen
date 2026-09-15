@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heerlen 3D Atlas</title>
+
+  <!-- deck.gl via CDN — geen API-key nodig -->
+  <script src="https://unpkg.com/deck.gl@8.9.35/dist.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    /* ── Reset & basis ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1923;
+      --panel:       #1a2535;
+      --panel-light: #212f42;
+      --rand:        rgba(255,255,255,0.08);
+      --accent:      #00c8ff;
+      --accent2:     #ff6b35;
+      --tekst:       #e2e8f0;
+      --tekst-zacht: #8fa3b8;
+      --sidebar-w:   320px;
+      --radius:      10px;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--tekst);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────── */
+    #app { display: flex; width: 100%; height: 100vh; }
+
+    #kaart-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #deck-canvas {
+      position: absolute;
+      inset: 0;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      height: 100%;
+      background: var(--panel);
+      border-right: 1px solid var(--rand);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 10;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+    }
+
+    .sidebar-header {
+      padding: 20px 16px 14px;
+      border-bottom: 1px solid var(--rand);
+      background: linear-gradient(135deg, rgba(0,200,255,0.08), rgba(255,107,53,0.06));
+    }
+
+    .sidebar-header h1 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-header p {
+      font-size: 11px;
+      color: var(--tekst-zacht);
+      line-height: 1.5;
+    }
+
+    .paneel {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--rand);
+    }
+
+    .paneel h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    /* ── Knoppen ───────────────────────────────────────────────────── */
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--bg);
+      background: var(--accent);
+      transition: all 0.18s ease;
+    }
+
+    button:hover { filter: brightness(1.12); transform: translateY(-1px); }
+    button.secundair { background: var(--panel-light); color: var(--tekst); border: 1px solid var(--rand); }
+    button.secundair:hover { border-color: var(--accent); color: var(--accent); }
+
+    .knop-rij { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+    /* ── Labels & selects ──────────────────────────────────────────── */
+    label {
+      display: block;
+      font-size: 11px;
+      color: var(--tekst-zacht);
+      margin-bottom: 5px;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+
+    select {
+      background: var(--panel-light);
+      color: var(--tekst);
+      border: 1px solid var(--rand);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      appearance: none;
+    }
+
+    select:focus { outline: none; border-color: var(--accent); }
+
+    input[type="range"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* ── Slider-rij ────────────────────────────────────────────────── */
+    .slider-rij {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .slider-rij input { flex: 1; margin: 0; }
+
+    .slider-waarde {
+      min-width: 42px;
+      text-align: right;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 13px;
+    }
+
+    /* ── Legenda ───────────────────────────────────────────────────── */
+    #legenda-inhoud {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .legenda-rij {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--tekst-zacht);
+    }
+
+    .legenda-kleur {
+      width: 20px;
+      height: 12px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* ── Statistieken-kaartjes ─────────────────────────────────────── */
+    #statistieken-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .stat-kaartje {
+      background: var(--panel-light);
+      border: 1px solid var(--rand);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+    }
+
+    .stat-kaartje-label {
+      font-size: 10px;
+      color: var(--tekst-zacht);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    .stat-kaartje-waarde {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+
+    .stat-kaartje-waarde.negatief { color: var(--accent2); }
+
+    /* ── Hover tooltip op de kaart ─────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000;
+      background: rgba(15, 25, 35, 0.96);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 12px;
+      max-width: 260px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      display: none;
+    }
+
+    #tooltip .tooltip-naam {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--rand);
+      padding-bottom: 6px;
+    }
+
+    #tooltip .tooltip-rij {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+      color: var(--tekst-zacht);
+    }
+
+    #tooltip .tooltip-rij span:last-child {
+      font-weight: 700;
+      color: var(--tekst);
+    }
+
+    /* ── API-status balk ───────────────────────────────────────────── */
+    #status-balk {
+      position: fixed;
+      bottom: 16px;
+      left: calc(var(--sidebar-w) + 16px);
+      background: rgba(15,25,35,0.92);
+      border: 1px solid var(--rand);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 11px;
+      color: var(--tekst-zacht);
+      z-index: 100;
+      backdrop-filter: blur(8px);
+    }
+
+    #status-balk.laden { color: var(--accent); border-color: var(--accent); }
+    #status-balk.fout  { color: var(--accent2); border-color: var(--accent2); }
+
+    /* ── Navigatie-uitleg ──────────────────────────────────────────── */
+    #navigatie-hulp {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: rgba(15,25,35,0.88);
+      border: 1px solid var(--rand);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 11px;
+      color: var(--tekst-zacht);
+      line-height: 1.7;
+      z-index: 100;
+    }
+
+    #navigatie-hulp strong { color: var(--tekst); }
+
+    /* ── Terug-knop ────────────────────────────────────────────────── */
+    #terug-knop {
+      position: fixed;
+      top: 16px;
+      left: calc(var(--sidebar-w) + 16px);
+      z-index: 200;
+    }
+
+    #terug-knop a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: rgba(15,25,35,0.92);
+      border: 1px solid var(--rand);
+      border-radius: 8px;
+      color: var(--tekst-zacht);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      backdrop-filter: blur(8px);
+      transition: all 0.18s;
+    }
+
+    #terug-knop a:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Geen-data badge ───────────────────────────────────────────── */
+    .geen-data {
+      color: var(--tekst-zacht);
+      font-style: italic;
+      font-size: 11px;
+      padding: 8px 0;
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────── */
+    #sidebar::-webkit-scrollbar { width: 4px; }
+    #sidebar::-webkit-scrollbar-track { background: transparent; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--rand); border-radius: 2px; }
+  </style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+
+    <div class="sidebar-header">
+      <h1>Heerlen 3D Atlas</h1>
+      <p>Buurten weergegeven als 3D-extrusies. Hoogte en kleur zijn instelbaar per statistiek.</p>
+    </div>
+
+    <!-- Data laden -->
+    <div class="paneel">
+      <h3>Data laden</h3>
+      <label for="api-url-input">PDOK API URL (buurten Heerlen):</label>
+      <select id="jaar-keuze">
+        <option value="2024">2024</option>
+        <option value="2023">2023</option>
+        <option value="2022">2022</option>
+        <option value="2021">2021</option>
+        <option value="2020">2020</option>
+      </select>
+      <div class="knop-rij">
+        <button id="laad-pdok-knop">⬇ Laad PDOK-data</button>
+        <button class="secundair" id="laad-cbs-knop">+ CBS koppelen</button>
+      </div>
+    </div>
+
+    <!-- Weergave-instellingen -->
+    <div class="paneel">
+      <h3>Weergave</h3>
+
+      <label for="kleur-veld">Kleur op basis van:</label>
+      <select id="kleur-veld">
+        <option value="">-- kies variabele --</option>
+      </select>
+
+      <label for="hoogte-veld">Hoogte op basis van:</label>
+      <select id="hoogte-veld">
+        <option value="">-- kies variabele --</option>
+      </select>
+
+      <label>Maximale hoogte:</label>
+      <div class="slider-rij">
+        <input type="range" id="hoogte-schaal" min="50" max="5000" step="50" value="800" />
+        <span class="slider-waarde" id="hoogte-schaal-waarde">800m</span>
+      </div>
+
+      <label>Transparantie:</label>
+      <div class="slider-rij">
+        <input type="range" id="transparantie" min="10" max="100" step="5" value="85" />
+        <span class="slider-waarde" id="transparantie-waarde">85%</span>
+      </div>
+
+      <label for="palet-keuze">Kleurpalet:</label>
+      <select id="palet-keuze">
+        <option value="rood-groen">Rood → Groen (armoede)</option>
+        <option value="blauw">Blauw (intensiteit)</option>
+        <option value="oranje">Oranje (warmte)</option>
+        <option value="paars-geel">Paars → Geel (viridis)</option>
+      </select>
+
+      <div class="knop-rij">
+        <button id="update-knop">↻ Vernieuwen</button>
+        <button class="secundair" id="reset-view-knop">⌂ Reset view</button>
+      </div>
+    </div>
+
+    <!-- Legenda -->
+    <div class="paneel">
+      <h3>Legenda</h3>
+      <div id="legenda-inhoud">
+        <p class="geen-data">Laad eerst data om de legenda te tonen.</p>
+      </div>
+    </div>
+
+    <!-- Geselecteerde buurt -->
+    <div class="paneel" id="buurt-paneel" style="display:none">
+      <h3>Geselecteerde buurt</h3>
+      <div id="buurt-naam" style="font-size:15px;font-weight:800;margin-bottom:10px;color:var(--accent)"></div>
+      <div id="statistieken-grid"></div>
+    </div>
+
+    <!-- Link naar 2D-kaart -->
+    <div class="paneel">
+      <h3>Navigatie</h3>
+      <div class="knop-rij">
+        <a href="index.html" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:var(--panel-light);border:1px solid var(--rand);border-radius:6px;color:var(--tekst);text-decoration:none;font-size:12px;font-weight:600;">
+          ← Terug naar 2D-kaart
+        </a>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── KAART ────────────────────────────────────────────────────────── -->
+  <div id="kaart-container">
+    <canvas id="deck-canvas"></canvas>
+  </div>
+
+</div>
+
+<!-- Tooltip bij hover -->
+<div id="tooltip"></div>
+
+<!-- Status onderaan -->
+<div id="status-balk">Klaar — laad PDOK-data om te beginnen.</div>
+
+<!-- Navigatie-uitleg rechtsonder -->
+<div id="navigatie-hulp">
+  <strong>Navigatie:</strong><br>
+  Slepen: roteer / pan<br>
+  Scroll: zoom in/uit<br>
+  Ctrl+slepen: kantelen<br>
+  Klik buurt: details
+</div>
+
+<script>
+// ============================================================================
+// HEERLEN 3D ATLAS — deck.gl + MapLibre GL
+// Buurten als 3D extrusies; kleur en hoogte instelbaar per statistiek
+// ============================================================================
+
+// ── Configuratie ─────────────────────────────────────────────────────────────
+
+const CONFIG = {
+  startView: {
+    longitude:  5.9794,
+    latitude:   50.8889,
+    zoom:       12.5,
+    pitch:      52,
+    bearing:    -15,
+  },
+  pdokBuurtenBase: 'https://api.pdok.nl/cbs/wijken-en-buurten-{JAAR}/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json',
+  cbsOdata: 'https://opendata.cbs.nl/ODataApi/OData/84799NED/TypedDataSet',
+  cbsGemeenteCode: '0917',
+  cbsUitsluit: new Set(['ID', 'WijkenEnBuurten', 'Codering_3']),
+};
+
+// Kleurpaletten: elke stap is [r, g, b] — van laag naar hoog
+const PALETTEN = {
+  'rood-groen':  [[165,0,38],[215,48,39],[244,109,67],[253,174,97],[254,224,139],[217,239,139],[166,217,106],[102,189,99],[26,152,80],[0,104,55]],
+  'blauw':       [[247,251,255],[222,235,247],[198,219,239],[158,202,225],[107,174,214],[66,146,198],[33,113,181],[8,81,156],[8,48,107],[3,19,43]],
+  'oranje':      [[255,245,235],[254,230,206],[253,208,162],[253,174,107],[253,141,60],[241,105,19],[217,72,1],[166,54,3],[127,39,4],[63,19,2]],
+  'paars-geel':  [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[110,206,88],[181,222,43],[253,231,37]],
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+let deck           = null;
+let deckData       = [];          // GeoJSON features na laden + CBS-koppeling
+let beschikbareVelden = [];       // Numerieke veldnamen gevonden in data
+let geselecteerdeBuurt = null;    // Actief geselecteerde feature
+
+// ── Hulpfuncties ─────────────────────────────────────────────────────────────
+
+function zetStatus(tekst, type = '') {
+  const el = document.getElementById('status-balk');
+  el.textContent = tekst;
+  el.className = type;
+}
+
+/**
+ * Haal alle numerieke eigenschappen op uit een array features.
+ * Controleert de eerste 10 features voor snelheid.
+ */
+function vindNumeriekeVelden(features) {
+  if (!features.length) return [];
+  const kandidaten = Object.keys(features[0].properties || {});
+  return kandidaten.filter(veld => {
+    for (let i = 0; i < Math.min(10, features.length); i++) {
+      const v = features[i]?.properties?.[veld];
+      if (v != null && !isNaN(+v) && isFinite(+v)) return true;
+    }
+    return false;
+  });
+}
+
+/** Bereken min en max van een veld over alle features. */
+function berekenBereik(features, veld) {
+  const waarden = features
+    .map(f => +f.properties?.[veld])
+    .filter(v => isFinite(v));
+  if (!waarden.length) return { min: 0, max: 1 };
+  return { min: Math.min(...waarden), max: Math.max(...waarden) };
+}
+
+/**
+ * Interpoleer een kleur op basis van een genormaliseerde waarde (0–1)
+ * door het gekozen palet lineair te doorlopen.
+ */
+function interpoleerKleur(t, paletNaam) {
+  const palet = PALETTEN[paletNaam] || PALETTEN['rood-groen'];
+  const n     = palet.length - 1;
+  const idx   = Math.min(Math.floor(t * n), n - 1);
+  const frac  = t * n - idx;
+  const a     = palet[idx];
+  const b     = palet[Math.min(idx + 1, n)];
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * frac),
+    Math.round(a[1] + (b[1] - a[1]) * frac),
+    Math.round(a[2] + (b[2] - a[2]) * frac),
+  ];
+}
+
+/** Formatteer een getal naar Nederlandse notatie (bv. 1.234,5). */
+function formatteer(waarde, veld) {
+  if (waarde == null || waarde === '' || !isFinite(+waarde)) return '—';
+  const getal = +waarde;
+  if (/pct|percent|_pct|aandeel/i.test(veld || '')) {
+    return `${getal.toLocaleString('nl-NL', { maximumFractionDigits: 1 })}%`;
+  }
+  if (/inkomen|waarde|prijs/i.test(veld || '')) {
+    return `€ ${getal.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`;
+  }
+  return getal.toLocaleString('nl-NL', { maximumFractionDigits: 1 });
+}
+
+/** Maak een leesbare label van een veldnaam (underscores → spaties, hoofdletter). */
+function leesbaar(veld) {
+  const mooi = veld.replace(/_/g, ' ').trim();
+  return mooi.charAt(0).toUpperCase() + mooi.slice(1);
+}
+
+// ── Legenda tekenen ───────────────────────────────────────────────────────────
+
+function tekenLegenda(veld, bereik, paletNaam) {
+  const container = document.getElementById('legenda-inhoud');
+  container.innerHTML = '';
+
+  if (!veld) {
+    container.innerHTML = '<p class="geen-data">Kies een variabele om de legenda te tonen.</p>';
+    return;
+  }
+
+  const stapGrootte = (bereik.max - bereik.min) / 5;
+
+  for (let i = 5; i >= 0; i--) {
+    const waarde = bereik.min + stapGrootte * i;
+    const t      = (waarde - bereik.min) / Math.max(bereik.max - bereik.min, 0.001);
+    const kleur  = interpoleerKleur(t, paletNaam);
+
+    const rij = document.createElement('div');
+    rij.className = 'legenda-rij';
+
+    const kleurBlok = document.createElement('div');
+    kleurBlok.className = 'legenda-kleur';
+    kleurBlok.style.background = `rgb(${kleur.join(',')})`;
+
+    const label = document.createElement('span');
+    label.textContent = formatteer(waarde, veld);
+
+    rij.append(kleurBlok, label);
+    container.appendChild(rij);
+  }
+}
+
+// ── Dropdown velden bijwerken ─────────────────────────────────────────────────
+
+function vulVeldDropdowns() {
+  const selects = ['kleur-veld', 'hoogte-veld'].map(id => document.getElementById(id));
+
+  selects.forEach(sel => {
+    const huidige = sel.value;
+    sel.innerHTML = '<option value="">-- geen --</option>';
+    beschikbareVelden.forEach(veld => {
+      const opt = document.createElement('option');
+      opt.value = veld;
+      opt.textContent = leesbaar(veld);
+      if (veld === huidige) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  });
+
+  // Stel standaard zinvolle velden in als die bestaan
+  const voorkeur = {
+    kleur:  ['werkloosheid_pct', 'Werkloosheid_14', 'inkomen_mediaan', 'GemiddeldeWoningwaarde_35', 'aantal_inwoners'],
+    hoogte: ['aantal_inwoners', 'AantalInwoners_5', 'huishoudens', 'AantalHuishoudens_8'],
+  };
+
+  const setDefault = (selectId, lijst) => {
+    const sel = document.getElementById(selectId);
+    if (sel.value) return; // al ingesteld
+    for (const v of lijst) {
+      if (beschikbareVelden.includes(v)) { sel.value = v; return; }
+    }
+    if (beschikbareVelden.length) sel.value = beschikbareVelden[0];
+  };
+
+  setDefault('kleur-veld',   voorkeur.kleur);
+  setDefault('hoogte-veld',  voorkeur.hoogte);
+}
+
+// ── Deck.gl initialiseren ─────────────────────────────────────────────────────
+
+function initialiseerDeck() {
+  const canvas = document.getElementById('deck-canvas');
+  const container = document.getElementById('kaart-container');
+
+  // Stel canvas-grootte in
+  canvas.width  = container.clientWidth;
+  canvas.height = container.clientHeight;
+
+  deck = new deck.Deck({
+    canvas: 'deck-canvas',
+    initialViewState: CONFIG.startView,
+    controller: true,
+
+    // OpenStreetMap als basemap via MapLibre GL
+    map: maplibregl,
+    mapStyle: {
+      version: 8,
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+        },
+      },
+      layers: [{
+        id: 'osm',
+        type: 'raster',
+        source: 'osm',
+        paint: { 'raster-opacity': 0.3, 'raster-brightness-min': 0, 'raster-saturation': -1 },
+      }],
+    },
+
+    onHover: ({ object, x, y }) => {
+      const tooltip = document.getElementById('tooltip');
+      if (!object) {
+        tooltip.style.display = 'none';
+        return;
+      }
+      const props = object.properties || {};
+      const naam  = props.buurtnaam || props.naam || props.buurt || 'Onbekend';
+
+      const kleurVeld  = document.getElementById('kleur-veld').value;
+      const hoogteVeld = document.getElementById('hoogte-veld').value;
+
+      let inhoud = `<div class="tooltip-naam">${naam}</div>`;
+
+      // Toon waarden van de actieve velden + de 4 meest informatieve velden
+      const toTonen = new Set([kleurVeld, hoogteVeld, 'werkloosheid_pct', 'inkomen_mediaan', 'aantal_inwoners', 'huishoudens'].filter(Boolean));
+
+      toTonen.forEach(veld => {
+        if (!veld || !(veld in props)) return;
+        inhoud += `
+          <div class="tooltip-rij">
+            <span>${leesbaar(veld)}</span>
+            <span>${formatteer(props[veld], veld)}</span>
+          </div>`;
+      });
+
+      tooltip.innerHTML   = inhoud;
+      tooltip.style.display = 'block';
+      tooltip.style.left  = `${Math.min(x + 12, window.innerWidth - 280)}px`;
+      tooltip.style.top   = `${Math.min(y + 12, window.innerHeight - 200)}px`;
+    },
+
+    onClick: ({ object }) => {
+      if (!object) {
+        geselecteerdeBuurt = null;
+        document.getElementById('buurt-paneel').style.display = 'none';
+        vernieuwLagen();
+        return;
+      }
+      geselecteerdeBuurt = object;
+      toonBuurtDetails(object);
+      vernieuwLagen();
+    },
+
+    layers: [],
+    getTooltip: null, // eigen tooltip-systeem
+  });
+
+  // Herbereken canvas-grootte bij resize
+  window.addEventListener('resize', () => {
+    canvas.width  = container.clientWidth;
+    canvas.height = container.clientHeight;
+    deck.redraw(true);
+  });
+}
+
+// ── 3D laag opbouwen ─────────────────────────────────────────────────────────
+
+function vernieuwLagen() {
+  if (!deck || !deckData.length) return;
+
+  const kleurVeld      = document.getElementById('kleur-veld').value;
+  const hoogteVeld     = document.getElementById('hoogte-veld').value;
+  const hoogteSchaal   = +document.getElementById('hoogte-schaal').value;
+  const transparantie  = +document.getElementById('transparantie').value / 100;
+  const paletNaam      = document.getElementById('palet-keuze').value;
+
+  const kleurBereik  = kleurVeld  ? berekenBereik(deckData, kleurVeld)  : { min: 0, max: 1 };
+  const hoogteBereik = hoogteVeld ? berekenBereik(deckData, hoogteVeld) : { min: 0, max: 1 };
+
+  tekenLegenda(kleurVeld, kleurBereik, paletNaam);
+
+  // PolygonLayer met 3D-extrusie
+  const laag = new deck.PolygonLayer({
+    id: 'buurten-3d',
+    data: deckData,
+    pickable: true,
+    stroked: true,
+    filled: true,
+    extruded: true,
+    wireframe: false,
+
+    // Geometrie uit GeoJSON
+    getPolygon: f => f.geometry.coordinates,
+
+    // Hoogte: genormaliseerde waarde × schaal
+    getElevation: f => {
+      if (!hoogteVeld) return 50;
+      const v = +f.properties?.[hoogteVeld];
+      if (!isFinite(v)) return 20;
+      const t = Math.max(0, (v - hoogteBereik.min) / Math.max(hoogteBereik.max - hoogteBereik.min, 0.001));
+      return Math.max(20, t * hoogteSchaal);
+    },
+
+    // Kleur: palet op basis van genormaliseerde waarde
+    getFillColor: f => {
+      // Geselecteerde buurt: wit oplichten
+      if (geselecteerdeBuurt && f === geselecteerdeBuurt) return [255, 255, 255, 230];
+
+      if (!kleurVeld) return [100, 160, 220, Math.round(transparantie * 255)];
+      const v = +f.properties?.[kleurVeld];
+      if (!isFinite(v)) return [80, 80, 80, Math.round(transparantie * 255)];
+
+      const t   = Math.max(0, Math.min(1, (v - kleurBereik.min) / Math.max(kleurBereik.max - kleurBereik.min, 0.001)));
+      const rgb = interpoleerKleur(t, paletNaam);
+      return [...rgb, Math.round(transparantie * 255)];
+    },
+
+    // Rand van buurten
+    getLineColor: f => {
+      if (geselecteerdeBuurt && f === geselecteerdeBuurt) return [0, 200, 255, 255];
+      return [255, 255, 255, 60];
+    },
+
+    lineWidthMinPixels: 1,
+    lineWidthMaxPixels: 3,
+
+    // Smooth updates
+    updateTriggers: {
+      getElevation:  [hoogteVeld, hoogteSchaal],
+      getFillColor:  [kleurVeld, paletNaam, transparantie, geselecteerdeBuurt],
+      getLineColor:  [geselecteerdeBuurt],
+    },
+
+    transitions: {
+      getElevation: { duration: 600, easing: t => t < 0.5 ? 2*t*t : -1+(4-2*t)*t },
+      getFillColor: { duration: 400 },
+    },
+  });
+
+  deck.setProps({ layers: [laag] });
+}
+
+// ── Buurtdetails in sidebar tonen ─────────────────────────────────────────────
+
+function toonBuurtDetails(feature) {
+  const props     = feature.properties || {};
+  const naam      = props.buurtnaam || props.naam || props.buurt || 'Onbekend';
+  const paneel    = document.getElementById('buurt-paneel');
+  const naamEl    = document.getElementById('buurt-naam');
+  const gridEl    = document.getElementById('statistieken-grid');
+
+  paneel.style.display = 'block';
+  naamEl.textContent   = naam;
+  gridEl.innerHTML     = '';
+
+  // Toon de 8 meest interessante numerieke velden als kaartjes
+  const toonVelden = beschikbareVelden.slice(0, 8);
+
+  toonVelden.forEach(veld => {
+    const waarde = props[veld];
+    if (waarde == null) return;
+
+    const kaartje = document.createElement('div');
+    kaartje.className = 'stat-kaartje';
+
+    const labelEl = document.createElement('div');
+    labelEl.className   = 'stat-kaartje-label';
+    labelEl.textContent = leesbaar(veld);
+
+    const waardeEl = document.createElement('div');
+    waardeEl.className   = 'stat-kaartje-waarde';
+    waardeEl.textContent = formatteer(waarde, veld);
+
+    // Werkloosheid/armoede-gerelateerde velden in oranje markeren
+    if (/werkloosheid|armoede|bijstand|uitkering/i.test(veld)) {
+      waardeEl.classList.add('negatief');
+    }
+
+    kaartje.append(labelEl, waardeEl);
+    gridEl.appendChild(kaartje);
+  });
+
+  // Scroll sidebar naar buurt-paneel
+  paneel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── PDOK data laden ───────────────────────────────────────────────────────────
+
+async function laadPdokData() {
+  const jaar = document.getElementById('jaar-keuze').value;
+  const url  = CONFIG.pdokBuurtenBase.replace('{JAAR}', jaar);
+
+  zetStatus(`Data laden voor ${jaar}…`, 'laden');
+
+  try {
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    // PDOK OGC API geeft `items`, standaard GeoJSON geeft `features`
+    const features = json.features || json.items || [];
+    if (!features.length) throw new Error('Geen features ontvangen.');
+
+    // Normaliseer naar FeatureCollection-structuur als dat nodig is
+    deckData = features.map(f => ({
+      type: 'Feature',
+      properties: f.properties || {},
+      geometry: f.geometry || f,
+    })).filter(f => f.geometry);
+
+    beschikbareVelden = vindNumeriekeVelden(deckData);
+    vulVeldDropdowns();
+    vernieuwLagen();
+
+    zetStatus(`✓ ${deckData.length} buurten geladen (${jaar}).`);
+  } catch (err) {
+    console.error('PDOK laden mislukt:', err);
+    zetStatus(`Fout: ${err.message}`, 'fout');
+  }
+}
+
+// ── CBS kerncijfers koppelen ──────────────────────────────────────────────────
+
+async function laadCbsData() {
+  if (!deckData.length) {
+    zetStatus('Laad eerst PDOK-data voordat je CBS koppelt.', 'fout');
+    return;
+  }
+
+  zetStatus('CBS kerncijfers laden…', 'laden');
+
+  try {
+    const filter  = encodeURIComponent(`substringof('${CONFIG.cbsGemeenteCode}',WijkenEnBuurten)`);
+    const url     = `${CONFIG.cbsOdata}?$filter=${filter}&$format=json`;
+    const res     = await fetch(url);
+    if (!res.ok) throw new Error(`CBS HTTP ${res.status}`);
+    const json    = await res.json();
+    const rijen   = json.value || [];
+
+    // Bouw opzoektabel: buurt/wijkcode → properties
+    const opzoek  = {};
+    for (const rij of rijen) {
+      const code  = (rij.WijkenEnBuurten || '').trim();
+      if (!code) continue;
+      const props = {};
+      for (const [k, v] of Object.entries(rij)) {
+        if (CONFIG.cbsUitsluit.has(k)) continue;
+        if (typeof v === 'number') props[k] = v;
+        else if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v.trim())) props[k] = +v.trim();
+      }
+      opzoek[code] = props;
+    }
+
+    // Koppel CBS-velden aan features via statcode / buurtcode
+    let gekoppeld = 0;
+    for (const feature of deckData) {
+      const code = (
+        feature.properties?.statcode || feature.properties?.buurtcode ||
+        feature.properties?.code     || ''
+      ).trim();
+
+      const cbsProps = opzoek[code];
+      if (!cbsProps) continue;
+
+      for (const [k, v] of Object.entries(cbsProps)) {
+        if (!(k in feature.properties)) feature.properties[k] = v;
+      }
+      gekoppeld++;
+    }
+
+    beschikbareVelden = vindNumeriekeVelden(deckData);
+    vulVeldDropdowns();
+    vernieuwLagen();
+
+    zetStatus(`✓ CBS gekoppeld: ${gekoppeld} van ${deckData.length} buurten verrijkt.`);
+  } catch (err) {
+    console.error('CBS laden mislukt:', err);
+    zetStatus(`CBS fout: ${err.message}`, 'fout');
+  }
+}
+
+// ── Event-listeners ───────────────────────────────────────────────────────────
+
+document.getElementById('laad-pdok-knop').addEventListener('click', laadPdokData);
+document.getElementById('laad-cbs-knop').addEventListener('click', laadCbsData);
+document.getElementById('update-knop').addEventListener('click', vernieuwLagen);
+
+document.getElementById('reset-view-knop').addEventListener('click', () => {
+  deck?.setProps({ initialViewState: { ...CONFIG.startView, transitionDuration: 800 } });
+});
+
+// Sliders: live bijwerken tijdens slepen
+document.getElementById('hoogte-schaal').addEventListener('input', function () {
+  document.getElementById('hoogte-schaal-waarde').textContent = `${this.value}m`;
+  vernieuwLagen();
+});
+
+document.getElementById('transparantie').addEventListener('input', function () {
+  document.getElementById('transparantie-waarde').textContent = `${this.value}%`;
+  vernieuwLagen();
+});
+
+// Dropdowns: direct herrenderen
+['kleur-veld', 'hoogte-veld', 'palet-keuze'].forEach(id => {
+  document.getElementById(id).addEventListener('change', vernieuwLagen);
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+// deck.Deck is beschikbaar als globale variabele na het laden van het script
+window.addEventListener('load', () => {
+  // deck.gl exporteert alles als window.deck — destructureer wat we nodig hebben
+  const { Deck, PolygonLayer } = window.deck;
+
+  // Overschrijf de globale referentie met de instantie-wrapper
+  // zodat initialiseerDeck() en vernieuwLagen() dezelfde scope gebruiken
+  window._DeckClass        = Deck;
+  window._PolygonLayerClass = PolygonLayer;
+
+  initialiseerDeck();
+  zetStatus('Gereed — klik "Laad PDOK-data" om te beginnen.');
+});
+
+// Herstel de deck.* aanroepen in de functies hierboven
+// (deck.gl bundelt alles in window.deck, niet als losse globalen)
+function initialiseerDeck() {
+  const Deck = window.deck.Deck;
+  const container = document.getElementById('kaart-container');
+  const canvas    = document.getElementById('deck-canvas');
+
+  canvas.width  = container.clientWidth;
+  canvas.height = container.clientHeight;
+
+  deck = new Deck({
+    canvas: 'deck-canvas',
+    initialViewState: CONFIG.startView,
+    controller: { dragRotate: true },
+
+    map: maplibregl,
+    mapStyle: {
+      version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+      sources: {
+        osm: {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+        },
+      },
+      layers: [{
+        id: 'achtergrond',
+        type: 'background',
+        paint: { 'background-color': '#0a1520' },
+      }, {
+        id: 'osm-tiles',
+        type: 'raster',
+        source: 'osm',
+        paint: {
+          'raster-opacity': 0.25,
+          'raster-saturation': -1,
+          'raster-brightness-min': 0,
+          'raster-brightness-max': 0.35,
+        },
+      }],
+    },
+
+    onHover: ({ object, x, y }) => {
+      const tooltip = document.getElementById('tooltip');
+      if (!object) { tooltip.style.display = 'none'; return; }
+
+      const props     = object.properties || {};
+      const naam      = props.buurtnaam || props.naam || props.buurt || 'Onbekend';
+      const kleurVeld = document.getElementById('kleur-veld').value;
+      const hoogte    = document.getElementById('hoogte-veld').value;
+
+      const toTonen = [...new Set([kleurVeld, hoogte, 'werkloosheid_pct', 'inkomen_mediaan', 'aantal_inwoners'].filter(Boolean))];
+
+      let inhoud = `<div class="tooltip-naam">${naam}</div>`;
+      toTonen.forEach(veld => {
+        if (!(veld in props)) return;
+        inhoud += `<div class="tooltip-rij"><span>${leesbaar(veld)}</span><span>${formatteer(props[veld], veld)}</span></div>`;
+      });
+
+      tooltip.innerHTML     = inhoud;
+      tooltip.style.display = 'block';
+      tooltip.style.left    = `${Math.min(x + 14, window.innerWidth  - 280)}px`;
+      tooltip.style.top     = `${Math.min(y + 14, window.innerHeight - 220)}px`;
+    },
+
+    onClick: ({ object }) => {
+      if (!object) {
+        geselecteerdeBuurt = null;
+        document.getElementById('buurt-paneel').style.display = 'none';
+      } else {
+        geselecteerdeBuurt = object;
+        toonBuurtDetails(object);
+      }
+      vernieuwLagen();
+    },
+
+    layers: [],
+  });
+
+  window.addEventListener('resize', () => {
+    canvas.width  = container.clientWidth;
+    canvas.height = container.clientHeight;
+    deck.redraw(true);
+  });
+}
+
+// Herstel vernieuwLagen() zodat het window.deck.PolygonLayer gebruikt
+function vernieuwLagen() {
+  if (!deck || !deckData.length) return;
+
+  const PolygonLayer  = window.deck.PolygonLayer;
+  const kleurVeld     = document.getElementById('kleur-veld').value;
+  const hoogteVeld    = document.getElementById('hoogte-veld').value;
+  const hoogteSchaal  = +document.getElementById('hoogte-schaal').value;
+  const transparantie = +document.getElementById('transparantie').value / 100;
+  const paletNaam     = document.getElementById('palet-keuze').value;
+
+  const kleurBereik  = kleurVeld  ? berekenBereik(deckData, kleurVeld)  : { min: 0, max: 1 };
+  const hoogteBereik = hoogteVeld ? berekenBereik(deckData, hoogteVeld) : { min: 0, max: 1 };
+
+  tekenLegenda(kleurVeld, kleurBereik, paletNaam);
+
+  const laag = new PolygonLayer({
+    id: 'buurten-3d',
+    data: deckData,
+    pickable: true,
+    stroked: true,
+    filled: true,
+    extruded: true,
+    wireframe: false,
+
+    getPolygon: f => f.geometry.type === 'Polygon'
+      ? f.geometry.coordinates
+      : f.geometry.coordinates[0], // MultiPolygon: neem eerste ring
+
+    getElevation: f => {
+      if (!hoogteVeld) return 80;
+      const v = +f.properties?.[hoogteVeld];
+      if (!isFinite(v)) return 20;
+      const t = Math.max(0, (v - hoogteBereik.min) / Math.max(hoogteBereik.max - hoogteBereik.min, 0.001));
+      return Math.max(20, t * hoogteSchaal);
+    },
+
+    getFillColor: f => {
+      if (geselecteerdeBuurt && f === geselecteerdeBuurt) return [0, 200, 255, 230];
+      if (!kleurVeld) return [80, 140, 200, Math.round(transparantie * 255)];
+
+      const v = +f.properties?.[kleurVeld];
+      if (!isFinite(v)) return [60, 60, 60, Math.round(transparantie * 255)];
+
+      const t   = Math.max(0, Math.min(1, (v - kleurBereik.min) / Math.max(kleurBereik.max - kleurBereik.min, 0.001)));
+      const rgb = interpoleerKleur(t, paletNaam);
+      return [...rgb, Math.round(transparantie * 255)];
+    },
+
+    getLineColor: f => (geselecteerdeBuurt && f === geselecteerdeBuurt)
+      ? [255, 255, 255, 255]
+      : [200, 220, 255, 80],
+
+    lineWidthMinPixels: 1,
+    lineWidthMaxPixels: 2,
+
+    updateTriggers: {
+      getElevation: [hoogteVeld, hoogteSchaal],
+      getFillColor: [kleurVeld, paletNaam, transparantie, geselecteerdeBuurt],
+      getLineColor: [geselecteerdeBuurt],
+    },
+
+    transitions: {
+      getElevation: { duration: 700, easing: x => x < 0.5 ? 4*x*x*x : 1-((-2*x+2)**3)/2 },
+      getFillColor: { duration: 400 },
+    },
+  });
+
+  deck.setProps({ layers: [laag] });
+}
+</script>
+</body>
+</html>

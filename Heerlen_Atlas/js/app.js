@@ -272,7 +272,7 @@ document.getElementById('open-split-screen')?.addEventListener('click', () => {
  * Leest de huidige UI-instellingen en roept toonChoropleth aan.
  * Toont ook grafieken voor alle geselecteerde velden.
  */
-function herllaadVisualisatie() {
+window.herllaadVisualisatie = function () {
   // Werk eerst de veldselectoren bij: velden zonder (gefilterde) data worden
   // uitgeschakeld zodat ze niet meer gekozen kunnen worden.
   window.vernieuwVeldSelecties?.();
@@ -292,7 +292,7 @@ function herllaadVisualisatie() {
   // Render grafieken voor alle geselecteerde velden
   const veldenVoorGrafiek = geselecteerde.length > 0 ? geselecteerde : [veld];
   window.renderMultiVariableCharts?.(fc, veldenVoorGrafiek);
-}
+};
 
 // Verwijder de oude vergelijkknop als die nog bestaat
 document.getElementById('start-compare')?.remove();

@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Bake gebouwen Heerlen</title>
+<style>
+  body { font: 13px/1.5 "Segoe UI", sans-serif; background: #0f1923; color: #e2e8f0; padding: 24px; max-width: 820px; }
+  h1 { font-size: 18px; } button { padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  pre { background: #1a2535; padding: 12px; border-radius: 8px; height: 360px; overflow: auto; font-size: 12px; }
+  a { color: #00c8ff; }
+</style>
+</head>
+<body>
+<h1>Bake gebouwen Heerlen → data/gebouwen_heerlen.bin</h1>
+<p>
+  Eenmalig hulpprogramma. Haalt gebouwomtrekken op uit <b>BAG</b> (PDOK WFS) en hoogtes uit <b>3D BAG</b> (maaiveld en dakhoogte),
+  vereenvoudigt de omtrekken en schrijft alles naar één compact binair bestand dat <code>huisjes-3d.html</code> inlaadt.
+  Alleen opnieuw draaien als de BAG-data ververst moet worden. Duurt enkele minuten.
+</p>
+<button id="start">Start bake</button> <span id="dl"></span>
+<pre id="log"></pre>
+
+<script>
+'use strict';
+// Vaste oorsprong — moet gelijk zijn aan ORIGIN in huisjes-3d.html
+const LON0 = 5.9750, LAT0 = 50.8890;
+const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110574;
+const proj = (lon, lat) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];        // x = oost, z = -noord
+const Q = 0.25;                                                          // kwantisatie (m)
+
+const BAG = 'https://service.pdok.nl/lv/bag/wfs/v2_0?service=WFS&version=2.0.0&request=GetFeature&typeNames=bag:pand&outputFormat=application/json&srsName=EPSG:4326&sortBy=identificatie&propertyName=identificatie,bouwjaar,status,gebruiksdoel,aantal_verblijfsobjecten'
+const bagFilter = laatste => "&filter=" + encodeURIComponent('<Filter xmlns="http://www.opengis.net/fes/2.0"><And><PropertyIsLike wildCard="%" singleChar="_" escapeChar="\\"><ValueReference>identificatie</ValueReference><Literal>0917%</Literal></PropertyIsLike><PropertyIsGreaterThan><ValueReference>identificatie</ValueReference><Literal>' + laatste + '</Literal></PropertyIsGreaterThan></And></Filter>');
+const D3 = 'https://data.3dbag.nl/api/BAG3D/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=BAG3D:lod12&outputFormat=json&sortBy=fid&propertyName=identificatie,b3_h_50p,b3_h_maaiveld';
+
+const log = t => { const l = document.getElementById('log'); l.textContent += t + '\n'; l.scrollTop = 1e9; };
+
+async function haal(url, pogingen = 4) {
+  for (let p = 1; ; p++) {
+    try { const r = await fetch(url); if (r.ok) return await r.json(); if (r.status < 500 && r.status !== 429) throw new Error('HTTP ' + r.status); }
+    catch (e) { if (p >= pogingen) throw e; }
+    await new Promise(r => setTimeout(r, 1500 * p));
+  }
+}
+
+// WGS84 → RD (benadering, ~1 m nauwkeurig; alleen voor een zoekgebied)
+function naarRD(lat, lon) {
+  const dF = 0.36 * (lat - 52.15517440), dL = 0.36 * (lon - 5.38720621);
+  const x = 190094.945 * dL - 11832.228 * dF * dL - 114.221 * dF ** 2 * dL - 32.391 * dL ** 3 - 0.705 * dF - 2.340 * dF ** 3 * dL - 0.608 * dF * dL ** 3 - 0.008 * dL ** 2 + 0.148 * dF ** 2 * dL ** 3;
+  const y = 309056.544 * dF + 3638.893 * dL ** 2 + 73.077 * dF ** 2 - 157.984 * dF * dL ** 2 + 59.788 * dF ** 3 + 0.433 * dL - 6.439 * dF ** 2 * dL ** 2 - 0.032 * dF * dL + 0.092 * dL ** 4 - 0.054 * dF * dL ** 4;
+  return [155000 + x, 463000 + y];
+}
+
+// Douglas-Peucker voor een gesloten ring (zonder herhaald eindpunt)
+function vereenvoudig(ring, tol) {
+  const n = ring.length; if (n <= 4) return ring;
+  const afstand = (p, a, b) => {
+    const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz;
+    if (!l2) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / l2));
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dz));
+  };
+  // ankers: punt 0 en het punt het verst daarvan
+  let far = 0, fd = -1; for (let i = 1; i < n; i++) { const d = Math.hypot(ring[i][0] - ring[0][0], ring[i][1] - ring[0][1]); if (d > fd) { fd = d; far = i; } }
+  const behoud = new Uint8Array(n); behoud[0] = behoud[far] = 1;
+  const rec = (a, b) => {                                   // open segment a..b (indices, b mag n zijn → punt 0)
+    let mx = -1, mi = -1;
+    for (let i = a + 1; i < b; i++) { const d = afstand(ring[i], ring[a], ring[b % n]); if (d > mx) { mx = d; mi = i; } }
+    if (mx > tol) { behoud[mi] = 1; rec(a, mi); rec(mi, b); }
+  };
+  rec(0, far); rec(far, n);
+  return ring.filter((_, i) => behoud[i]);
+}
+
+document.getElementById('start').onclick = async () => {
+  document.getElementById('start').disabled = true;
+  try {
+    // 1. BAG-panden ---------------------------------------------------------
+    const panden = new Map();
+    let laatste = "0917";     // keyset-paginering: de server weigert startIndex > ~51000
+    for (;;) {
+      const j = await haal(BAG + "&count=1000" + bagFilter(laatste));
+      const f = j.features || [];
+      for (const x of f) panden.set(String(x.properties.identificatie), x);
+      if (f.length) laatste = String(f[f.length - 1].properties.identificatie);
+      log(`BAG: ${panden.size} panden (tot id ${laatste})`);
+      if (f.length < 1000) break;
+    }
+
+    // 2. zoekgebied voor 3D BAG (RD) uit de BAG-omtrekken -------------------
+    let mnLo = 1e9, mxLo = -1e9, mnLa = 1e9, mxLa = -1e9;
+    for (const p of panden.values()) { const [a, b, c, d] = p.bbox || []; if (a == null) continue; mnLo = Math.min(mnLo, a); mnLa = Math.min(mnLa, b); mxLo = Math.max(mxLo, c); mxLa = Math.max(mxLa, d); }
+    const hoeken = [[mnLa, mnLo], [mnLa, mxLo], [mxLa, mnLo], [mxLa, mxLo]].map(([la, lo]) => naarRD(la, lo));
+    const bb = [Math.min(...hoeken.map(h => h[0])) - 200, Math.min(...hoeken.map(h => h[1])) - 200, Math.max(...hoeken.map(h => h[0])) + 200, Math.max(...hoeken.map(h => h[1])) + 200].map(Math.round);
+    log(`Gebied lon ${mnLo.toFixed(3)}–${mxLo.toFixed(3)} lat ${mnLa.toFixed(3)}–${mxLa.toFixed(3)} → RD ${bb.join(', ')}`);
+
+    // 3. 3D BAG: hoogtes per pand (dak-mediaan en maaiveld) -----------------
+    const hoogte = new Map();      // id → { top, grond }
+    const url3d = D3 + `&bbox=${bb.join(',')},urn:ogc:def:crs:EPSG::28992`;
+    for (let start = 0, totaal = null; totaal === null || start < totaal; start += 5000) {
+      const j = await haal(url3d + '&count=5000&startIndex=' + start);
+      totaal = j.numberMatched ?? j.totalFeatures ?? 0;
+      for (const f of j.features || []) {
+        const id = String(f.properties.identificatie || '').replace('NL.IMBAG.Pand.', '');
+        if (!panden.has(id)) continue;
+        const t = f.properties.b3_h_50p, g = f.properties.b3_h_maaiveld;
+        if (t == null || g == null) continue;
+        const h = hoogte.get(id) || { top: -1e9, grond: 1e9 };
+        h.top = Math.max(h.top, t); h.grond = Math.min(h.grond, g); hoogte.set(id, h);
+      }
+      log(`3D BAG: ${Math.min(start + 5000, totaal)}/${totaal} onderdelen — ${hoogte.size} panden met hoogte`);
+    }
+
+    // 4. Verwerken --------------------------------------------------------
+    const oppervlak = p => { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a / 2; };
+    const GEBRUIK = { woonfunctie: 1, industriefunctie: 2, winkelfunctie: 4, kantoorfunctie: 8, onderwijsfunctie: 16, gezondheidszorgfunctie: 32, bijeenkomstfunctie: 64, overige: 128 };
+    const bouw = [];
+    let zonderHoogte = 0;
+    for (const [id, f] of panden) {
+      const st = String(f.properties.status || '');
+      if (!/^(Pand in gebruik|Verbouwing|Bouw gestart)/.test(st)) continue;
+      const geo = f.geometry; if (!geo) continue;
+      const polys = geo.type === 'Polygon' ? [geo.coordinates] : geo.type === 'MultiPolygon' ? geo.coordinates : [];
+      const doel = String(f.properties.gebruiksdoel || '');
+      let vlag = 0; for (const k of Object.keys(GEBRUIK)) if (doel.includes(k.replace('functie', 'functie'))) vlag |= GEBRUIK[k];
+      if (!vlag) vlag = doel ? 128 : 0;
+      const hg = hoogte.get(id);
+      let H = hg ? hg.top - hg.grond : NaN;
+      if (!isFinite(H) || H < 1.5) { H = (vlag & 1) ? 6.5 : 8; if (!hg) zonderHoogte++; }
+      H = Math.min(H, 250);
+      for (const poly of polys) {
+        const ringen = [];
+        poly.forEach((r, ri) => {
+          let p = r.map(([lo, la]) => proj(lo, la));
+          if (p.length > 1 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]) p.pop();
+          p = vereenvoudig(p, 0.3);
+          if (p.length >= 3 && (ri === 0 || Math.abs(oppervlak(p)) > 4)) ringen.push(p);
+        });
+        if (!ringen.length || ringen[0].length < 3) continue;
+        bouw.push({ ringen, H, G: hg ? hg.grond : null, BJ: +f.properties.bouwjaar || 0, vlag, VO: Math.min(65535, +f.properties.aantal_verblijfsobjecten || 0) });
+      }
+    }
+    log(`Verwerkt: ${bouw.length} gebouwen (${zonderHoogte} zonder 3D BAG-hoogte, standaardhoogte gebruikt)`);
+
+    // 5. Binair schrijven --------------------------------------------------
+    let x0 = 1e9, z0 = 1e9, R = 0, V = 0;
+    for (const b of bouw) for (const r of b.ringen) { R++; V += r.length; for (const [x, z] of r) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); } }
+    const N = bouw.length;
+    const pad4 = n => (n + 3) & ~3;
+    const KOP = 48;
+    const out = new Uint8Array(KOP + pad4(N) + pad4(R * 2) + pad4(V * 2) * 2 + pad4(N * 2) * 4 + pad4(N));
+    const odv = new DataView(out.buffer);
+    odv.setUint32(0, 0x31424748, true); odv.setUint32(4, N, true); odv.setUint32(8, R, true); odv.setUint32(12, V, true);
+    odv.setFloat64(16, LON0, true); odv.setFloat64(24, LAT0, true);
+    odv.setFloat32(32, x0, true); odv.setFloat32(36, z0, true); odv.setFloat32(40, Q, true);
+    let p = KOP;
+    const secties = {};
+    const sectie = (naam, bytes) => { secties[naam] = p; p += pad4(bytes); return secties[naam]; };
+    const oRing = sectie('ringen', N), oLen = sectie('len', R * 2), oX = sectie('x', V * 2), oZ = sectie('z', V * 2),
+          oH = sectie('h', N * 2), oG = sectie('g', N * 2), oBJ = sectie('bj', N * 2), oVO = sectie('vo', N * 2), oV = sectie('vlag', N);
+    let ri = 0, vi = 0;
+    bouw.forEach((b, i) => {
+      out[oRing + i] = b.ringen.length;
+      for (const r of b.ringen) {
+        odv.setUint16(oLen + ri * 2, r.length, true); ri++;
+        for (const [x, z] of r) {
+          odv.setUint16(oX + vi * 2, Math.round((x - x0) / Q), true);
+          odv.setUint16(oZ + vi * 2, Math.round((z - z0) / Q), true); vi++;
+        }
+      }
+      odv.setUint16(oH + i * 2, Math.round(b.H * 10), true);
+      odv.setInt16(oG + i * 2, b.G == null ? -32768 : Math.round(b.G * 10), true);
+      odv.setUint16(oBJ + i * 2, b.BJ, true);
+      odv.setUint16(oVO + i * 2, b.VO, true);
+      out[oV + i] = b.vlag;
+    });
+    const blob = new Blob([out.subarray(0, p)], { type: 'application/octet-stream' });
+    log(`Bestand: ${(blob.size / 1e6).toFixed(2)} MB — ${N} gebouwen, ${R} ringen, ${V} hoekpunten`);
+
+    // 6. Opslaan: eerst naar de lokale dev-server, anders als download
+    let opgeslagen = false;
+    try {
+      const r = await fetch('/save/gebouwen_heerlen.bin', { method: 'POST', body: blob });
+      opgeslagen = r.ok;
+    } catch (e) { /* geen dev-server met opslag-endpoint */ }
+    if (opgeslagen) log('✓ Opgeslagen als data/gebouwen_heerlen.bin');
+    else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'gebouwen_heerlen.bin';
+      a.textContent = 'Download gebouwen_heerlen.bin en zet het in Heerlen_Atlas/data/';
+      document.getElementById('dl').appendChild(a); log('Download-link aangemaakt.');
+    }
+  } catch (e) { log('FOUT: ' + e.message); console.error(e); }
+};
+</script>
+</body>
+</html>

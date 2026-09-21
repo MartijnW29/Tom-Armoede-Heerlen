@@ -1,0 +1,1703 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heerlen 3D — gebouwen &amp; buurtstatistiek</title>
+
+  <!-- Three.js (UMD-build, werkt ook zonder lokale server) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1923;
+      --panel:       #1a2535;
+      --panel-light: #212f42;
+      --rand:        rgba(255,255,255,0.09);
+      --accent:      #00c8ff;
+      --accent2:     #ff8a4c;
+      --tekst:       #e2e8f0;
+      --tekst-zacht: #8fa3b8;
+      --sidebar-w:   330px;
+      --radius:      10px;
+    }
+
+    html, body {
+      width: 100%; height: 100%; background: var(--bg); color: var(--tekst);
+      font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; overflow: hidden;
+    }
+
+    #app { display: flex; width: 100%; height: 100%; }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; height: 100%; background: var(--panel);
+      border-right: 1px solid var(--rand); overflow-y: auto; z-index: 20;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.4); transition: margin-left .3s ease;
+    }
+    #sidebar.dicht { margin-left: calc(var(--sidebar-w) * -1); }
+
+    .kop { padding: 18px 16px 14px; border-bottom: 1px solid var(--rand);
+      background: linear-gradient(135deg, rgba(0,200,255,0.10), rgba(255,138,76,0.08)); }
+    .kop h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.02em;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+    .kop p { font-size: 11px; color: var(--tekst-zacht); line-height: 1.5; }
+
+    .paneel { padding: 13px 16px; border-bottom: 1px solid var(--rand); }
+    .paneel h3 { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--tekst-zacht); margin-bottom: 10px; }
+    label { display: block; font-size: 11px; color: var(--tekst-zacht); margin: 9px 0 4px; }
+    label:first-of-type { margin-top: 0; }
+
+    select { width: 100%; padding: 7px 9px; background: var(--panel-light); color: var(--tekst);
+      border: 1px solid var(--rand); border-radius: 7px; font-size: 12px; cursor: pointer; }
+    select:focus { outline: none; border-color: var(--accent); }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    .slider-kop { display: flex; justify-content: space-between; align-items: baseline; margin-top: 9px; }
+    .slider-kop label { margin: 0; }
+    .slider-kop b { color: var(--accent); font-size: 12px; }
+
+    .knoppen { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    button { flex: 1 1 auto; padding: 8px 10px; border-radius: 7px; cursor: pointer;
+      background: var(--accent); color: #04202b; border: 1px solid transparent;
+      font-weight: 700; font-size: 12px; transition: all .15s; }
+    button:hover { filter: brightness(1.12); }
+    button.sec { background: var(--panel-light); color: var(--tekst); border-color: var(--rand); }
+    button.sec:hover { border-color: var(--accent); color: var(--accent); }
+    button.aan { background: var(--accent2); color: #2b1204; }
+
+    .terug { display: block; text-align: center; padding: 8px; background: var(--panel-light);
+      border: 1px solid var(--rand); border-radius: 7px; color: var(--tekst); text-decoration: none; font-weight: 600; font-size: 12px; }
+    .terug:hover { border-color: var(--accent); color: var(--accent); }
+
+    .verloop { height: 12px; border-radius: 6px; border: 1px solid var(--rand); }
+    .verloop-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--tekst-zacht); margin-top: 4px; }
+    .uitleg { font-size: 11px; color: var(--tekst-zacht); line-height: 1.55; margin-top: 8px; }
+    .uitleg .lamp { display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:-1px; margin-right:4px; }
+
+    .rang { display: flex; align-items: center; gap: 8px; padding: 4px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .rang:hover { background: var(--panel-light); }
+    .rang .nr { width: 14px; color: var(--tekst-zacht); font-size: 10px; text-align: right; }
+    .rang .naam { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rang .w { font-weight: 700; color: var(--accent); }
+    .rang-kop { font-size: 10px; color: var(--tekst-zacht); margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .08em; }
+
+    #buurt-naam { font-size: 16px; font-weight: 800; color: var(--accent); }
+    #buurt-sub { font-size: 11px; color: var(--tekst-zacht); margin-bottom: 10px; }
+    .stat { margin-bottom: 9px; }
+    .stat-rij { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
+    .stat-rij span:first-child { color: var(--tekst-zacht); }
+    .stat-rij span:last-child { font-weight: 700; }
+    .balk { position: relative; height: 6px; background: var(--panel-light); border-radius: 3px; }
+    .balk i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, var(--accent), #6be3ff); }
+    .balk u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--accent2); text-decoration: none; }
+    .balk-legenda { font-size: 10px; color: var(--tekst-zacht); margin-top: 2px; }
+    .balk-legenda b { color: var(--accent2); }
+
+    /* ── Kaartgebied ─────────────────────────────────────────── */
+    #scene { flex: 1; position: relative; overflow: hidden; min-width: 0; }
+    #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #gl.sleept { cursor: grabbing; }
+    #gl.wijst { cursor: pointer; }
+
+    #zones { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translate(-50%, -100%);
+      background: rgba(15,25,35,.86); border: 1px solid var(--rand); border-radius: 8px; padding: 3px 8px;
+      font-size: 11px; line-height: 1.25; text-align: center; backdrop-filter: blur(4px);
+      transition: opacity .2s; will-change: transform; color: var(--tekst); }
+    .lbl b { display: block; font-weight: 700; }
+    .lbl span { font-weight: 800; color: var(--accent); font-size: 13px; }
+    .lbl.klein b { display: none; }
+    .lbl.klein { padding: 1px 6px; }
+    .lbl.actief { border-color: var(--accent); box-shadow: 0 0 14px rgba(0,200,255,.45); z-index: 2; }
+    .lbl.weg { opacity: 0; }
+
+    #tooltip { position: absolute; pointer-events: none; z-index: 30; display: none;
+      background: rgba(15,25,35,.96); border: 1px solid var(--accent); border-radius: 10px;
+      padding: 10px 13px; font-size: 12px; min-width: 190px; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+    #tooltip .t-naam { font-size: 14px; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
+    #tooltip .t-groot { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+    #tooltip .t-var { font-size: 10px; color: var(--tekst-zacht); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    #tooltip .t-rij { display: flex; justify-content: space-between; gap: 14px; color: var(--tekst-zacht); margin-top: 2px; }
+    #tooltip .t-rij b { color: var(--tekst); }
+
+    #status { position: absolute; left: 14px; bottom: 14px; z-index: 15; background: rgba(15,25,35,.9);
+      border: 1px solid var(--rand); border-radius: 8px; padding: 7px 13px; font-size: 11px;
+      color: var(--tekst-zacht); backdrop-filter: blur(6px); max-width: 55%; }
+    #status.laden { color: var(--accent); border-color: var(--accent); }
+    #status.fout  { color: var(--accent2); border-color: var(--accent2); }
+
+    #gpuWaarschuwing { position: absolute; top: 12px; left: 56px; right: 12px; z-index: 26; max-width: 640px; padding: 10px 14px; border-radius: 9px;
+      background: rgba(60,30,10,.95); border: 1px solid var(--accent2); color: #ffd9c2; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+    #gpuWaarschuwing b { color: #fff; }
+    #gpuWaarschuwing button { float: right; flex: none; padding: 2px 8px; margin-left: 10px; background: transparent; color: #ffd9c2; border: 1px solid rgba(255,255,255,.25); }
+    #hqBadge { position: absolute; top: 12px; right: 12px; z-index: 26; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+      background: rgba(15,25,35,.85); border: 1px solid var(--accent); color: var(--accent); opacity: 0; transition: opacity .4s; pointer-events: none; }
+    #hqBadge.aan { opacity: 1; }
+    #hulp { position: absolute; right: 14px; bottom: 14px; z-index: 15; background: rgba(15,25,35,.85);
+      border: 1px solid var(--rand); border-radius: 8px; padding: 9px 13px; font-size: 11px; color: var(--tekst-zacht); line-height: 1.7; }
+    #hulp strong { color: var(--tekst); }
+    #hulp small { display: block; margin-top: 6px; font-size: 9.5px; opacity: .75; max-width: 250px; line-height: 1.4; }
+
+    #sidebar-knop { position: absolute; left: 12px; top: 12px; z-index: 25; width: 34px; height: 34px; padding: 0; flex: none;
+      background: rgba(15,25,35,.9); color: var(--tekst); border: 1px solid var(--rand); font-size: 16px; }
+
+    #laden { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+      background: radial-gradient(circle at 50% 40%, #16324a, #0a121b); transition: opacity .8s ease; font-size: 14px; color: var(--tekst-zacht); }
+    #laden.klaar { opacity: 0; pointer-events: none; }
+    #laden .huis { font-size: 54px; animation: hop 1s ease-in-out infinite; }
+    #laden .balkje { width: 260px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+    #laden .balkje i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s; }
+    #laden small { font-size: 11px; opacity: .7; }
+    @keyframes hop { 50% { transform: translateY(-12px); } }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: var(--rand); border-radius: 3px; }
+
+    @media (max-width: 820px) {
+      #sidebar { position: absolute; left: 0; top: 0; }
+      #hulp { display: none; }
+      #status { max-width: calc(100% - 28px); }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <aside id="sidebar">
+    <div class="kop">
+      <h1>Heerlen 3D</h1>
+      <p>Alle gebouwen van Heerlen op echt terrein. De buurtstatistiek kleurt de gebouwen: bij een percentage licht dat aandeel van de woningen op.</p>
+    </div>
+
+    <div class="paneel">
+      <h3>Data</h3>
+      <label for="jaar">Buurtcijfers (CBS via PDOK)</label>
+      <select id="jaar"></select>
+      <label for="kleurVar">Variabele</label>
+      <select id="kleurVar"></select>
+      <label for="palet">Kleurpalet</label>
+      <select id="palet">
+        <option value="plasma">Plasma</option>
+        <option value="viridis">Viridis</option>
+        <option value="rdylgn">Rood → Groen</option>
+        <option value="blues">Blauw</option>
+      </select>
+    </div>
+
+    <div class="paneel">
+      <h3>Weergave</h3>
+      <label for="laag">Kaartondergrond</label>
+      <select id="laag">
+        <option value="grijs">Grijs (rustig)</option>
+        <option value="pastel">Pastel (groen &amp; water)</option>
+        <option value="lucht">Luchtfoto</option>
+      </select>
+      <div class="slider-kop"><label for="ovAlpha">Opacity van buurten</label><b id="ovAlphaW">55%</b></div>
+      <input type="range" id="ovAlpha" min="0" max="100" step="5" value="55" />
+      <!-- Hoogte-overdrijving (terrein): standaard 1× en verborgen in het paneel; de waarde blijft instelbaar in de code -->
+      <div id="exagBlok" hidden>
+        <div class="slider-kop"><label for="exag">Hoogte-overdrijving</label><b id="exagW">1,0×</b></div>
+        <input type="range" id="exag" min="0.5" max="6" step="0.1" value="1" />
+      </div>
+      <div class="slider-kop"><label for="hmul">Gebouwhoogte</label><b id="hmulW">1,0×</b></div>
+      <input type="range" id="hmul" min="0.5" max="4" step="0.1" value="1" />
+      <label for="labelModus">Labels</label>
+      <select id="labelModus">
+        <option value="auto">Automatisch (geen overlap)</option>
+        <option value="uit">Uit</option>
+      </select>
+      <label for="kwaliteit">Kwaliteit</label>
+      <select id="kwaliteit">
+        <option value="auto">Automatisch (past zich aan)</option>
+        <option value="0">Hoog</option>
+        <option value="1">Middel</option>
+        <option value="2">Laag</option>
+        <option value="3">Minimaal (geen schaduw)</option>
+        <option value="4">Zeer laag</option>
+        <option value="5">Extreem (snelst)</option>
+      </select>
+      <label for="scherpte">Scherpte van het beeld</label>
+      <select id="scherpte">
+        <option value="auto">Automatisch (volgt kwaliteit)</option>
+        <option value="0.5">50% van je scherm</option>
+        <option value="0.75">75% van je scherm</option>
+        <option value="1">100% (volle scherpte)</option>
+      </select>
+      <label for="rustKwaliteit">Kwaliteit bij stilstaan</label>
+      <select id="rustKwaliteit">
+        <option value="0">Hoog (scherp beeld als je stilstaat)</option>
+        <option value="6">Zeer hoog (volle schermresolutie)</option>
+        <option value="uit">Uit</option>
+      </select>
+      <div class="knoppen">
+        <button id="dagNacht" class="sec">🌙 Nacht</button>
+        <button id="autoDraai" class="sec">⟳ Auto-draai</button>
+        <button id="rondvlucht">✈ Rondvlucht</button>
+        <button id="resetView" class="sec">⌂ Overzicht</button>
+      </div>
+    </div>
+
+    <div class="paneel">
+      <h3>Legenda</h3>
+      <div id="legenda"></div>
+    </div>
+
+    <div class="paneel">
+      <h3>Ranglijst</h3>
+      <div id="rang"></div>
+    </div>
+
+    <div class="paneel" id="buurtPaneel" style="display:none">
+      <h3>Geselecteerde buurt</h3>
+      <div id="buurt-naam"></div>
+      <div id="buurt-sub"></div>
+      <div id="stats"></div>
+    </div>
+
+    <div class="paneel">
+      <a class="terug" href="index.html">← Terug naar de 2D-kaart</a>
+    </div>
+  </aside>
+
+  <main id="scene">
+    <canvas id="gl"></canvas>
+    <canvas id="zones"></canvas>
+    <div id="labels"></div>
+    <div id="tooltip"></div>
+    <button id="sidebar-knop" title="Paneel tonen/verbergen">☰</button>
+    <div id="hqBadge">✓ Scherp beeld</div>
+    <div id="gpuWaarschuwing" hidden></div>
+    <div id="status" class="laden">Laden…</div>
+    <div id="hulp">
+      <strong>Besturing</strong><br>
+      Slepen: draaien &amp; kantelen<br>
+      Rechts/Shift+slepen: verschuiven<br>
+      Scroll / knijpen: zoomen<br>
+      Klik op een buurt: details
+      <small>Gebouwen: BAG &amp; 3D BAG (Kadaster) · Buurtcijfers: CBS · Kaart: BRT/Luchtfoto PDOK · Hoogte: AHN via Terrarium</small>
+    </div>
+    <div id="laden">
+      <div class="huis">🏘️</div>
+      <div id="laden-tekst">Heerlen opbouwen…</div>
+      <div class="balkje"><i id="laden-balk"></i></div>
+      <small id="laden-sub"></small>
+    </div>
+  </main>
+</div>
+
+<script>
+'use strict';
+// ============================================================================
+// HEERLEN 3D — echte gebouwen (BAG + 3D BAG) op echt terrein, gekleurd met CBS-buurtdata
+//   • gebouwen  : data/gebouwen_heerlen.bin (gebakken met tools/bake-gebouwen.html)
+//   • terrein   : Terrarium-hoogtetegels (AHN) → vervormde grid-meshes per z13-tegel
+//   • ondergrond: PDOK BRT / luchtfoto, scherpere tegels dichtbij (z14 → z16)
+//   • statistiek: buurtpolygonen (PDOK CBS) als kleurvlak én als gebouwkleur
+// ============================================================================
+
+// ── Configuratie ────────────────────────────────────────────────────────────
+const LON0 = 5.9750, LAT0 = 50.8890;                    // moet gelijk zijn aan tools/bake-gebouwen.html
+const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110574;
+const JAREN    = [2025, 2024, 2023, 2022];
+const pdokUrl  = j => `https://api.pdok.nl/cbs/wijken-en-buurten-${j}/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json`;
+const ONGELDIG = -99990;
+const ZC = 13;                                           // terrein-chunks = z13-tegels (±3 km)
+const ZE = 14;                                           // hoogtetegels
+const NC = 2 ** ZC, NE = 2 ** ZE;
+const GRID = 64;                                         // segmenten per chunk
+const LAGEN = {
+  grijs:  (z, x, y) => `https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/grijs/EPSG:3857/${z}/${x}/${y}.png`,
+  pastel: (z, x, y) => `https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/pastel/EPSG:3857/${z}/${x}/${y}.png`,
+  lucht:  (z, x, y) => `https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/${z}/${x}/${y}.jpeg`,
+};
+const MIN_OPP = 20;                                          // gebouwen kleiner dan dit (m²) worden niet getekend
+let terreinStap = 1;                                       // terrein-detail: 1 = fijn, 2 = grover, 4 = grofst
+const ZOOM_LAAG = 14;                                      // ondergrond-niveaus per chunk (scherp niveau: zie kwaliteit)
+let zoomHoog = 16;
+
+const PALETTEN = {
+  viridis: ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'],
+  plasma:  ['#0d0887', '#7e03a8', '#cc4778', '#f89540', '#f0f921'],
+  rdylgn:  ['#d73027', '#fc8d59', '#fee08b', '#91cf60', '#1a9850'],
+  blues:   ['#c6dbef', '#6baed6', '#3182bd', '#08519c', '#08306b'],
+};
+
+const NAMEN = {
+  aantal_inwoners: 'Inwoners', aantal_huishoudens: 'Huishoudens', woningvoorraad: 'Woningvoorraad',
+  bevolkingsdichtheid_inwoners_per_km2: 'Bevolkingsdichtheid (per km²)',
+  gemiddelde_woningwaarde: 'Gemiddelde woningwaarde', gemiddelde_huishoudsgrootte: 'Gemiddelde huishoudensgrootte',
+  personenautos_per_huishouden: 'Auto’s per huishouden', gemiddeld_aardgasverbruik: 'Gemiddeld aardgasverbruik (m³)',
+  gemiddelde_elektriciteitslevering: 'Gemiddelde elektriciteitslevering (kWh)',
+  percentage_koopwoningen: 'Koopwoningen', percentage_huurwoningen: 'Huurwoningen',
+  perc_huurwoningen_in_bezit_woningcorporaties: 'Huur in bezit van corporaties',
+  percentage_eengezinswoning: 'Eengezinswoningen', percentage_meergezinswoning: 'Meergezinswoningen',
+  percentage_eenpersoonshuishoudens: 'Eenpersoonshuishoudens', percentage_huishoudens_met_kinderen: 'Huishoudens met kinderen',
+  percentage_huishoudens_zonder_kinderen: 'Huishoudens zonder kinderen',
+  percentage_personen_0_tot_15_jaar: 'Inwoners 0–15 jaar', percentage_personen_15_tot_25_jaar: 'Inwoners 15–25 jaar',
+  percentage_personen_25_tot_45_jaar: 'Inwoners 25–45 jaar', percentage_personen_45_tot_65_jaar: 'Inwoners 45–65 jaar',
+  percentage_personen_65_jaar_en_ouder: 'Inwoners 65+', percentage_woningen_met_zonnestroom: 'Woningen met zonnepanelen',
+  percentage_aardgaswoningen: 'Woningen op aardgas', percentage_aardgasvrije_woningen: 'Aardgasvrije woningen',
+  percentage_onbewoond: 'Onbewoonde woningen', percentage_met_herkomstland_buiten_europa: 'Herkomst buiten Europa',
+  percentage_met_herkomstland_nederland: 'Herkomst Nederland', percentage_gehuwd: 'Gehuwd', percentage_ongehuwd: 'Ongehuwd',
+};
+
+const DETAIL = [
+  'aantal_inwoners', 'woningvoorraad', 'gemiddelde_woningwaarde', 'gemiddelde_huishoudsgrootte',
+  'percentage_koopwoningen', 'percentage_huurwoningen', 'percentage_eengezinswoning',
+  'percentage_eenpersoonshuishoudens', 'percentage_huishoudens_met_kinderen',
+  'percentage_personen_65_jaar_en_ouder', 'percentage_woningen_met_zonnestroom', 'percentage_aardgaswoningen',
+];
+
+// ── Hulpfuncties ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const klem = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const isPct = k => /^(percentage_|perc_)/.test(k);
+
+function leesbaar(k) {
+  if (NAMEN[k]) return NAMEN[k];
+  let s = k.replace(/^percentage_|^perc_/, '').replace(/_/g, ' ').trim();
+  s = s.charAt(0).toUpperCase() + s.slice(1);
+  return isPct(k) ? `${s} (%)` : s;
+}
+function fmt(k, v) {
+  if (v == null) return 'n.v.t.';
+  if (isPct(k)) return v.toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + '%';
+  if (k === 'gemiddelde_woningwaarde' || /inkomen|vermogen/.test(k)) return '€ ' + Math.round(v * 1000).toLocaleString('nl-NL');
+  if (/afstand|_km$/.test(k)) return v.toLocaleString('nl-NL', { maximumFractionDigits: 1 }) + ' km';
+  return v.toLocaleString('nl-NL', { maximumFractionDigits: 1 });
+}
+function hashInt(i) { i = Math.imul(i ^ i >>> 16, 0x45d9f3b); i = Math.imul(i ^ i >>> 16, 0x45d9f3b); return ((i ^ i >>> 16) >>> 0) / 4294967296; }
+function zetStatus(t, type = '') { const e = $('status'); e.textContent = t; e.className = type; }
+function voortgang(pct, tekst, sub = '') {
+  $('laden-balk').style.width = Math.round(pct * 100) + '%';
+  if (tekst) $('laden-tekst').textContent = tekst;
+  $('laden-sub').textContent = sub;
+}
+const pauze = () => new Promise(r => setTimeout(r, 0));
+async function pool(n, items, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; try { await fn(items[k], k); } catch (e) { console.warn(e); } }
+  }));
+}
+async function laadBitmap(url, pogingen = 2) {
+  for (let p = 1; ; p++) {
+    try { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); return await createImageBitmap(await r.blob()); }
+    catch (e) { if (p >= pogingen) throw e; await new Promise(r => setTimeout(r, 400)); }
+  }
+}
+async function haalOp(url) {
+  let fout;
+  for (let p = 1; p <= 3; p++) {
+    try { const r = await fetch(url); if (r.ok) return r; fout = new Error('HTTP ' + r.status); if (r.status < 500 && r.status !== 429) break; }
+    catch (e) { fout = e; }
+    await new Promise(r => setTimeout(r, 600 * p));
+  }
+  throw fout;
+}
+
+// ── Projecties ──────────────────────────────────────────────────────────────
+const naarWereld = (lon, lat) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];      // x = oost, z = -noord
+const naarLL = (x, z) => [LON0 + x / KX, LAT0 - z / KZ];
+const mercX = lon => (lon + 180) / 360;
+const mercY = lat => { const s = Math.sin(lat * Math.PI / 180); return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI); };
+const llVanMerc = (mx, my) => [mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI];
+
+// ── Toestand ────────────────────────────────────────────────────────────────
+const S = {
+  jaar: 2024, cache: {}, buurten: [], vars: [],
+  kleurVar: 'percentage_koopwoningen', palet: 'rdylgn', laag: 'lucht',
+  exag: 1, hmul: 1, ovAlpha: 0.55,
+  geselecteerd: -1, hover: -1,
+  dag: 1, dagDoel: 1, autoDraai: false, rondvlucht: false,
+  centrum: { x: 0, z: 0 }, straal: 6000,
+  chunks: new Map(), gebouwen: null,
+};
+// Uniforms die alle materialen delen
+const U = {
+  uExag: { value: S.exag }, uHmul: { value: 1 }, uNacht: { value: 0 }, uGrow: { value: 0 }, uBodem: { value: 0 },
+};
+
+// ── Three.js: renderer, scène, licht ───────────────────────────────────────
+const canvas = $('gl');
+// Welke GPU gebruikt de browser? Zwakke of software-GPU's starten op lagere kwaliteit en zonder anti-aliasing.
+const GPU = (() => {
+  try {
+    const c = document.createElement("canvas"), gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+    const d = gl.getExtension("WEBGL_debug_renderer_info");
+    return d ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : "onbekend";
+  } catch (e) { return "onbekend"; }
+})();
+const GPU_SOFTWARE = /SwiftShader|llvmpipe|Software|Basic Render|Microsoft Basic/i.test(GPU);
+const GPU_ZWAK = GPU_SOFTWARE || /Mali|Adreno|PowerVR|Intel.*(UHD|HD Graphics|Iris(?! Xe MAX))|Radeon.*Vega|Radeon Graphics/i.test(GPU);
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !GPU_ZWAK, powerPreference: "high-performance" }); }
+catch (e) { zetStatus('WebGL wordt niet ondersteund door deze browser.', 'fout'); throw e; }
+renderer.shadowMap.autoUpdate = false;                 // schaduwkaart alleen vernieuwen als er echt iets verandert
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.88;
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 20, 150000);
+scene.fog = new THREE.Fog(0xcfe7ff, 30000, 90000);
+
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() } },
+  vertexShader: 'varying float vY; void main(){ vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying float vY; void main(){ float t = pow(clamp(vY,0.0,1.0),0.5); gl_FragColor = vec4(mix(bottom, top, t),1.0); }',
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(120000, 24, 16), skyMat);
+sky.layers.set(3);
+sky.renderOrder = -1; sky.frustumCulled = false;
+scene.add(sky);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x8899aa, 1);
+scene.add(hemi);
+const zon = new THREE.DirectionalLight(0xffffff, 1.6);
+zon.castShadow = true;
+zon.shadow.bias = -0.0003;
+zon.shadow.normalBias = 0.6;
+zon.shadow.mapSize.set(Math.min(4096, renderer.capabilities.maxTextureSize), Math.min(4096, renderer.capabilities.maxTextureSize));
+scene.add(zon, zon.target);
+
+const DAG = { hemel: new THREE.Color(0x5fa8f5), horizon: new THREE.Color(0xdcecff), hemiG: new THREE.Color(0x8a9a8a), hemiI: 0.55, zonK: new THREE.Color(0xfff0d6), zonI: 2.1, helder: 0.92, bodem: new THREE.Color(0x3a4658) };
+const NACHT = { hemel: new THREE.Color(0x0a1330), horizon: new THREE.Color(0x24365e), hemiG: new THREE.Color(0x141c28), hemiI: 0.65, zonK: new THREE.Color(0x9ab4ff), zonI: 0.8, helder: 0.65, bodem: new THREE.Color(0x141c2a) };
+let terreinHelder = 1;
+const TERREIN_LAMBERT = 0.5;       // kaart met echte belichting is anders ~2× zo fel als de ingebakken variant; dit maakt ze gelijk
+// De ingebakken kaart (lage kwaliteit) heeft geen echte belichting; deze nachttint laat haar even donker en blauwig ogen als de belichte kaart.
+const BASIC_NACHT = [0.12, 0.17, 0.38];
+let basicK = [1, 1, 1];
+
+// Bodem (onder het terreinblok) — "diorama"-rand
+const bodem = new THREE.Mesh(new THREE.CircleGeometry(150000, 32), new THREE.MeshStandardMaterial({ color: 0x3a4658, roughness: 1 }));
+bodem.rotation.x = -Math.PI / 2;
+bodem.receiveShadow = true;
+bodem.layers.set(1);
+hemi.layers.mask = zon.layers.mask = 0xffffffff;      // licht geldt voor alle lagen
+scene.add(bodem);
+
+function pasDagNachtToe(t) {           // t: 1 = dag, 0 = nacht
+  const mix = k => NACHT[k].clone().lerp(DAG[k], t);
+  skyMat.uniforms.top.value.copy(mix('hemel'));
+  const hor = mix('horizon');
+  skyMat.uniforms.bottom.value.copy(hor);
+  scene.fog.color.copy(hor);
+  hemi.color.set(t > 0.5 ? 0xffffff : 0x8ea8ff);
+  hemi.groundColor.copy(mix('hemiG'));
+  hemi.intensity = NACHT.hemiI + (DAG.hemiI - NACHT.hemiI) * t;
+  zon.color.copy(mix('zonK'));
+  zon.intensity = NACHT.zonI + (DAG.zonI - NACHT.zonI) * t;
+  terreinHelder = NACHT.helder + (DAG.helder - NACHT.helder) * t;
+  basicK = BASIC_NACHT.map(n => n + (1 - n) * t);
+  bodem.material.color.copy(mix('bodem'));
+  U.uNacht.value = 1 - t;
+}
+
+// ── Camera-besturing (demping, zoom-naar-cursor) ───────────────────────────
+const cam  = { tx: 0, tz: 0, ty: 0, theta: -0.5, phi: 1.0, dist: 22000 };
+const goal = { tx: 0, tz: 0, theta: -0.5, phi: 1.0, dist: 9000 };
+
+function pasCameraToe(dt) {
+  const k = 1 - Math.exp(-dt * 6);
+  for (const s of ['tx', 'tz', 'theta', 'phi', 'dist']) cam[s] += (goal[s] - cam[s]) * k;
+  const ty = terreinY(cam.tx, cam.tz);
+  cam.ty += (ty - cam.ty) * Math.min(1, dt * 5);
+  const sp = Math.sin(cam.phi), cp = Math.cos(cam.phi);
+  camera.position.set(cam.tx + cam.dist * sp * Math.sin(cam.theta), cam.ty + cam.dist * cp, cam.tz + cam.dist * sp * Math.cos(cam.theta));
+  // de camera mag niet onder het terrein duiken
+  const grondY = terreinY(camera.position.x, camera.position.z) + 25;
+  if (camera.position.y < grondY) camera.position.y = grondY;
+  camera.lookAt(cam.tx, cam.ty, cam.tz);
+  const near = klem(cam.dist * 0.02, 5, 400);
+  if (Math.abs(near - camera.near) / camera.near > 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
+}
+
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+function straal(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  ptr.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  return ray.ray;
+}
+/** Snijpunt van de kijkstraal met het (vervormde) terrein via ray-marching + bisectie. */
+function terreinTreffer(clientX, clientY) {
+  const r = straal(clientX, clientY), o = r.origin, d = r.direction;
+  let t = 0, stap = Math.max(15, cam.dist * 0.006), vorige = 0;
+  for (let n = 0; n < 700 && t < 110000; n++) {
+    const x = o.x + d.x * t, z = o.z + d.z * t, y = o.y + d.y * t;
+    if (y <= terreinY(x, z)) {
+      let a = vorige, b = t;
+      for (let k = 0; k < 10; k++) { const m = (a + b) / 2; (o.y + d.y * m <= terreinY(o.x + d.x * m, o.z + d.z * m)) ? (b = m) : (a = m); }
+      return new THREE.Vector3(o.x + d.x * b, 0, o.z + d.z * b);
+    }
+    vorige = t; t += stap; stap *= 1.015;
+  }
+  return null;
+}
+
+const punten = new Map();
+let sleepStart = null, isPan = false, bewogen = 0;
+
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  punten.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  sleepStart = { x: e.clientX, y: e.clientY };
+  bewogen = 0;
+  isPan = e.button === 2 || e.shiftKey || e.ctrlKey;
+  canvas.classList.add('sleept');
+  stopRondvlucht();
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointermove', e => {
+  const vorige = punten.get(e.pointerId);
+  if (!vorige) { hoverBijwerken(e); return; }
+  const dx = e.clientX - vorige.x, dy = e.clientY - vorige.y;
+  bewogen += Math.abs(dx) + Math.abs(dy);
+  const sp = Math.sin(goal.theta), cp = Math.cos(goal.theta);
+  const pan = (ddx, ddy) => {
+    const k = goal.dist * 0.0011;
+    goal.tx -= cp * ddx * k; goal.tz += sp * ddx * k;
+    goal.tx += -sp * ddy * k; goal.tz += -cp * ddy * k;
+  };
+  if (punten.size === 1) {
+    if (isPan) pan(dx, dy);
+    else { goal.theta -= dx * 0.0055; goal.phi = klem(goal.phi - dy * 0.0055, 0.1, 1.5); }
+  } else if (punten.size === 2) {
+    const ander = [...punten.entries()].find(([id]) => id !== e.pointerId)[1];
+    const voor = Math.hypot(vorige.x - ander.x, vorige.y - ander.y), na = Math.hypot(e.clientX - ander.x, e.clientY - ander.y);
+    if (voor > 0 && na > 0) goal.dist = klem(goal.dist * (voor / na), 150, 40000);
+    pan(dx / 2, dy / 2);
+  }
+  punten.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+function pointerKlaar(e) {
+  const wasKlik = bewogen < 5 && punten.size === 1 && sleepStart;
+  punten.delete(e.pointerId);
+  if (!punten.size) canvas.classList.remove('sleept');
+  if (wasKlik && e.type === 'pointerup') klikOp(e);
+}
+canvas.addEventListener('pointerup', pointerKlaar);
+canvas.addEventListener('pointercancel', pointerKlaar);
+canvas.addEventListener('pointerleave', () => { if (!punten.size) { zetHover(-1); $('tooltip').style.display = 'none'; } });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault(); stopRondvlucht();
+  const factor = Math.exp(e.deltaY * 0.0012);
+  const nieuw = klem(goal.dist * factor, 150, 40000);
+  const p = terreinTreffer(e.clientX, e.clientY);
+  if (p) { const f = 1 - nieuw / goal.dist; goal.tx += (p.x - goal.tx) * f * 0.85; goal.tz += (p.z - goal.tz) * f * 0.85; }
+  goal.dist = nieuw;
+}, { passive: false });
+
+function vliegNaar(x, z, dist, phi = 0.95, theta = null) {
+  goal.tx = x; goal.tz = z; goal.dist = dist; goal.phi = phi;
+  if (theta != null) goal.theta = theta;
+}
+function overzicht() { vliegNaar(S.centrum.x, S.centrum.z, Math.max(6000, S.straal * 2.5), 0.95, goal.theta); }
+
+// ── Hoogtegegevens (Terrarium) ──────────────────────────────────────────────
+const E = { x0: 0, y0: 0, nx: 0, ny: 0, data: null, min: 0 };
+async function laadHoogte(tx0, tx1, ty0, ty1) {
+  // chunk-bereik (z13) → hoogtetegels (z14), met 1 tegel marge voor de bilineaire steekproef
+  E.x0 = tx0 * 2 - 1; E.y0 = ty0 * 2 - 1; E.nx = (tx1 - tx0 + 1) * 2 + 2; E.ny = (ty1 - ty0 + 1) * 2 + 2;
+  const W = E.nx * 256;
+  E.data = new Float32Array(W * E.ny * 256).fill(NaN);
+  const lijst = [];
+  for (let j = 0; j < E.ny; j++) for (let i = 0; i < E.nx; i++) lijst.push([i, j]);
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  let klaar = 0;
+  await pool(8, lijst, async ([i, j]) => {
+    const b = await laadBitmap(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${ZE}/${E.x0 + i}/${E.y0 + j}.png`);
+    cx.clearRect(0, 0, 256, 256); cx.drawImage(b, 0, 0);
+    const px = cx.getImageData(0, 0, 256, 256).data;
+    for (let y = 0; y < 256; y++) {
+      const rij = (j * 256 + y) * W + i * 256;
+      for (let x = 0; x < 256; x++) { const p = (y * 256 + x) * 4; E.data[rij + x] = px[p] * 256 + px[p + 1] + px[p + 2] / 256 - 32768; }
+    }
+    b.close?.();
+    voortgang(0.05 + 0.25 * (++klaar / lijst.length), 'Terrein laden…', `hoogtetegel ${klaar}/${lijst.length}`);
+  });
+  // gaten (mislukte tegels) opvullen met het gemiddelde zodat niets NaN wordt
+  let som = 0, n = 0; for (let k = 0; k < E.data.length; k += 97) if (!isNaN(E.data[k])) { som += E.data[k]; n++; }
+  const gem = n ? som / n : 0; E.min = Infinity;
+  for (let k = 0; k < E.data.length; k++) { if (isNaN(E.data[k])) E.data[k] = gem; if (E.data[k] < E.min) E.min = E.data[k]; }
+}
+/** Ruwe hoogte (m boven NAP) op wereldpositie. */
+function hoogteRuw(x, z) {
+  if (!E.data) return 0;
+  const [lon, lat] = naarLL(x, z);
+  return hoogteMerc(mercX(lon), mercY(lat));
+}
+function hoogteMerc(mx, my) {
+  const W = E.nx * 256, H = E.ny * 256;
+  const fx = klem(mx * NE * 256 - E.x0 * 256 - 0.5, 0, W - 1.001), fy = klem(my * NE * 256 - E.y0 * 256 - 0.5, 0, H - 1.001);
+  const x0 = fx | 0, y0 = fy | 0, ax = fx - x0, ay = fy - y0, i = y0 * W + x0;
+  return (E.data[i] * (1 - ax) + E.data[i + 1] * ax) * (1 - ay) + (E.data[i + W] * (1 - ax) + E.data[i + W + 1] * ax) * ay;
+}
+const terreinY = (x, z) => hoogteRuw(x, z) * U.uExag.value;
+
+// ── Materialen met vertex-verplaatsing (reliëf-overdrijving, gebouwhoogte) ─
+function injecteerTerrein(ovU) {
+  return sh => {
+    sh.uniforms.uExag = U.uExag; sh.uniforms.uOverlay = ovU;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uExag;')
+      .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position.x, position.y * uExag, position.z);');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uOverlay;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n vec4 ov = texture2D(uOverlay, vMapUv); diffuseColor.rgb = mix(diffuseColor.rgb, ov.rgb * diffuse, ov.a);');
+  };
+}
+const GEB_VERT = `
+  float g = clamp(uGrow * 1.8 - aPhase, 0.0, 1.0); g = g * g * (3.0 - 2.0 * g);
+  vec3 transformed = vec3(position.x, aElev * uExag + position.y * uExag + aH * uHmul * g, position.z);`;
+function injecteerGebouw(sh) {
+  sh.uniforms.uExag = U.uExag; sh.uniforms.uHmul = U.uHmul; sh.uniforms.uGrow = U.uGrow; sh.uniforms.uNacht = U.uNacht;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aElev; attribute float aH; attribute float aPhase; attribute vec4 aCol; varying vec4 vCol; varying float vAO; uniform float uExag; uniform float uHmul; uniform float uGrow;')
+    .replace('#include <begin_vertex>', GEB_VERT + '\n vCol = aCol; vAO = mix(0.70, 1.0, clamp(aH * g / 7.0, 0.0, 1.0));');
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec4 vCol; varying float vAO; uniform float uNacht;')
+    .replace('#include <color_fragment>', 'vec3 lin = pow(vCol.rgb, vec3(2.2)); diffuseColor.rgb *= lin * vAO;')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += lin * vCol.a * uNacht * 0.9;');
+}
+function injecteerGebouwDiepte(sh) {
+  sh.uniforms.uExag = U.uExag; sh.uniforms.uHmul = U.uHmul; sh.uniforms.uGrow = U.uGrow;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aElev; attribute float aH; attribute float aPhase; uniform float uExag; uniform float uHmul; uniform float uGrow;')
+    .replace('#include <begin_vertex>', GEB_VERT);
+}
+const matGebouw = new THREE.MeshLambertMaterial({ flatShading: true, side: THREE.DoubleSide });
+matGebouw.onBeforeCompile = injecteerGebouw;
+const matGebouwDiepte = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+matGebouwDiepte.onBeforeCompile = injecteerGebouwDiepte;
+const matRand = new THREE.MeshStandardMaterial({ color: 0xf1ece2, roughness: 1, side: THREE.DoubleSide });
+matRand.onBeforeCompile = sh => {
+  sh.uniforms.uExag = U.uExag; sh.uniforms.uBodem = U.uBodem;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute float aTop; uniform float uExag; uniform float uBodem;')
+    .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position.x, aTop > 0.5 ? position.y * uExag : uBodem, position.z);');
+};
+
+// ── Terrein-chunks ──────────────────────────────────────────────────────────
+const stad = new THREE.Group();
+scene.add(stad);
+const grijsTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 2; const x = c.getContext('2d'); x.fillStyle = '#c9c9c9'; x.fillRect(0, 0, 2, 2); const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })();
+
+function maakChunk(tx, ty) {
+  const ch = { tx, ty, key: tx + '_' + ty, niveau: -1, laadt: false, buurten: [], laagNu: null };
+  const n = GRID, pos = new Float32Array((n + 1) * (n + 1) * 3), uv = new Float32Array((n + 1) * (n + 1) * 2);
+  ch.raw = new Float32Array((n + 1) * (n + 1));
+  ch.xz = new Float32Array((n + 1) * (n + 1) * 2);
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const k = j * (n + 1) + i, mx = (tx + i / n) / NC, my = (ty + j / n) / NC;
+    const [lon, lat] = llVanMerc(mx, my), [x, z] = naarWereld(lon, lat), y = hoogteMerc(mx, my);
+    pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = z; ch.raw[k] = y; ch.xz[k * 2] = x; ch.xz[k * 2 + 1] = z;
+    uv[k * 2] = i / n; uv[k * 2 + 1] = 1 - j / n;
+  }
+  // indexbuffers op drie detailniveaus (stap 1, 2, 4) die dezelfde hoekpunten delen — voor lage kwaliteit
+  ch.idxAttr = {};
+  for (const s of [1, 2, 4]) {
+    const arr = new Uint32Array((n / s) * (n / s) * 6);
+    let p = 0;
+    for (let j = 0; j < n; j += s) for (let i = 0; i < n; i += s) {
+      const a = j * (n + 1) + i, b = a + s, c = a + s * (n + 1), d = c + s;
+      arr.set([a, c, b, b, c, d], p); p += 6;
+    }
+    ch.idxAttr[s] = new THREE.BufferAttribute(arr, 1);
+  }
+  const idx = ch.idxAttr[1].array;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(ch.idxAttr[terreinStap]);
+  const mid = ((n / 2) * (n + 1) + n / 2);
+  ch.cx = ch.xz[mid * 2]; ch.cz = ch.xz[mid * 2 + 1];
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(ch.cx, 0, ch.cz), 3600);
+  ch.geo = geo;
+  // kleurvlak-overlay (buurten) — vaste 512² canvas
+  ch.ovCanvas = document.createElement('canvas'); ch.ovCanvas.width = ch.ovCanvas.height = 512;
+  ch.ovCtx = ch.ovCanvas.getContext('2d');
+  ch.ovTex = new THREE.CanvasTexture(ch.ovCanvas); ch.ovTex.encoding = THREE.sRGBEncoding;
+  ch.ovU = { value: ch.ovTex };
+  geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(pos.length), 3));   // voorgebakken licht voor de goedkope variant
+  const mat = new THREE.MeshLambertMaterial({ map: grijsTex });
+  mat.onBeforeCompile = injecteerTerrein(ch.ovU);
+  ch.mat = mat;
+  // Goedkope variant (zonder lichtberekening en schaduw): kaart op volle resolutie tekenen kost dan bijna niets
+  ch.matBasic = new THREE.MeshBasicMaterial({ map: grijsTex, vertexColors: true });
+  ch.matBasic.onBeforeCompile = injecteerTerrein(ch.ovU);
+  ch.mesh = new THREE.Mesh(geo, S.split ? ch.matBasic : mat);
+  ch.mesh.layers.set(1);
+  ch.mesh.receiveShadow = true;
+  stad.add(ch.mesh);
+  berekenNormalen(ch);
+  return ch;
+}
+
+/** Normalen uit de vervormde hoogte (moet opnieuw bij een andere reliëf-overdrijving). */
+function berekenNormalen(ch) {
+  const n = GRID, W = n + 1, nor = ch.geo.attributes.normal.array, e = U.uExag.value;
+  const kl = ch.geo.attributes.color.array;
+  const Y = (i, j) => ch.raw[klem(j, 0, n) * W + klem(i, 0, n)] * e;
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+    const k = j * W + i;
+    const i1 = klem(i - 1, 0, n), i2 = klem(i + 1, 0, n), j1 = klem(j - 1, 0, n), j2 = klem(j + 1, 0, n);
+    const dx = ch.xz[(j * W + i2) * 2] - ch.xz[(j * W + i1) * 2], dz = ch.xz[(j2 * W + i) * 2 + 1] - ch.xz[(j1 * W + i) * 2 + 1];
+    const dyx = Y(i2, j) - Y(i1, j), dyz = Y(i, j2) - Y(i, j1);
+    let nx = -dyx * dz, ny = dx * dz, nz = -dyz * dx;
+    if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nor[k * 3] = nx / l; nor[k * 3 + 1] = ny / l; nor[k * 3 + 2] = nz / l;
+    const hel = 0.55 + 0.5 * Math.max(0, (nx * -0.47 + ny * 0.77 + nz * 0.56) / l);   // zonrichting = die van de echte zon
+    kl[k * 3] = kl[k * 3 + 1] = kl[k * 3 + 2] = hel;
+  }
+  ch.geo.attributes.normal.needsUpdate = true;
+  ch.geo.attributes.color.needsUpdate = true;
+}
+
+/** Zijkanten rond het terreinblok (diorama-look). */
+let randMesh = null;
+function bouwRand() {
+  if (randMesh) { stad.remove(randMesh); randMesh.geometry.dispose(); }
+  const pos = [], top = [], nor = [], idx = [];
+  const n = GRID, W = n + 1;
+  const zijde = (ch, kant) => {
+    const rij = [];
+    for (let s = 0; s <= n; s++) {
+      const [i, j] = kant === 'N' ? [s, 0] : kant === 'S' ? [s, n] : kant === 'W' ? [0, s] : [n, s];
+      rij.push(j * W + i);
+    }
+    const nm = { N: [0, 0, -1], S: [0, 0, 1], W: [-1, 0, 0], E: [1, 0, 0] }[kant];
+    const b = pos.length / 3;
+    for (const k of rij) { pos.push(ch.xz[k * 2], ch.raw[k], ch.xz[k * 2 + 1]); top.push(1); nor.push(...nm); }
+    for (const k of rij) { pos.push(ch.xz[k * 2], 0, ch.xz[k * 2 + 1]); top.push(0); nor.push(...nm); }
+    for (let s = 0; s < n; s++) { const a = b + s, c = b + s + 1, d = b + n + 1 + s, e = d + 1; idx.push(a, d, c, c, d, e); }
+  };
+  for (const ch of S.chunks.values()) {
+    if (!S.chunks.has(`${ch.tx}_${ch.ty - 1}`)) zijde(ch, 'N');
+    if (!S.chunks.has(`${ch.tx}_${ch.ty + 1}`)) zijde(ch, 'S');
+    if (!S.chunks.has(`${ch.tx - 1}_${ch.ty}`)) zijde(ch, 'W');
+    if (!S.chunks.has(`${ch.tx + 1}_${ch.ty}`)) zijde(ch, 'E');
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aTop', new THREE.Float32BufferAttribute(top, 1));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(S.centrum.x, 0, S.centrum.z), 60000);
+  randMesh = new THREE.Mesh(g, matRand);
+  randMesh.layers.set(1);
+  randMesh.receiveShadow = true;
+  stad.add(randMesh);
+}
+function pasReliefToe() {
+  const e = U.uExag.value;
+  U.uBodem.value = (E.min - 40) * e - 60;
+  bodem.position.y = U.uBodem.value - 0.5;
+  for (const ch of S.chunks.values()) berekenNormalen(ch);
+  if (S.geselecteerd >= 0) maakGordijn(S.buurten[S.geselecteerd]);
+}
+
+// ── Ondergrond (kaarttegels) per chunk, met scherper niveau dichtbij ───────
+async function laadOndergrond(ch, niveau) {
+  if (ch.laadt) return;
+  ch.laadt = true;
+  const z = niveau === 0 ? ZOOM_LAAG : zoomHoog, f = 2 ** (z - ZC), px = 256 * f;
+  const laag = S.laag, url = LAGEN[laag];
+  const cv = document.createElement('canvas'); cv.width = cv.height = px;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#cfcfcf'; cx.fillRect(0, 0, px, px);
+  const lijst = []; for (let j = 0; j < f; j++) for (let i = 0; i < f; i++) lijst.push([i, j]);
+  await pool(niveau === 0 ? 6 : 8, lijst, async ([i, j]) => {
+    const b = await laadBitmap(url(z, ch.tx * f + i, ch.ty * f + j));
+    cx.drawImage(b, i * 256, j * 256); b.close?.();
+  });
+  ch.laadt = false;
+  if (laag !== S.laag) return;                                // ondertussen van ondergrond gewisseld
+  const tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding; tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  if (ch.tex) ch.tex.dispose();
+  ch.tex = tex; ch.mat.map = tex; ch.matBasic.map = tex; ch.niveau = niveau; ch.laagNu = laag; ch.zoomNu = z; S.hqVuil = true;
+}
+/** Resolutie van het zonevlak-kleurlaagje per gebied: 512 px (ver weg) of 2048 px (dichtbij, scherpe randen). */
+function zetOverlayRes(ch, px) {
+  if (ch.ovCanvas.width === px) return;
+  ch.ovCanvas = document.createElement("canvas"); ch.ovCanvas.width = ch.ovCanvas.height = px;
+  ch.ovCtx = ch.ovCanvas.getContext("2d");
+  const oud = ch.ovTex;
+  ch.ovTex = new THREE.CanvasTexture(ch.ovCanvas); ch.ovTex.encoding = THREE.sRGBEncoding; ch.ovTex.anisotropy = 4;
+  ch.ovU.value = ch.ovTex;
+  oud.dispose();
+  tekenOverlay(ch); S.hqVuil = true;
+}
+let ondergrondBezig = false;
+async function ondergrondBeheer() {
+  if (ondergrondBezig || !S.chunks.size) return;
+  ondergrondBezig = true;
+  try {
+    // 1. basisniveau voor alle chunks (dichtstbijzijnde eerst)
+    const alle = [...S.chunks.values()].sort((a, b) => Math.hypot(a.cx - cam.tx, a.cz - cam.tz) - Math.hypot(b.cx - cam.tx, b.cz - cam.tz));
+    for (const ch of alle) if (ch.laagNu !== S.laag) await laadOndergrond(ch, 0);
+    // 2. scherp niveau voor chunks vlak bij de camera-focus
+    if (cam.dist < 8000) {
+      const dichtbij = alle.filter(ch => Math.hypot(ch.cx - cam.tx, ch.cz - cam.tz) < 2600).slice(0, 2);
+      for (const ch of dichtbij) if (ch.niveau < 1 || ch.zoomNu < zoomHoog) await laadOndergrond(ch, 1);
+      for (const ch of dichtbij) zetOverlayRes(ch, 2048);          // zonevlakken dichtbij: scherpe randen
+    }
+    // 3. geheugen vrijmaken: verre chunks laten we vanzelf weer op basisniveau terugvallen
+    for (const ch of alle) if (ch.niveau === 1 && Math.hypot(ch.cx - cam.tx, ch.cz - cam.tz) > 6500) { ch.niveau = -1; ch.laagNu = null; zetOverlayRes(ch, 512); }
+  } finally { ondergrondBezig = false; }
+}
+
+// ── Buurten: geometrie ──────────────────────────────────────────────────────
+function inRing(x, z, ring) {
+  let bin = false;
+  for (let a = 0, b = ring.length - 1; a < ring.length; b = a++) {
+    const [xa, za] = ring[a], [xb, zb] = ring[b];
+    if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) bin = !bin;
+  }
+  return bin;
+}
+function inBuurt(x, z, b) {
+  if (x < b.bb[0] || x > b.bb[2] || z < b.bb[1] || z > b.bb[3]) return false;
+  for (const poly of b.polys) if (inRing(x, z, poly[0]) && !poly.slice(1).some(h => inRing(x, z, h))) return true;
+  return false;
+}
+
+function verwerkFeatures(features) {
+  return features.map((f, i) => {
+    const polysLL = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    const polys = polysLL.map(poly => poly.map(ring => ring.map(([lo, la]) => naarWereld(lo, la))));
+    const mpolys = polysLL.map(poly => poly.map(ring => ring.map(([lo, la]) => [mercX(lo), mercY(la)])));
+    let area = 0, cx = 0, cz = 0, buiten = 0;
+    const bb = [1e12, 1e12, -1e12, -1e12];
+    for (const poly of polys) poly.forEach((ring, ri) => {
+      let a = 0, sx = 0, sz = 0;
+      for (let k = 0; k < ring.length - 1; k++) {
+        const [x1, z1] = ring[k], [x2, z2] = ring[k + 1], c = x1 * z2 - x2 * z1;
+        a += c; sx += (x1 + x2) * c; sz += (z1 + z2) * c;
+        if (ri === 0) { bb[0] = Math.min(bb[0], x1); bb[1] = Math.min(bb[1], z1); bb[2] = Math.max(bb[2], x1); bb[3] = Math.max(bb[3], z1); }
+      }
+      a /= 2; area += (ri === 0 ? 1 : -1) * Math.abs(a);
+      if (ri === 0 && a) { cx += sx / (6 * a) * Math.abs(a); cz += sz / (6 * a) * Math.abs(a); buiten += Math.abs(a); }
+    });
+    const p = f.properties || {};
+    return {
+      i, props: p, polys, mpolys, bb, area: Math.max(area, 1),
+      cx: cx / (buiten || 1), cz: cz / (buiten || 1),
+      naam: p.buurtnaam || p.buurt || p.naam || 'Onbekend', wijk: p.wijknaam || p.wijkcode || '',
+      kleur: new THREE.Color(0x777777),
+      nBouw: 0, nWoon: 0, woonLijst: [], woonTot: 0, v: null, t: null, frac: 0,
+    };
+  });
+}
+
+// ── Gebouwen: binair bestand inlezen en mesh per chunk bouwen ──────────────
+function leesGebouwen(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x31424748) throw new Error('onbekend gebouwenbestand');
+  const N = dv.getUint32(4, true), R = dv.getUint32(8, true), V = dv.getUint32(12, true);
+  const x0 = dv.getFloat32(32, true), z0 = dv.getFloat32(36, true), Q = dv.getFloat32(40, true);
+  let p = 48;
+  const neem = (T, n) => { const a = new T(buf, p, n); p += (n * T.BYTES_PER_ELEMENT + 3) & ~3; return a; };
+  const g = { N, R, V, x0, z0, Q };
+  g.ringen = neem(Uint8Array, N); g.len = neem(Uint16Array, R); g.X = neem(Uint16Array, V); g.Z = neem(Uint16Array, V);
+  g.H = neem(Uint16Array, N); g.G = neem(Int16Array, N); g.BJ = neem(Uint16Array, N); g.VO = neem(Uint16Array, N); g.vlag = neem(Uint8Array, N);
+  g.rStart = new Uint32Array(N); g.vStart = new Uint32Array(N); g.vCnt = new Uint32Array(N);
+  g.cx = new Float32Array(N); g.cz = new Float32Array(N); g.buurt = new Int16Array(N).fill(-1);
+  g.chunk = new Array(N); g.vOff = new Uint32Array(N); g.elev = new Float32Array(N);
+  let r = 0, v = 0;
+  for (let i = 0; i < N; i++) {
+    g.rStart[i] = r; g.vStart[i] = v;
+    let tot = 0, sx = 0, sz = 0;
+    const n0 = g.len[r];
+    for (let k = 0; k < g.ringen[i]; k++) tot += g.len[r + k];
+    for (let k = 0; k < n0; k++) { sx += g.X[v + k]; sz += g.Z[v + k]; }
+    g.vCnt[i] = tot; g.cx[i] = x0 + (sx / n0) * Q; g.cz[i] = z0 + (sz / n0) * Q;
+    r += g.ringen[i]; v += tot;
+  }
+  return g;
+}
+
+async function bouwGebouwMeshes() {
+  const g = S.gebouwen, Q = g.Q;
+  // 1. chunk van elk gebouw + terreinhoogte op het zwaartepunt
+  const perChunk = new Map();
+  for (let i = 0; i < g.N; i++) {
+    const [lon, lat] = naarLL(g.cx[i], g.cz[i]), mx = mercX(lon), my = mercY(lat);
+    const ch = S.chunks.get(Math.floor(mx * NC) + '_' + Math.floor(my * NC));
+    if (!ch) continue;
+    { const r0 = g.rStart[i], o = g.vStart[i], n = g.len[r0]; let a = 0;
+      for (let k = 0; k < n; k++) { const j = o + (k + 1) % n; a += g.X[o + k] * g.Z[j] - g.X[j] * g.Z[o + k]; }
+      if (Math.abs(a) / 2 * g.Q * g.Q < MIN_OPP) continue; }        // schuurtjes en garages: onzichtbaar op deze schaal
+    g.chunk[i] = ch; g.elev[i] = hoogteMerc(mx, my);
+    (perChunk.get(ch) || perChunk.set(ch, []).get(ch)).push(i);
+  }
+  // 2. per chunk: driehoeken bepalen, buffers vullen
+  let gedaan = 0;
+  for (const [ch, lijst] of perChunk) {
+    const tris = new Array(lijst.length);
+    let nv = 0, nRoof = 0, nWall = 0;
+    for (let q = 0; q < lijst.length; q++) {
+      const i = lijst[q], r0 = g.rStart[i], nr = g.ringen[i];
+      const ringen = []; let o = g.vStart[i];
+      for (let k = 0; k < nr; k++) { const len = g.len[r0 + k], pts = []; for (let m = 0; m < len; m++) pts.push(new THREE.Vector2(g.X[o + m], g.Z[o + m])); ringen.push(pts); o += len; }
+      let t = [];
+      try { t = THREE.ShapeUtils.triangulateShape(ringen[0], ringen.slice(1)); } catch (e) { /* degenerate omtrek */ }
+      const flat = new Uint32Array(t.length * 3); t.forEach((tr, a) => { flat[a * 3] = tr[0]; flat[a * 3 + 1] = tr[1]; flat[a * 3 + 2] = tr[2]; });
+      tris[q] = flat;
+      g.vOff[i] = nv;
+      nv += g.vCnt[i] * 5; nRoof += flat.length; nWall += g.vCnt[i] * 6;
+    }
+    const pos = new Float32Array(nv * 3), aElev = new Float32Array(nv), aH = new Float32Array(nv), aPh = new Float32Array(nv), col = new Uint8Array(nv * 4);
+    const idx = new Uint32Array(nRoof + nWall);
+    let vp = 0, ipR = 0, ipW = nRoof;
+    for (let q = 0; q < lijst.length; q++) {
+      const i = lijst[q], r0 = g.rStart[i], nr = g.ringen[i], e = g.elev[i];
+      const H = Math.max(2.5, g.H[i] / 10), fase = Math.min(1, Math.hypot(g.cx[i] - S.centrum.x, g.cz[i] - S.centrum.z) / (S.straal * 1.05));
+      // minimale terreinhoogte rond het gebouw → fundering
+      let minE = e; const o = g.vStart[i], len0 = g.len[r0];
+      for (let m = 0; m < len0; m += Math.max(1, len0 >> 3)) minE = Math.min(minE, hoogteRuw(g.x0 + g.X[o + m] * Q, g.z0 + g.Z[o + m] * Q));
+      const off = Math.min(0, minE - e) - 1.2;
+      const basis = vp;
+      let rb = g.vStart[i];
+      for (let k = 0; k < nr; k++) {                              // dakhoekpunten
+        const len = g.len[r0 + k];
+        for (let m = 0; m < len; m++) {
+          pos[vp * 3] = g.x0 + g.X[rb + m] * Q; pos[vp * 3 + 1] = 0; pos[vp * 3 + 2] = g.z0 + g.Z[rb + m] * Q;
+          aElev[vp] = e; aH[vp] = H; aPh[vp] = fase; vp++;
+        }
+        rb += len;
+      }
+      const t = tris[q];
+      for (let a = 0; a < t.length; a++) idx[ipR++] = basis + t[a];
+      rb = g.vStart[i];
+      for (let k = 0; k < nr; k++) {                              // muren
+        const len = g.len[r0 + k];
+        for (let m = 0; m < len; m++) {
+          const ia = rb + m, ib = rb + (m + 1) % len, v0 = vp;
+          const xa = g.x0 + g.X[ia] * Q, za = g.z0 + g.Z[ia] * Q, xb = g.x0 + g.X[ib] * Q, zb = g.z0 + g.Z[ib] * Q;
+          const kant = [[xa, za, off, 0], [xb, zb, off, 0], [xb, zb, 0, H], [xa, za, 0, H]];
+          for (const [x, z, yo, h] of kant) { pos[vp * 3] = x; pos[vp * 3 + 1] = yo; pos[vp * 3 + 2] = z; aElev[vp] = e; aH[vp] = h; aPh[vp] = fase; vp++; }
+          idx[ipW++] = v0; idx[ipW++] = v0 + 1; idx[ipW++] = v0 + 2; idx[ipW++] = v0; idx[ipW++] = v0 + 2; idx[ipW++] = v0 + 3;
+        }
+        rb += len;
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aElev', new THREE.BufferAttribute(aElev, 1));
+    geo.setAttribute('aH', new THREE.BufferAttribute(aH, 1));
+    geo.setAttribute('aPhase', new THREE.BufferAttribute(aPh, 1));
+    geo.setAttribute('aCol', new THREE.BufferAttribute(col, 4, true));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(ch.cx, 300, ch.cz), 3600);
+    const mesh = new THREE.Mesh(geo, matGebouw);
+    mesh.layers.set(2);
+    mesh.customDepthMaterial = matGebouwDiepte;
+    mesh.castShadow = mesh.receiveShadow = true;
+    stad.add(mesh);
+    ch.gebouwMesh = mesh; ch.gebouwen = lijst; ch.nRoof = nRoof; ch.nIdx = nRoof + nWall; ch.lod = -1;
+    voortgang(0.5 + 0.45 * (++gedaan / perChunk.size), 'Gebouwen opbouwen…', `${gedaan}/${perChunk.size} gebieden`);
+    await pauze();
+  }
+}
+
+// ── Data koppelen: gebouwen → buurten, kleuren, kleurvlak ───────────────────
+function wijsBuurtenToe() {
+  const g = S.gebouwen, cel = 300, index = new Map();
+  if (!g.opp) {                                       // voetafdruk per gebouw (m²), eenmalig
+    g.opp = new Float32Array(g.N);
+    for (let i = 0; i < g.N; i++) {
+      const o = g.vStart[i], n = g.len[g.rStart[i]]; let a = 0;
+      for (let k = 0; k < n; k++) { const j = o + (k + 1) % n; a += g.X[o + k] * g.Z[j] - g.X[j] * g.Z[o + k]; }
+      g.opp[i] = Math.abs(a) / 2 * g.Q * g.Q;
+    }
+  }
+  for (const b of S.buurten) {
+    b.nBouw = 0; b.nWoon = 0; b.woonLijst = []; b.woonTot = 0; b.lijst = []; b.seed = hashInt(b.i * 131 + 7);
+    for (let cx = Math.floor(b.bb[0] / cel); cx <= Math.floor(b.bb[2] / cel); cx++) for (let cz = Math.floor(b.bb[1] / cel); cz <= Math.floor(b.bb[3] / cel); cz++) {
+      const k = cx + ',' + cz; (index.get(k) || index.set(k, []).get(k)).push(b);
+    }
+  }
+  for (let i = 0; i < g.N; i++) {
+    g.buurt[i] = -1;
+    const kand = index.get(Math.floor(g.cx[i] / cel) + ',' + Math.floor(g.cz[i] / cel));
+    if (!kand) continue;
+    for (const b of kand) if (inBuurt(g.cx[i], g.cz[i], b)) {
+      g.buurt[i] = b.i; b.nBouw++;
+      if (g.chunk[i]) b.lijst.push(i);                                  // alleen gebouwen die echt getekend worden
+      if (g.vlag[i] & 1) { b.nWoon++; b.woonLijst.push(i); b.woonTot += Math.max(1, g.VO[i]); }
+      break;
+    }
+  }
+  for (const b of S.buurten) b.lijst.sort((p, q) => g.opp[q] - g.opp[p]);      // groot → klein
+}
+
+// kleur-LUT (sRGB-bytes) per palet
+const lutCache = {};
+function palLUT(naam) {
+  if (lutCache[naam]) return lutCache[naam];
+  const stops = PALETTEN[naam].map(h => new THREE.Color(h)), lut = new Uint8Array(65 * 3), c = new THREE.Color();
+  for (let k = 0; k <= 64; k++) {
+    const x = k / 64 * (stops.length - 1), i = Math.min(Math.floor(x), stops.length - 2);
+    c.copy(stops[i]).lerp(stops[i + 1], x - i).convertLinearToSRGB();
+    lut[k * 3] = c.r * 255; lut[k * 3 + 1] = c.g * 255; lut[k * 3 + 2] = c.b * 255;
+  }
+  return (lutCache[naam] = lut);
+}
+function paletKleur(naam, t, uit) {
+  const lut = palLUT(naam), k = Math.round(klem(t) * 64);
+  return (uit || new THREE.Color()).setRGB(lut[k * 3] / 255, lut[k * 3 + 1] / 255, lut[k * 3 + 2] / 255).convertSRGBToLinear();
+}
+
+function kleurGebouwen() {
+  const g = S.gebouwen; if (!g) return;
+  const lut = palLUT(S.palet), lit = new Uint8Array(g.N), pct = isPct(S.kleurVar);
+  // Gebouwen van een buurt staan op grootte gesorteerd (groot → klein).
+  for (const b of S.buurten) {
+    if (b.v == null) continue;
+    if (!pct) { for (const i of b.lijst) lit[i] = 1; continue; }
+    // Foutdiffusie op oppervlak, van groot naar klein: elk gebouw wordt gekleurd als dat het gekleurde oppervlak dichter bij
+    // het doelpercentage brengt. Zo klopt het aandeel qua oppervlak én (omdat gelijke groottes op elkaar volgen) qua aantal.
+    let cum = 0, gekleurd = 0;
+    for (const i of b.lijst) { const a = g.opp[i]; cum += a; if (b.frac * cum - gekleurd >= a / 2) { lit[i] = 1; gekleurd += a; } }
+  }
+  for (const ch of S.chunks.values()) {
+    if (!ch.gebouwMesh) continue;
+    const col = ch.gebouwMesh.geometry.attributes.aCol.array;
+    for (const i of ch.gebouwen) {
+      const b = g.buurt[i] >= 0 ? S.buurten[g.buurt[i]] : null, variatie = 0.93 + hashInt(i * 7 + 3) * 0.12;
+      let r, gr, bl, a = 0;
+      if (b && b.v != null && lit[i]) {
+        const k = Math.round(b.t * 64); r = lut[k * 3]; gr = lut[k * 3 + 1]; bl = lut[k * 3 + 2]; a = 255;
+      } else { r = 238; gr = 233; bl = 224; }                     // niet gekleurd: wit
+      r = Math.min(255, r * variatie); gr = Math.min(255, gr * variatie); bl = Math.min(255, bl * variatie);
+      const o = g.vOff[i] * 4, e = o + g.vCnt[i] * 5 * 4;
+      for (let p = o; p < e; p += 4) { col[p] = r; col[p + 1] = gr; col[p + 2] = bl; col[p + 3] = a; }
+    }
+    ch.gebouwMesh.geometry.attributes.aCol.needsUpdate = true;
+  }
+}
+
+// kleurvlak van de buurten op de terrein-chunks
+function koppelChunkBuurten() {
+  for (const ch of S.chunks.values()) {
+    const x0 = ch.tx / NC, x1 = (ch.tx + 1) / NC, y0 = ch.ty / NC, y1 = (ch.ty + 1) / NC;
+    ch.buurten = S.buurten.filter(b => {
+      let mnx = 9, mxx = -9, mny = 9, mxy = -9;
+      for (const poly of b.mpolys) for (const [mx, my] of poly[0]) { mnx = Math.min(mnx, mx); mxx = Math.max(mxx, mx); mny = Math.min(mny, my); mxy = Math.max(mxy, my); }
+      return mxx >= x0 && mnx <= x1 && mxy >= y0 && mny <= y1;
+    });
+  }
+}
+function tekenOverlay(ch) {
+  const ctx = ch.ovCtx, W = ch.ovCanvas.width;
+  ctx.clearRect(0, 0, W, W);
+  ctx.lineJoin = 'round';
+  // alles buiten Heerlen licht gedempt, zodat de gemeente uitkomt
+  ctx.fillStyle = "rgba(38,48,66,0.42)"; ctx.fillRect(0, 0, W, W);
+  ctx.globalCompositeOperation = "destination-out";
+  for (const b of ch.buurten) {
+    ctx.beginPath();
+    for (const poly of b.mpolys) for (const ring of poly) { ring.forEach(([mx, my], k) => { const x = (mx * NC - ch.tx) * W, y = (my * NC - ch.ty) * W; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }
+    ctx.fill("evenodd");
+  }
+  ctx.globalCompositeOperation = "source-over";
+  for (const b of ch.buurten) {
+    const sel = b.i === S.geselecteerd, hov = b.i === S.hover;
+    ctx.beginPath();
+    for (const poly of b.mpolys) for (const ring of poly) {
+      ring.forEach(([mx, my], k) => { const x = (mx * NC - ch.tx) * W, y = (my * NC - ch.ty) * W; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.closePath();
+    }
+    const alpha = klem(S.ovAlpha + (sel ? 0.12 : hov ? 0.12 : 0), 0, 1);
+    if (alpha > 0) { ctx.globalAlpha = alpha; ctx.fillStyle = b.v == null ? '#6b7280' : '#' + b.kleur.getHexString(); ctx.fill('evenodd'); ctx.globalAlpha = 1; }
+  }
+  ch.ovTex.needsUpdate = true;
+}
+function tekenAlleOverlays() { for (const ch of S.chunks.values()) tekenOverlay(ch); }
+function tekenOverlaysVoor(...idxs) {
+  const set = new Set(idxs.filter(i => i >= 0));
+  if (!set.size) return;
+  for (const ch of S.chunks.values()) if (ch.buurten.some(b => set.has(b.i))) tekenOverlay(ch);
+}
+
+// ── Waarden, bereiken, visualisatie ────────────────────────────────────────
+function num(b, k) { const v = b.props[k]; return (typeof v === 'number' && isFinite(v) && v > ONGELDIG) ? v : null; }
+function bereik(k) {
+  const w = S.buurten.map(b => num(b, k)).filter(v => v != null).sort((a, b) => a - b);
+  if (!w.length) return { lo: 0, hi: 1, min: 0, max: 1, n: 0 };
+  const q = p => w[Math.min(w.length - 1, Math.floor(p * (w.length - 1)))];
+  const lo = w.length > 8 ? q(0.05) : w[0], hi = w.length > 8 ? q(0.95) : w[w.length - 1];
+  return { lo, hi: hi === lo ? lo + 1 : hi, min: w[0], max: w[w.length - 1], n: w.length };
+}
+function gemiddelde(k) {
+  let s = 0, g = 0;
+  for (const b of S.buurten) { const v = num(b, k); if (v == null) continue; const w = isPct(k) ? (num(b, 'aantal_inwoners') || 1) : 1; s += v * w; g += w; }
+  return g ? s / g : null;
+}
+
+function updateVisualisatie() {
+  const kv = S.kleurVar, kr = bereik(kv);
+  for (const b of S.buurten) {
+    const v = num(b, kv);
+    b.v = v;
+    b.t = v == null ? null : klem((v - kr.lo) / (kr.hi - kr.lo));
+    b.frac = v == null ? 0 : isPct(kv) ? klem(v / 100) : 1;
+    if (v == null) b.kleur.set(0x6b7280); else paletKleur(S.palet, b.t, b.kleur);
+  }
+  kleurGebouwen();
+  tekenAlleOverlays();
+  tekenLegenda(kr); tekenRanglijst();
+  for (const b of S.buurten) b.label.querySelector('span').textContent = fmt(kv, b.v);
+  if (S.geselecteerd >= 0) toonDetails(S.geselecteerd);
+}
+
+function tekenLegenda(kr) {
+  const kv = S.kleurVar, stops = PALETTEN[S.palet].join(',');
+  $('legenda').innerHTML = `
+    <div class="verloop" style="background:linear-gradient(90deg,${stops})"></div>
+    <div class="verloop-labels"><span>${fmt(kv, kr.lo)}</span><span>${leesbaar(kv)}</span><span>${fmt(kv, kr.hi)}</span></div>
+    <div class="uitleg">
+      ${isPct(kv)
+        ? `<span class="lamp" style="background:#f89540"></span>Gekleurd gebouw = onderdeel van dit percentage. Alle gebouwen tellen mee. Bij <b>${fmt(kv, 55)}</b> is ruim de helft van de gebouwen gekleurd, gelijk verdeeld over kleine en grote gebouwen.<br><span class="lamp" style="background:#eee9e0"></span>Wit = rest.`
+        : `Alle gebouwen krijgen de kleur van hun buurt.`}
+    </div>`;
+}
+function tekenRanglijst() {
+  const lijst = S.buurten.filter(b => b.v != null).sort((a, b) => b.v - a.v);
+  const rij = (b, nr) => `<div class="rang" data-i="${b.i}"><span class="nr">${nr}</span><span class="naam">${b.naam}</span><span class="w">${fmt(S.kleurVar, b.v)}</span></div>`;
+  $('rang').innerHTML = lijst.length
+    ? `<div class="rang-kop">Hoogste</div>${lijst.slice(0, 5).map((b, k) => rij(b, k + 1)).join('')}
+       <div class="rang-kop">Laagste</div>${lijst.slice(-3).reverse().map((b, k) => rij(b, lijst.length - 2 + k)).join('')}`
+    : '<div class="uitleg">Geen gegevens voor deze variabele in dit jaar.</div>';
+  S.ranglijst = lijst;
+}
+$('rang').addEventListener('click', e => { const r = e.target.closest('.rang'); if (r) kiesBuurt(+r.dataset.i, true); });
+
+function toonDetails(i) {
+  const b = S.buurten[i];
+  $('buurtPaneel').style.display = 'block';
+  $('buurt-naam').textContent = b.naam;
+  $('buurt-sub').textContent = [b.wijk, `${S.jaar}`, `${b.nBouw.toLocaleString('nl-NL')} gebouwen (${b.nWoon.toLocaleString('nl-NL')} woongebouwen)`].filter(Boolean).join(' · ');
+  const bereiken = {};
+  const rijen = DETAIL.filter(k => b.props[k] !== undefined).map(k => {
+    const v = num(b, k), gem = gemiddelde(k);
+    bereiken[k] ||= bereik(k);
+    const max = isPct(k) ? 100 : bereiken[k].max || 1;
+    const bar = v == null ? '' : `<div class="balk"><i style="width:${klem(v / max) * 100}%"></i>${gem != null ? `<u style="left:${klem(gem / max) * 100}%"></u>` : ''}</div>`;
+    return `<div class="stat"><div class="stat-rij"><span>${leesbaar(k)}</span><span>${fmt(k, v)}</span></div>${bar}</div>`;
+  });
+  $('stats').innerHTML = rijen.join('') + '<div class="balk-legenda"><b>|</b> = gemiddelde van Heerlen</div>';
+}
+
+// ── Selectie, hover, klikken ───────────────────────────────────────────────
+let gordijn = null;
+function maakGordijn(b) {
+  if (gordijn) { stad.remove(gordijn); gordijn.geometry.dispose(); gordijn.material.dispose(); gordijn = null; }
+  if (!b) return;
+  const pos = [], H = 260;
+  let yMin = 1e9;
+  for (const poly of b.polys) {
+    const ring = poly[0];
+    for (let k = 0; k < ring.length - 1; k++) {
+      const [x1, z1] = ring[k], [x2, z2] = ring[k + 1], y1 = terreinY(x1, z1), y2 = terreinY(x2, z2);
+      yMin = Math.min(yMin, y1, y2);
+      pos.push(x1, y1, z1, x2, y2, z2, x2, y2 + H, z2, x1, y1, z1, x2, y2 + H, z2, x1, y1 + H, z1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const m = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    uniforms: { basis: { value: yMin }, hoogte: { value: H + 200 } },
+    vertexShader: 'varying float vY; void main(){ vY = position.y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: 'varying float vY; uniform float basis; uniform float hoogte; void main(){ float t = clamp((vY-basis)/hoogte,0.0,1.0); gl_FragColor = vec4(0.0,0.72,1.0, (1.0-t)*(1.0-t)*0.35); }',
+  });
+  gordijn = new THREE.Mesh(g, m); gordijn.frustumCulled = false;
+  gordijn.layers.set(2);
+  stad.add(gordijn);
+}
+function zetHover(i) {
+  if (i === S.hover) return;
+  S.hqVuil = true;                                  // alleen opnieuw tekenen als de gemarkeerde buurt echt wisselt
+  const oud = S.hover; S.hover = i;
+  tekenOverlaysVoor(oud, i);
+  canvas.classList.toggle('wijst', i >= 0);
+}
+function kiesBuurt(i, vlieg = false) {
+  const oud = S.geselecteerd; S.geselecteerd = i;
+  maakGordijn(i >= 0 ? S.buurten[i] : null);
+  tekenOverlaysVoor(oud, i);
+  if (i < 0) { $('buurtPaneel').style.display = 'none'; return; }
+  toonDetails(i);
+  if (vlieg) { const b = S.buurten[i]; vliegNaar(b.cx, b.cz, klem(Math.sqrt(b.area) * 2.2, 900, 6000), 0.85); }
+  $('buurtPaneel').scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+}
+function pikBuurt(clientX, clientY) {
+  const p = terreinTreffer(clientX, clientY);
+  if (!p) return -1;
+  for (const b of S.buurten) if (inBuurt(p.x, p.z, b)) return b.i;
+  return -1;
+}
+let hoverWacht = null;
+function hoverBijwerken(e) {
+  hoverWacht = e;
+  if (S.hoverBezig) return;
+  S.hoverBezig = true;
+  requestAnimationFrame(() => {
+    S.hoverBezig = false;
+    const ev = hoverWacht; if (!ev || !S.buurten.length) return;
+    const i = pikBuurt(ev.clientX, ev.clientY);
+    zetHover(i);
+    const tt = $('tooltip');
+    if (i < 0) { tt.style.display = 'none'; return; }
+    const b = S.buurten[i], kv = S.kleurVar;
+    const rij = k => `<div class="t-rij"><span>${leesbaar(k)}</span><b>${fmt(k, num(b, k))}</b></div>`;
+    tt.innerHTML = `<div class="t-naam">${b.naam}</div><div class="t-var">${leesbaar(kv)}</div>
+      <div class="t-groot" style="color:#${b.kleur.getHexString()}">${fmt(kv, b.v)}</div>
+      ${kv !== 'aantal_inwoners' ? rij('aantal_inwoners') : ''}${rij('woningvoorraad')}
+      <div class="t-rij"><span>Gebouwen</span><b>${b.nBouw.toLocaleString('nl-NL')}</b></div>`;
+    tt.style.display = 'block';
+    const r = $('scene').getBoundingClientRect();
+    tt.style.left = Math.min(ev.clientX - r.left + 16, r.width - tt.offsetWidth - 10) + 'px';
+    tt.style.top  = Math.min(ev.clientY - r.top + 16, r.height - tt.offsetHeight - 10) + 'px';
+  });
+}
+function klikOp(e) {
+  stopRondvlucht();
+  const i = pikBuurt(e.clientX, e.clientY);
+  kiesBuurt(i === S.geselecteerd ? -1 : i, i >= 0 && i !== S.geselecteerd);
+}
+
+// ── Labels (zonder overlap) ─────────────────────────────────────────────────
+const _v = new THREE.Vector3();
+function updateLabels() {
+  const aan = $('labelModus').value === 'auto';
+  const W = canvas.clientWidth, H = canvas.clientHeight, klein = cam.dist > 7000;
+  const volgorde = [...S.buurten].sort((a, b) =>
+    (b.i === S.geselecteerd) - (a.i === S.geselecteerd) || (b.i === S.hover) - (a.i === S.hover) || (num(b, 'aantal_inwoners') || 0) - (num(a, 'aantal_inwoners') || 0));
+  const gebruikt = [], bw = klein ? 50 : 116, bh = klein ? 20 : 38;
+  for (const b of volgorde) {
+    const el = b.label;
+    if (!el) continue;
+    if (!aan) { el.classList.add('weg'); continue; }
+    _v.set(b.cx, terreinY(b.cx, b.cz) + 60, b.cz).project(camera);
+    const x = (_v.x * 0.5 + 0.5) * W, y = (-_v.y * 0.5 + 0.5) * H;
+    let toon = _v.z < 1 && x > -20 && x < W + 20 && y > 20 && y < H + 20;
+    if (toon && b.i !== S.geselecteerd && b.i !== S.hover) toon = !gebruikt.some(g => Math.abs(g[0] - x) < bw && Math.abs(g[1] - y) < bh);
+    el.classList.toggle('weg', !toon);
+    if (!toon) continue;
+    gebruikt.push([x, y]);
+    el.classList.toggle('klein', klein && b.i !== S.geselecteerd && b.i !== S.hover);
+    el.classList.toggle('actief', b.i === S.geselecteerd || b.i === S.hover);
+    el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  }
+}
+
+// ── Rondvlucht ──────────────────────────────────────────────────────────────
+const RONDVLUCHT_MS = 3500;                               // tijd per buurt in de rondvlucht
+let rondTimer = null, rondIdx = 0;
+function startRondvlucht() {
+  if (!S.ranglijst?.length) return;
+  S.rondvlucht = true; $('rondvlucht').classList.add('aan'); $('rondvlucht').textContent = '■ Stop rondvlucht';
+  const rij = [...S.ranglijst.slice(0, 4), ...S.ranglijst.slice(-3)];
+  rondIdx = 0;
+  const stap = () => { const b = rij[rondIdx++ % rij.length]; kiesBuurt(b.i, true); goal.theta += 0.9; goal.phi = 0.72; };
+  stap(); rondTimer = setInterval(stap, RONDVLUCHT_MS);
+}
+function stopRondvlucht() {
+  if (!S.rondvlucht) return;
+  S.rondvlucht = false; clearInterval(rondTimer);
+  $('rondvlucht').classList.remove('aan'); $('rondvlucht').textContent = '✈ Rondvlucht';
+}
+
+// ── Variabelen-menu ─────────────────────────────────────────────────────────
+function ontdekVariabelen() {
+  const sleutels = new Set();
+  for (const b of S.buurten.slice(0, 15)) for (const k of Object.keys(b.props)) if (typeof b.props[k] === 'number') sleutels.add(k);
+  const uit = /postcode|indeling|^jaar$|dekking|_code|code$/;
+  S.vars = [...sleutels].filter(k => { if (uit.test(k)) return false; const r = bereik(k); return r.n >= 5 && r.max > r.min; });
+  const groep = k => isPct(k) ? 'Percentages' : /afstand|binnen_\d|_km$/.test(k) ? 'Voorzieningen & afstanden' : /^aantal_|woningvoorraad|mannen|vrouwen|_totaal$|dichtheid|gemiddeld|per_/.test(k) ? 'Aantallen & gemiddelden' : 'Overig';
+  const sel = $('kleurVar'); sel.innerHTML = '';
+  for (const g of ['Percentages', 'Aantallen & gemiddelden', 'Voorzieningen & afstanden', 'Overig']) {
+    const ks = S.vars.filter(k => groep(k) === g).sort((a, b) => leesbaar(a).localeCompare(leesbaar(b), 'nl'));
+    if (!ks.length) continue;
+    const og = document.createElement('optgroup'); og.label = g;
+    ks.forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = leesbaar(k); og.appendChild(o); });
+    sel.appendChild(og);
+  }
+  if (!S.vars.includes(S.kleurVar)) S.kleurVar = S.vars.find(isPct) || S.vars[0];
+  sel.value = S.kleurVar;
+}
+
+// ── Opbouw van de stad ──────────────────────────────────────────────────────
+function maakLabels() {
+  $('labels').innerHTML = '';
+  for (const b of S.buurten) {
+    const el = document.createElement('div'); el.className = 'lbl'; el.innerHTML = '<b></b><span></span>';
+    el.firstChild.textContent = b.naam; $('labels').appendChild(el); b.label = el;
+  }
+}
+
+async function laadFeatures(jaar) {
+  if (S.cache[jaar]) return S.cache[jaar];
+  const j = await (await haalOp(pdokUrl(jaar))).json();
+  const f = (j.features || []).filter(x => x.geometry && x.properties?.water !== 'JA');
+  if (!f.length) throw new Error('geen buurten ontvangen');
+  return (S.cache[jaar] = f);
+}
+
+/** Andere jaargang: alleen buurtdata en kleuren verversen; de gebouwen blijven staan. */
+async function laadJaar(jaar) {
+  zetStatus(`Buurtcijfers ${jaar} laden…`, 'laden');
+  try {
+    const features = await laadFeatures(jaar);
+    S.jaar = jaar;
+    S.buurten = verwerkFeatures(features);
+    maakLabels(); S.geselecteerd = -1; S.hover = -1; maakGordijn(null); $('buurtPaneel').style.display = 'none';
+    ontdekVariabelen();
+    koppelChunkBuurten();
+    if (S.gebouwen) wijsBuurtenToe();
+    updateVisualisatie();
+    zetStatusKlaar();
+  } catch (err) { console.error(err); zetStatus('Laden mislukt: ' + err.message, 'fout'); }
+}
+function zetStatusKlaar() {
+  const woon = S.buurten.reduce((s, b) => s + b.nWoon, 0);
+  zetStatus(`✓ ${S.buurten.length} buurten · ${S.gebouwen.N.toLocaleString('nl-NL')} gebouwen (${woon.toLocaleString('nl-NL')} woongebouwen) · ${S.jaar} · GPU: ${GPU.slice(0, 70)}`);
+}
+
+async function start() {
+  voortgang(0.02, 'Buurten ophalen…');
+  const features = await laadFeatures(S.jaar);
+  S.buurten = verwerkFeatures(features);
+
+  // gebied → chunk-bereik
+  let bb = [1e12, 1e12, -1e12, -1e12];
+  for (const b of S.buurten) bb = [Math.min(bb[0], b.bb[0]), Math.min(bb[1], b.bb[1]), Math.max(bb[2], b.bb[2]), Math.max(bb[3], b.bb[3])];
+  const pad = 400;
+  const hoeken = [[bb[0] - pad, bb[1] - pad], [bb[2] + pad, bb[1] - pad], [bb[0] - pad, bb[3] + pad], [bb[2] + pad, bb[3] + pad]].map(([x, z]) => { const [lo, la] = naarLL(x, z); return [mercX(lo), mercY(la)]; });
+  const tx0 = Math.floor(Math.min(...hoeken.map(h => h[0])) * NC), tx1 = Math.floor(Math.max(...hoeken.map(h => h[0])) * NC);
+  const ty0 = Math.floor(Math.min(...hoeken.map(h => h[1])) * NC), ty1 = Math.floor(Math.max(...hoeken.map(h => h[1])) * NC);
+  S.centrum = { x: (bb[0] + bb[2]) / 2, z: (bb[1] + bb[3]) / 2 };
+  S.straal = Math.max(bb[2] - bb[0], bb[3] - bb[1]) / 2;
+
+  const gebP = haalOp('data/gebouwen_heerlen.bin').then(r => r.arrayBuffer());
+  await laadHoogte(tx0, tx1, ty0, ty1);
+  voortgang(0.33, 'Terrein opbouwen…');
+  await pauze();
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) { const ch = maakChunk(tx, ty); S.chunks.set(ch.key, ch); }
+  bouwRand(); pasReliefToe();
+  maakLabels(); ontdekVariabelen(); koppelChunkBuurten();
+  overzichtStart();
+  tekenAlleOverlays();
+
+  voortgang(0.42, 'Gebouwen inlezen…');
+  S.gebouwen = leesGebouwen(await gebP);
+  await pauze();
+  await bouwGebouwMeshes();
+  wijsBuurtenToe();
+  updateVisualisatie();
+  zetStatusKlaar();
+  voortgang(1, 'Klaar');
+  $('laden').classList.add('klaar');
+  S.groeiStart = performance.now();
+  ondergrondBeheer();
+}
+function overzichtStart() {
+  cam.dist = Math.max(20000, S.straal * 5); cam.theta = -1.6; cam.phi = 0.5; cam.tx = S.centrum.x; cam.tz = S.centrum.z;
+  cam.ty = terreinY(cam.tx, cam.tz);
+  goal.theta = -0.55; overzicht();
+}
+
+// ── Bediening ───────────────────────────────────────────────────────────────
+JAREN.forEach(j => { const o = document.createElement('option'); o.value = j; o.textContent = j; $('jaar').appendChild(o); });
+$('jaar').value = S.jaar;
+$('jaar').onchange     = () => { stopRondvlucht(); laadJaar(+$('jaar').value); };
+$('kleurVar').onchange = e => { S.kleurVar = e.target.value; updateVisualisatie(); };
+$('palet').onchange    = e => { S.palet = e.target.value; updateVisualisatie(); };
+$('palet').value = S.palet;
+$('laag').value = S.laag;
+$('laag').onchange = e => { S.laag = e.target.value; for (const ch of S.chunks.values()) { ch.laagNu = null; ch.niveau = -1; } ondergrondBeheer(); };
+$('ovAlpha').oninput = e => { S.ovAlpha = +e.target.value / 100; $('ovAlphaW').textContent = e.target.value + '%'; clearTimeout(S.ovT); S.ovT = setTimeout(tekenAlleOverlays, 60); };
+$('exag').oninput = e => {
+  U.uExag.value = S.exag = +e.target.value; $('exagW').textContent = S.exag.toLocaleString('nl-NL', { minimumFractionDigits: 1 }) + '×';
+  clearTimeout(S.exT); S.exT = setTimeout(pasReliefToe, 80);
+};
+$('hmul').oninput = e => { U.uHmul.value = S.hmul = +e.target.value; $('hmulW').textContent = S.hmul.toLocaleString('nl-NL', { minimumFractionDigits: 1 }) + '×'; };
+$('dagNacht').onclick = () => { S.dagDoel = S.dagDoel ? 0 : 1; $('dagNacht').textContent = S.dagDoel ? '🌙 Nacht' : '☀ Dag'; };
+$('autoDraai').onclick = () => { S.autoDraai = !S.autoDraai; $('autoDraai').classList.toggle('aan', S.autoDraai); };
+$('rondvlucht').onclick = () => S.rondvlucht ? stopRondvlucht() : startRondvlucht();
+$('resetView').onclick = () => { stopRondvlucht(); kiesBuurt(-1); goal.phi = 0.95; overzicht(); };
+$("scherpte").onchange = e => { S.scherpte = e.target.value; wek(); zetKwaliteit(kwNiveau); S.hqVuil = true; };
+$('kwaliteit').onchange = e => { const v = e.target.value; S.kwAuto = v === 'auto'; kwLaatsteWissel = performance.now(); const n = v === "auto" ? 0 : +v; S.hq = false; $("hqBadge").classList.remove("aan"); S.basisNiveau = n; zetKwaliteit(n); };
+$('sidebar-knop').onclick = () => { $('sidebar').classList.toggle('dicht'); setTimeout(formaat, 320); };
+if (innerWidth < 820) $('sidebar').classList.add('dicht');
+
+function formaat() {
+  const w = $('scene').clientWidth, h = $('scene').clientHeight;
+  renderer.setSize(w, h, false);
+  if (S.split) {
+    const rw = Math.max(2, Math.round(canvas.width * S.bSchaal)), rh = Math.max(2, Math.round(canvas.height * S.bSchaal));
+    if (!gebRT) gebRT = new THREE.WebGLRenderTarget(rw, rh, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: true });
+    else if (gebRT.width !== rw || gebRT.height !== rh) gebRT.setSize(rw, rh);
+  }
+  zcv.width = Math.round(w * Math.min(devicePixelRatio, 2)); zcv.height = Math.round(h * Math.min(devicePixelRatio, 2));
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', formaat);
+
+// ── Hoofdlus ────────────────────────────────────────────────────────────────
+// ── Gesplitst tekenen: kaart (laag 1) + lucht (3) op volle resolutie, gebouwen (laag 2) op lagere resolutie eroverheen ──
+let gebRT = null;
+const compScene = new THREE.Scene(), compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const compMat = new THREE.ShaderMaterial({
+  uniforms: { t: { value: null } },
+  transparent: true, depthTest: false, depthWrite: false,
+  blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,   // gebouwenlaag is voorvermenigvuldigd
+  vertexShader: "varying vec2 v; void main(){ v = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+  fragmentShader: `uniform sampler2D t; varying vec2 v;
+void main(){ vec4 c = texture2D(t, v); vec3 rgb = c.a > 0.001 ? c.rgb / c.a : vec3(0.0); gl_FragColor = vec4(rgb, c.a);
+#include <tonemapping_fragment>
+#include <encodings_fragment>
+ gl_FragColor.rgb *= gl_FragColor.a; }`,
+});
+compMat.toneMapped = true;
+compScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compMat));
+function kaartKleurSchrijven(aan) {
+  for (const ch of S.chunks.values()) { ch.mat.colorWrite = ch.matBasic.colorWrite = aan; }
+  matRand.colorWrite = aan; bodem.material.colorWrite = aan;
+}
+function tekenBeeld() {
+  if (!S.split || !gebRT) { camera.layers.mask = 0xffffffff; renderer.render(scene, camera); return; }
+  const c = new THREE.Color(), a = renderer.getClearAlpha(); renderer.getClearColor(c);
+  // 1. kaart en lucht op volle resolutie naar het scherm
+  camera.layers.mask = (1 << 1) | (1 << 3);
+  renderer.setRenderTarget(null); renderer.autoClear = true; renderer.render(scene, camera);
+  // 2. gebouwen op lagere resolutie: eerst alleen de diepte van het terrein (zodat heuvels gebouwen verbergen), dan de gebouwen
+  renderer.setRenderTarget(gebRT); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.autoClear = false;
+  kaartKleurSchrijven(false); camera.layers.mask = 1 << 1; renderer.render(scene, camera); kaartKleurSchrijven(true);
+  camera.layers.mask = 1 << 2; renderer.render(scene, camera);
+  // 3. gebouwenlaag over de kaart heen leggen
+  compMat.uniforms.t.value = gebRT.texture;
+  renderer.setRenderTarget(null); renderer.render(compScene, compCam);
+  renderer.autoClear = true; renderer.setClearColor(c, a); camera.layers.mask = 0xffffffff;
+}
+
+// ── Zonegrenzen: eigen 2D-laag op volle schermresolutie (altijd scherp, los van de 3D-kwaliteit) ──
+const zcv = $("zones"), zctx = zcv.getContext("2d"), _M = new THREE.Matrix4();
+function vereenvoudigRing(r, tol) {
+  const n = r.length; if (n < 8) return r;
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1; const st = [[0, n - 1]];
+  while (st.length) {
+    const [a, b] = st.pop(); let md = 0, mi = -1;
+    const [ax, az] = r[a], [bx, bz] = r[b], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+    for (let i = a + 1; i < b; i++) {
+      const [px, pz] = r[i]; let d;
+      if (!l2) d = Math.hypot(px - ax, pz - az); else { const t = klem(((px - ax) * dx + (pz - az) * dz) / l2); d = Math.hypot(px - (ax + t * dx), pz - (az + t * dz)); }
+      if (d > md) { md = d; mi = i; }
+    }
+    if (md > tol && mi > 0) { keep[mi] = 1; st.push([a, mi], [mi, b]); }
+  }
+  return r.filter((_, i) => keep[i]);
+}
+let zoneSleutel = "";
+function zoneVoorbereiden() {
+  const sleutel = U.uExag.value + "|" + S.buurten.length + "|" + S.jaar;
+  if (sleutel === zoneSleutel) return; zoneSleutel = sleutel;
+  for (const b of S.buurten) {
+    if (!b.zr) b.zr = b.polys.flatMap(poly => poly.map(r => vereenvoudigRing(r, 15)));
+    b.zy = b.zr.map(r => Float32Array.from(r, ([x, z]) => terreinY(x, z) + 4));
+  }
+}
+function tekenZones() {
+  const W = zcv.width, H = zcv.height;
+  zctx.clearRect(0, 0, W, H);
+  if (!S.buurten.length || !E.data) return;
+  zoneVoorbereiden();
+  camera.updateMatrixWorld();
+  const e = _M.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements, sc = W / Math.max(1, canvas.clientWidth);
+  const pad = (b) => {
+    b.zr.forEach((r, ri) => {
+      const yy = b.zy[ri]; let voor = false;
+      for (let i = 0; i < r.length; i++) {
+        const x = r[i][0], y = yy[i], z = r[i][1];
+        const w = e[3] * x + e[7] * y + e[11] * z + e[15];
+        if (w < 1) { voor = false; continue; }
+        const px = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * W, py = (-(e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5 + 0.5) * H;
+        voor ? zctx.lineTo(px, py) : zctx.moveTo(px, py); voor = true;
+      }
+    });
+  };
+  zctx.lineJoin = "round"; zctx.lineCap = "round";
+  zctx.beginPath(); for (const b of S.buurten) pad(b);
+  zctx.strokeStyle = "rgba(8,16,36,0.55)"; zctx.lineWidth = 4.6 * sc; zctx.stroke();      // donkere rand eromheen (leesbaar op elke ondergrond)
+  zctx.strokeStyle = "rgba(255,255,255,0.97)"; zctx.lineWidth = 2 * sc; zctx.stroke();       // heldere lijn erbovenop
+  for (const i of [S.hover, S.geselecteerd]) {
+    if (i < 0 || !S.buurten[i]) continue;
+    const sel = i === S.geselecteerd;
+    zctx.beginPath(); pad(S.buurten[i]);
+    zctx.strokeStyle = sel ? "rgba(0,200,255,1)" : "rgba(255,255,255,0.95)"; zctx.lineWidth = (sel ? 3.6 : 3) * sc;
+    zctx.shadowColor = sel ? "rgba(0,200,255,0.9)" : "rgba(0,0,0,0.5)"; zctx.shadowBlur = 8 * sc; zctx.stroke(); zctx.shadowBlur = 0;
+  }
+}
+
+let vorige = performance.now(), frame = 0;
+let schaduwSleutel = '';
+function volgZon(nu) {
+  // Schaduwbereik volgt de camera-focus in grote stappen. Zolang niets verandert (bijv. alleen draaien)
+  // blijft de schaduwkaart staan en wordt hij niet opnieuw getekend.
+  const R = 300 * Math.pow(1.35, Math.ceil(Math.log(Math.max(cam.dist * 1.15, 300) / 300) / Math.log(1.35)));
+  const Rk = Math.min(R, 9000), tex = 2 * Rk / zon.shadow.mapSize.x;
+  const stap = tex * Math.max(1, Math.round(Rk / 16 / tex));
+  const cx = Math.round(cam.tx / stap) * stap, cz = Math.round(cam.tz / stap) * stap, cy = Math.round(cam.ty / 25) * 25;
+  const sc = zon.shadow.camera;
+  if (sc.right !== Rk) { sc.left = -Rk; sc.right = Rk; sc.top = Rk; sc.bottom = -Rk; sc.near = 10; sc.far = Rk * 8; sc.updateProjectionMatrix(); }
+  zon.target.position.set(cx, cy, cz);
+  zon.position.set(cx - Rk * 1.6, cy + Rk * 2.6, cz + Rk * 1.9);
+  zon.target.updateMatrixWorld();
+  const groeit = S.groeiStart && U.uGrow.value < 2;
+  const sleutel = [cx, cz, cy, Rk, U.uExag.value, U.uHmul.value, kwNiveau, stad.children.length, groeit ? nu | 0 : 0].join();
+  if (sleutel !== schaduwSleutel) { schaduwSleutel = sleutel; renderer.shadowMap.needsUpdate = true; }
+}
+
+// ── Kwaliteit (resolutie, schaduwkaart, scherpte ondergrond) ────────────────
+const KWALITEIT = [
+  { dpr: 1.5,  schaduw: 4096, hoog: 16, lod: 4500, terrein: 1, ver: 1e9 },   // hoog   (lod = tot hoever gebouwen met muren getekend worden, m)
+  { dpr: 1.25, schaduw: 2048, hoog: 16, lod: 3000, terrein: 1, ver: 1e9 },   // middel
+  { dpr: 1,    schaduw: 1024, hoog: 15, lod: 2000, terrein: 1, ver: 1e9 },   // laag
+  { dpr: 0.9,  schaduw: 0,    hoog: 15, lod: 1200, terrein: 1, ver: 1e9, split: true },   // minimaal: geen schaduw, lagere resolutie
+  { dpr: 0.75, schaduw: 0,    hoog: 15, lod: 800,  terrein: 2, ver: 4500, split: true },  // zeer laag: grover terrein, verre gebouwen weg
+  { dpr: 0.6,  schaduw: 0,    hoog: 15, lod: -1e9, terrein: 4, ver: 2300, split: true },  // extreem: alleen daken, kleinste beeld
+  { dpr: 2,    schaduw: 4096, hoog: 16, lod: 9000, terrein: 1, ver: 1e9 },   // zeer hoog: alleen voor stilstaand beeld
+];
+const KW_LAAGSTE = 5;                                   // automatisch verlagen stopt hier
+const KW_SCORE = [4, 3, 2, 1, 0, -1, 5];                // rangorde in kwaliteit per niveau
+const KW_NAMEN = ["hoog", "middel", "laag", "minimaal", "zeer laag", "extreem", "zeer hoog"];
+let kwNiveau = 0, kwLaatsteWissel = 0;
+function zetKwaliteit(n) {
+  kwNiveau = n; const k = KWALITEIT[n];
+  // Gesplitst (lage niveaus): kaart en zones op volle schermresolutie, alleen de gebouwen op lagere resolutie
+  S.split = !!k.split;
+  const nat = Math.min(devicePixelRatio, 2);
+  S.bSchaal = klem(S.scherpte === "auto" ? k.dpr / nat : +S.scherpte, 0.25, 1);
+  renderer.setPixelRatio(S.split ? nat : S.scherpte === "auto" ? Math.min(devicePixelRatio, k.dpr) : devicePixelRatio * +S.scherpte);
+  for (const ch of S.chunks.values()) ch.mesh.material = S.split ? ch.matBasic : ch.mat;
+  if (!S.split) camera.layers.mask = 0xffffffff;
+  zon.castShadow = k.schaduw > 0;
+  if (k.schaduw) {
+    const s = Math.min(k.schaduw, renderer.capabilities.maxTextureSize);
+    if (zon.shadow.mapSize.x !== s) { zon.shadow.mapSize.set(s, s); if (zon.shadow.map) { zon.shadow.map.dispose(); zon.shadow.map = null; } zon.shadow.camera.right = 0; }
+  }
+  zoomHoog = k.hoog; lodAfstand = k.lod; kwVer = k.ver;
+  terreinStap = k.terrein;
+  for (const ch of S.chunks.values()) { ch.lod = -1; ch.geo.setIndex(ch.idxAttr[k.terrein]); }
+  formaat();
+  renderer.shadowMap.needsUpdate = true;
+  updateLod();
+}
+let lodAfstand = 4500, kwVer = 1e9;
+/** Verre gebieden: alleen daken tekenen (muren weglaten) — scheelt ruim 80% van de driehoeken. */
+function updateLod() {
+  const cp = camera.position;
+  for (const ch of S.chunks.values()) {
+    if (!ch.gebouwMesh) continue;
+    const d = Math.hypot(ch.cx - cp.x, ch.cz - cp.z) - 1600;
+    const toestand = d > kwVer ? 2 : d < lodAfstand ? 1 : 0;         // 1 = volledig, 0 = alleen daken, 2 = weggelaten
+    if (toestand === ch.lod) continue;
+    ch.lod = toestand;
+    ch.gebouwMesh.visible = toestand !== 2;
+    if (toestand !== 2) ch.gebouwMesh.geometry.setDrawRange(0, toestand === 1 ? ch.nIdx : ch.nRoof);
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+S.kwAuto = true; S.scherpte = "auto"; S.rustNiveau = 0; S.hq = false; S.basisNiveau = 0;
+let fpsTeller = 0, fpsStart = performance.now();
+let fpsVorige = performance.now();
+function bewaakFps(nu) {
+  // Een grote pauze tussen frames = tabblad stond op de achtergrond; die meting telt niet mee.
+  if (nu - fpsVorige > 400 || document.hidden) { fpsVorige = nu; fpsStart = nu; fpsTeller = 0; return; }
+  fpsVorige = nu;
+  fpsTeller++;
+  if (nu - fpsStart < 1500) return;
+  const fps = fpsTeller / ((nu - fpsStart) / 1000); fpsTeller = 0; fpsStart = nu;
+  if (S.kwAuto && S.groeiStart && nu - S.groeiStart > 4500 && nu - kwLaatsteWissel > 2500 && fps < 30 && kwNiveau < KW_LAAGSTE && !S.hq && !document.hidden) {
+    kwLaatsteWissel = nu; zetKwaliteit(kwNiveau + 1);
+    zetStatus(`Traag (${Math.round(fps)} fps) — kwaliteit automatisch verlaagd naar ${KW_NAMEN[kwNiveau]}. Zelf kiezen kan onder Weergave.`);
+  }
+}
+function lus(nu) {
+  const dt = Math.min(0.1, (nu - vorige) / 1000); vorige = nu; frame++;
+  if (S.autoDraai && !punten.size) goal.theta += dt * 0.08;
+  pasCameraToe(dt);
+  volgZon(nu);
+  if (!S.hq) bewaakFps(nu);
+  if (frame % 10 === 0) updateLod();
+
+  if (Math.abs(S.dag - S.dagDoel) > 0.002) { S.dag += (S.dagDoel - S.dag) * (1 - Math.exp(-dt * 3)); pasDagNachtToe(S.dag); }
+  else if (S.dag !== S.dagDoel) { S.dag = S.dagDoel; pasDagNachtToe(S.dag); }
+  for (const ch of S.chunks.values()) { ch.mat.color.setScalar(terreinHelder * TERREIN_LAMBERT); ch.matBasic.color.setRGB(basicK[0], basicK[1], basicK[2]); }
+  matRand.color.setScalar(0.25 + 0.75 * S.dag);
+
+  U.uGrow.value = S.groeiStart ? Math.min(2, (nu - S.groeiStart) / 2600) : 0;   // gebouwen "groeien" na het laden
+
+  if (frame % 30 === 0 && S.chunks.size) ondergrondBeheer();
+  scene.fog.near = Math.max(9000, cam.dist * 1.1); scene.fog.far = scene.fog.near + Math.max(35000, cam.dist * 4);
+
+  // ── Progressieve verfijning: beweegt er niets, dan één keer op hoge kwaliteit tekenen en daarna rusten
+  const beweegt = punten.size > 0 || S.autoDraai || S.rondvlucht || U.uGrow.value < 2 || Math.abs(S.dag - S.dagDoel) > 0.002
+    || Math.abs(goal.tx - cam.tx) > 0.5 || Math.abs(goal.tz - cam.tz) > 0.5 || Math.abs(goal.dist - cam.dist) > cam.dist * 0.001
+    || Math.abs(goal.theta - cam.theta) > 0.0005 || Math.abs(goal.phi - cam.phi) > 0.0005;
+  if (beweegt) S.laatsteBeweging = nu;
+  const stil = !beweegt && nu - Math.max(S.laatsteBeweging || 0, S.laatsteActie || 0) > 450;
+  const rust = S.rustNiveau;
+  let tekenen = true;
+  if (!stil) {
+    if (S.hq) { S.hq = false; $("hqBadge").classList.remove("aan"); zetKwaliteit(S.basisNiveau); }
+  } else if (rust !== "uit") {
+    if (!S.hq) {
+      if (KW_SCORE[rust] > KW_SCORE[kwNiveau] && S.groeiStart) { S.hq = true; S.basisNiveau = kwNiveau; zetKwaliteit(rust); S.hqVuil = true; ondergrondBeheer(); }
+    }
+    if (S.hq) { tekenen = S.hqVuil; if (tekenen) { S.hqVuil = false; $("hqBadge").classList.add("aan"); } }
+  }
+  if (tekenen) {
+    if (frame % (kwNiveau >= 5 && kwNiveau < 6 ? 8 : kwNiveau >= 4 && kwNiveau < 6 ? 4 : 2) === 0 || S.hq) updateLabels();
+    tekenBeeld();
+    tekenZones();
+  }
+  requestAnimationFrame(lus);
+}
+
+// Activiteit registreren: alles behalve rustig muisbewegen haalt het scherpe beeld weg (en start de timer opnieuw)
+function wek() { S.laatsteActie = performance.now(); }
+for (const ev of ['pointerdown', 'wheel', 'keydown', 'input', 'change', 'click']) document.addEventListener(ev, wek, { capture: true, passive: true });
+document.addEventListener('pointermove', e => { if (e.buttons) wek(); }, { capture: true, passive: true });
+addEventListener('resize', () => { wek(); S.hqVuil = true; });
+$('rustKwaliteit').onchange = e => { const v = e.target.value; S.rustNiveau = v === 'uit' ? 'uit' : +v; wek(); };
+
+// ── Start ───────────────────────────────────────────────────────────────────
+zetKwaliteit(GPU_SOFTWARE ? 4 : GPU_ZWAK ? 2 : 0);
+pasDagNachtToe(1);
+requestAnimationFrame(lus);
+start().catch(err => {
+  console.error(err);
+  zetStatus('Laden mislukt: ' + err.message, 'fout');
+  $('laden-tekst').textContent = 'Laden mislukt: ' + err.message;
+});
+</script>
+</body>
+</html>

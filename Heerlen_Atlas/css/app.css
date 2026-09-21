@@ -297,7 +297,8 @@ html.sidebar-left .hover-timeseries-panel {
   right: 14px;
 }
 
-html.split-pane #open-split-screen {
+html.split-pane #open-split-screen,
+html.split-pane #open-3d {
   display: none;
 }
 

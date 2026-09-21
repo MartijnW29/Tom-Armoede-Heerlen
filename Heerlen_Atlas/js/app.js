@@ -312,6 +312,10 @@ document.getElementById('open-split-screen')?.addEventListener('click', () => {
   window.location.href = 'split-screen.html';
 });
 
+document.getElementById('open-3d')?.addEventListener('click', () => {
+  window.location.href = 'huisjes-3d.html';
+});
+
 
 // ============================================================================
 // VISUALISATIE — Herlaad met huidige instellingen

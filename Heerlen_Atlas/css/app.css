@@ -890,6 +890,13 @@ button:focus-visible {
   background: #eef3f7;
 }
 
+/* Het info-venster van een gebied is alleen om te lezen: de muis gaat er dwars doorheen,
+   zodat je het gebied eronder blijft hoveren (in plaats van het venster zelf) */
+.leaflet-popup,
+.leaflet-popup * {
+  pointer-events: none !important;
+}
+
 .leaflet-popup-content {
   font-size: 12px;
   line-height: 1.45;

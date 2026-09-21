@@ -368,7 +368,10 @@ window.getSelectedFields = function () {
  * actieve filter worden uitgesloten, niet meer selecteerbaar in de dropdown.
  */
 function veldHeeftBeschikbareData(veld) {
-  const fc = window.appData?.lastFC;
+  // Beoordeel op de data van álle jaren: een veld dat in één jaar ontbreekt
+  // (bijv. 2025 heeft minder variabelen) mag tijdens het afspelen van de
+  // jaar-animatie niet uit de selectie verdwijnen.
+  const fc = window.multiLoaderState?.originalData || window.appData?.lastFC;
   if (!fc || typeof window.haalNumeriekeWaarden !== 'function') return true;
 
   const alleWaarden = window.haalNumeriekeWaarden(fc, veld);

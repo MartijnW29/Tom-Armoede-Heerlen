@@ -328,12 +328,6 @@
       <div class="story-shell">
         <div class="story-topbar">
           <div class="story-chip"></div>
-          <div class="story-counter"></div>
-          <div class="story-actions">
-            <button type="button" class="story-prev">Vorige</button>
-            <button type="button" class="story-next">Volgende</button>
-            <button type="button" class="story-close">Sluit</button>
-          </div>
         </div>
         <div class="story-progress"><span class="story-progress-bar"></span></div>
         <div class="story-grid">
@@ -343,6 +337,14 @@
             <p class="story-copy"></p>
             <div class="story-stats"></div>
             <div class="story-map-note" hidden></div>
+            <div class="story-card-nav">
+              <div class="story-counter"></div>
+              <div class="story-actions">
+                <button type="button" class="story-prev">Vorige</button>
+                <button type="button" class="story-next">Volgende</button>
+                <button type="button" class="story-close">Sluit</button>
+              </div>
+            </div>
           </article>
         </div>
       </div>

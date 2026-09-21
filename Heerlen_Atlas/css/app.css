@@ -1310,7 +1310,41 @@ button:focus-visible {
 }
 
 .story-counter {
-  margin-left: auto;
+  margin-left: 0;
+}
+
+/* Navigatie (teller + knoppen) staat onderaan de tekstkaart, waar mensen lezen */
+.story-card-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(6,24,38,0.12);
+}
+
+.story-card-nav .story-counter {
+  padding: 6px 10px;
+  background: rgba(6,24,38,0.07);
+  box-shadow: none;
+}
+
+.story-card-nav .story-actions button {
+  padding: 8px 12px;
+  background: rgba(6,24,38,0.08);
+  box-shadow: none;
+}
+
+.story-card-nav .story-actions button:hover,
+.story-card-nav .story-actions button:focus-visible {
+  background: rgba(6,24,38,0.16);
+}
+
+.story-card-nav .story-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .story-chip,

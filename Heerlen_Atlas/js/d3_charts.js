@@ -189,7 +189,7 @@ window.createCompareCharts = function (fcA, fcB, veld) {
   const waardenB = haalWaarden(fcB, veld);
 
   if (!waardenA.length || !waardenB.length) {
-    alert(`Geen numerieke waarden gevonden voor veld "${veld}" in één van de datasets.`);
+    window.toonMelding?.(`Geen data voor "${window.mooieVeldnaam?.(veld) || veld}" in één van de datasets.`);
     return;
   }
 

@@ -9,31 +9,20 @@
 // ============================================================================
 
 const MULTI_LOADER_CONFIG = {
-
   // --- Jaarslider ---
-  minYear:   2015,                                        // Vroegste jaar in de slider
-  maxYear:   2030,                                        // Laatste jaar in de slider
+  minYear:   2013,                                        // Vroegste jaar in de slider (CBS StatLine, zie cbs-historie.js)
+  maxYear:   2050,                                        // Laatste jaar in de slider
+
+  // --- PDOK-jaren ---
+  // De PDOK OGC API (kaartvormen + cijfers) bestaat alleen voor deze jaren;
+  // oudere jaren komen uit CBS StatLine (cbs-historie.js).
+  pdokMinYear: 2022,
+  pdokMaxYear: 2025,
 
   // --- Jaar-veldnamen (in volgorde van prioriteit) ---
   yearField:  'jaar',
   yearFields: ['jaar', 'year', 'Jaar', 'Year', 'JAAR'],
 
-  // --- CBS OData API (kerncijfers wijken en buurten) ---
-  // De server gebruikt ODataApi v3 (herkenbaar aan "odata.metadata" zonder @).
-  // Tabelcodes per jaar:
-  //   84799NED = 2020 | 85619NED = 2021 | 85959NED = 2022 | 86005NED = 2023 | 85984NED = 2024
-  cbsOdataUrl: 'https://opendata.cbs.nl/ODataApi/OData/84799NED/TypedDataSet',
-
-  // Gemeentecode voor Heerlen — wordt gebruikt om CBS-rijen te filteren in JS
-  // (server-side $filter werkt niet betrouwbaar door trailing spaties in CBS-codes)
-  cbsGemeenteCode: '0917',
-
-  // Veld in CBS-data dat overeenkomt met de buurt/wijkcode in de PDOK-geometrielaag
-  cbsKoppelveld:    'WijkenEnBuurten',  // CBS-kant  (wordt getrimd voor vergelijking)
-  pdokKoppelveld:   'statcode',         // PDOK-kant (wordt getrimd voor vergelijking)
-
-  // Velden die NIET als datavariabelen getoond worden (identificatie/meta)
-  cbsUitsluitVelden: ['ID', 'WijkenEnBuurten', 'Codering_3'],
 };
 
 
@@ -48,7 +37,6 @@ window.multiLoaderState = {
   originalData:   null, // Originele data vóór jaarfiltering
   yearFilter:     null, // Actief geselecteerd jaar (null = alle jaren)
   availableYears: [],   // Unieke jaren aanwezig in de data
-  cbsData:        null, // Geladen CBS-kerncijfers (als object: code → properties)
 };
 
 
@@ -117,141 +105,41 @@ function filterFeaturesByYear(fc, year) {
 
 
 // ============================================================================
-// CBS ODATA — Laden en koppelen van kerncijfers
+// CBS HISTORIE — Jaren vóór 2022 aanvullen met CBS StatLine (zie cbs-historie.js)
 // ============================================================================
 
 /**
- * Haalt CBS-kerncijfers op via de ODataApi v3 en retourneert een opzoektabel:
- *   { [buurt/wijkcode]: { ...numerieke velden... } }
- *
- * Belangrijke eigenaardigheden van de CBS v3 API:
- *   - Paginering via "odata.nextLink" (zonder @, dat is v4-syntax).
- *   - $filter met substringof() werkt WEL in v3 (startswith() niet).
- *   - CBS-codes bevatten trailing spaties (bijv. 'GM0917    ') — altijd trimmen.
- *   - Respons heeft `value`-array met alle rijen.
- *
- * @returns {Promise<Object>} Opzoektabel geïndexeerd op getrimde buurt/wijkcode
- */
-async function laadCbsKerncijfers() {
-  const uitsluit     = new Set(MULTI_LOADER_CONFIG.cbsUitsluitVelden);
-  const gemeenteCode = MULTI_LOADER_CONFIG.cbsGemeenteCode;
-  const opzoek       = {};
-
-  // substringof is de v3-manier om op een deelstring te filteren.
-  // We filteren op de gemeentecode zodat we alleen Heerlen-rijen ophalen.
-  const filter = encodeURIComponent(`substringof('${gemeenteCode}',WijkenEnBuurten)`);
-  let url = `${MULTI_LOADER_CONFIG.cbsOdataUrl}?$filter=${filter}&$format=json`;
-
-  // Pagineer via odata.nextLink (v3 gebruikt geen @ prefix)
-  while (url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`CBS API fout: HTTP ${res.status}`);
-    const json = await res.json();
-
-    for (const rij of (json.value || [])) {
-      // Trim trailing spaties uit de CBS-code
-      const cbsCode = (rij[MULTI_LOADER_CONFIG.cbsKoppelveld] || '').trim();
-      if (!cbsCode) continue;
-
-      // Sla alleen numerieke velden op; sla meta-velden over
-      const props = {};
-      for (const [k, v] of Object.entries(rij)) {
-        if (uitsluit.has(k)) continue;
-        if (typeof v === 'number') {
-          props[k] = v;
-        } else if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v.trim())) {
-          props[k] = +v.trim();
-        }
-      }
-      opzoek[cbsCode] = props;
-    }
-
-    // v3 paginering: "odata.nextLink" (zonder @)
-    url = json['odata.nextLink'] || json['@odata.nextLink'] || null;
-  }
-
-  if (!Object.keys(opzoek).length) {
-    throw new Error(
-      `Geen CBS-data gevonden voor gemeente ${gemeenteCode}. ` +
-      'Controleer de tabelcode in cbsOdataUrl (bijv. 85984NED voor 2024).'
-    );
-  }
-
-  return opzoek;
-}
-
-/**
- * Koppelt CBS-kerncijfers aan een PDOK GeoJSON FeatureCollection.
- * Zoekt per feature de bijbehorende CBS-rij op via de buurt/wijkcode
- * (beide kanten worden getrimd om spatie-mismatches te voorkomen).
- * CBS-velden worden alleen geschreven als het veld nog niet bestaat in PDOK-data.
- *
- * @param {GeoJSON.FeatureCollection} fc        - PDOK-geometrielaag
- * @param {Object}                    cbsOpzoek - Opzoektabel uit laadCbsKerncijfers()
- */
-function koppelCbsAanGeometrie(fc, cbsOpzoek) {
-  if (!fc?.features || !cbsOpzoek) return;
-
-  let gekoppeld = 0;
-  for (const feature of fc.features) {
-    const props = feature.properties || {};
-
-    // Probeer meerdere PDOK-veldnamen voor de buurtcode; trim altijd
-    const code = (
-      props[MULTI_LOADER_CONFIG.pdokKoppelveld] ||
-      props.buurtcode || props.wijkcode ||
-      props.statcode  || props.code || ''
-    ).trim();
-
-    if (!code) continue;
-    const cbsProps = cbsOpzoek[code];
-    if (!cbsProps) continue;
-
-    // Voeg CBS-velden toe zonder bestaande PDOK-velden te overschrijven
-    for (const [k, v] of Object.entries(cbsProps)) {
-      if (!(k in props)) props[k] = v;
-    }
-    feature.properties = props;
-    gekoppeld++;
-  }
-
-  console.log(`CBS-koppeling: ${gekoppeld} van ${fc.features.length} features gekoppeld`);
-}
-
-/**
- * Laad CBS-kerncijfers en koppel ze aan de actieve geometrielaag.
- * Vereist dat er al een PDOK-geometrielaag geladen is (via loadAllAPIs).
- * Geeft statusfeedback in de knoptekst.
+ * Voeg de jaren 2013–2021 toe aan de geladen data via CBS StatLine en ververs
+ * de jaarslider, de variabelen en de kaart. Geeft statusfeedback in de knoptekst.
  */
 async function laadEnKoppelCbs() {
   const btn       = document.getElementById('load-cbs-data');
-  const origTekst = btn?.textContent || 'CBS laden';
-  if (btn) { btn.disabled = true; btn.textContent = 'CBS data laden…'; }
+  const origTekst = btn?.dataset.origTekst || btn?.textContent || 'CBS kerncijfers laden';
+  if (btn) { btn.dataset.origTekst = origTekst; btn.disabled = true; btn.textContent = 'CBS data laden…'; }
 
   try {
-    const opzoek = await laadCbsKerncijfers();
-    window.multiLoaderState.cbsData = opzoek;
-
     const fc = window.multiLoaderState.originalData || window.appData?.lastFC;
     if (!fc) {
-      alert('Laad eerst een geometrielaag (PDOK buurten/wijken) voordat CBS data gekoppeld kan worden.');
+      alert('Laad eerst een geometrielaag (PDOK buurten/wijken) voordat CBS-data gekoppeld kan worden.');
       if (btn) { btn.disabled = false; btn.textContent = origTekst; }
       return;
     }
 
-    koppelCbsAanGeometrie(fc, opzoek);
-
-    // Herlaad veldselectoren en visualisatie zodat CBS-velden zichtbaar worden
-    window.populateFieldSelect?.(fc);
-    window.herllaadVisualisatie?.();
-
-    if (btn) btn.textContent = `✓ CBS gekoppeld (${Object.keys(opzoek).length} gebieden)`;
+    const aantal = await window.laadCbsHistorie(fc);
+    if (aantal) {
+      window.multiLoaderState.originalData = fc;
+      window.vulAangemaakteVariabelenAan?.(fc);
+      updateYearSlider(fc);
+      window.populateFieldSelect?.(fc);
+    }
+    if (btn) btn.textContent = aantal ? `✓ CBS-jaren toegevoegd (${aantal})` : 'Geen extra CBS-jaren nodig';
   } catch (err) {
     console.error('CBS laden mislukt:', err);
     alert('Fout bij laden CBS-data: ' + err.message);
     if (btn) { btn.disabled = false; btn.textContent = origTekst; }
   }
 }
+
 
 
 // ============================================================================
@@ -371,6 +259,58 @@ async function loadMultipleFiles() {
 
 
 // ============================================================================
+// ROBUUST OPHALEN — Beperkte gelijktijdigheid + opnieuw proberen
+// PDOK-antwoorden zijn groot (~1 MB per jaar). Alles tegelijk opvragen kan
+// tijdelijk mislukken (time-out, 429/5xx); zulke jaren verdwenen dan stilletjes
+// uit de jaarslider. Daarom: maximaal een paar verzoeken tegelijk, en bij een
+// fout enkele keren opnieuw proberen.
+// ============================================================================
+
+const FETCH_CONFIG = { maxGelijktijdig: 3, pogingen: 4, wachtMs: 700 };
+
+/** Haal JSON op; probeert bij een fout (netwerk, 429, 5xx) opnieuw met oplopende wachttijd. */
+async function fetchJsonMetRetry(url) {
+  let laatsteFout;
+  for (let poging = 1; poging <= FETCH_CONFIG.pogingen; poging++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return await res.json();
+      // 4xx (behalve 429) is definitief: dat jaar bestaat niet
+      if (res.status !== 429 && res.status < 500) throw Object.assign(new Error(`Status ${res.status}`), { definitief: true });
+      laatsteFout = new Error(`Status ${res.status}`);
+    } catch (err) {
+      if (err.definitief) throw err;
+      laatsteFout = err;
+    }
+    if (poging < FETCH_CONFIG.pogingen) await new Promise(r => setTimeout(r, FETCH_CONFIG.wachtMs * poging));
+  }
+  throw laatsteFout;
+}
+
+/** Voer taken uit met een maximum aantal tegelijk; behoudt de volgorde van de resultaten. */
+async function metMaxGelijktijdig(items, limiet, taak) {
+  const resultaten = new Array(items.length);
+  let volgende = 0;
+  const werkers = Array.from({ length: Math.min(limiet, items.length) }, async () => {
+    while (volgende < items.length) {
+      const i = volgende++;
+      resultaten[i] = await taak(items[i], i);
+    }
+  });
+  await Promise.all(werkers);
+  return resultaten;
+}
+
+
+/** Toon een melding als jaren niet geladen konden worden (i.p.v. ze stilletjes over te slaan). */
+function meldMislukteJaren(urls, bron = 'PDOK') {
+  const jaren = [...new Set((urls || []).map(u => (String(u).match(/\b20\d{2}\b/) || [])[0]).filter(Boolean))].sort();
+  if (!jaren.length) return;
+  window.multiLoaderState.mislukteJaren = [...new Set([...(window.multiLoaderState.mislukteJaren || []), ...jaren])].sort();
+  window.toonMelding?.(`${bron}-data voor ${jaren.join(', ')} kon niet geladen worden. Ververs de pagina om het opnieuw te proberen.`, 12000);
+}
+
+// ============================================================================
 // API LADEN — Meerdere PDOK/GeoJSON-eindpunten tegelijk
 // ============================================================================
 
@@ -384,7 +324,7 @@ function expandUrlsForYearRange(urls) {
   for (const url of urls) {
     const m = url.match(/\b20\d{2}\b/);
     if (m) {
-      for (let y = MULTI_LOADER_CONFIG.minYear; y <= MULTI_LOADER_CONFIG.maxYear; y++) {
+      for (let y = MULTI_LOADER_CONFIG.pdokMinYear; y <= MULTI_LOADER_CONFIG.pdokMaxYear; y++) {
         out.add(url.replace(m[0], String(y)));
       }
     } else {
@@ -412,7 +352,7 @@ function verwijderStandaardApiBronnen() {
 /**
  * Laad alle ingevoerde API-URL's gelijktijdig en toon de data op de kaart.
  * Ondersteunt PDOK OGC API (geeft `items`) en standaard GeoJSON (geeft `features`).
- * Na het laden worden CBS-kerncijfers gekoppeld en worden de standaard bronregels verwijderd.
+ * Na het laden worden de jaren 2013–2021 uit CBS StatLine toegevoegd en worden de standaard bronregels verwijderd.
  */
 async function loadAllAPIs() {
   const urls = Array.from(document.querySelectorAll('.api-url-input'))
@@ -437,13 +377,11 @@ async function loadAllAPIs() {
       return;
     }
 
-    const results = await Promise.all(
-      geoJsonUrls.map(url =>
-        fetch(url)
-          .then(res => { if (!res.ok) throw new Error(`Status ${res.status}`); return res.json(); })
-          .catch(err => { console.warn(`Fout bij laden ${url}:`, err); return null; })
-      )
+    const mislukt = [];
+    const results = await metMaxGelijktijdig(geoJsonUrls, FETCH_CONFIG.maxGelijktijdig, url =>
+      fetchJsonMetRetry(url).catch(err => { console.warn(`Fout bij laden ${url}:`, err); mislukt.push(url); return null; })
     );
+    meldMislukteJaren(mislukt);
 
     const collections = results
       .filter(Boolean)
@@ -470,16 +408,9 @@ async function loadAllAPIs() {
     const samengevoegd = mergeFeatureCollections(collections);
     verwerkGeladen(samengevoegd);
 
-    // Laad CBS-kerncijfers en koppel ze aan de nieuwe geometrie.
+    // Vul de jaren vóór 2022 aan met CBS StatLine (2013–2021).
     await laadEnKoppelCbs();
     verwijderStandaardApiBronnen();
-
-    // Als CBS-data al eerder geladen was, direct koppelen aan de nieuwe geometrie
-    if (window.multiLoaderState.cbsData) {
-      koppelCbsAanGeometrie(samengevoegd, window.multiLoaderState.cbsData);
-      window.populateFieldSelect?.(samengevoegd);
-      window.herllaadVisualisatie?.();
-    }
 
   } catch (err) {
     console.error('Fout bij multi-API loading:', err);
@@ -560,21 +491,34 @@ function updateYearSlider(fc) {
 
 /**
  * Teken streepjes en labels onder de jaarslider.
- * Bij meer dan 16 jaren worden labels uitgedund om overlapping te voorkomen.
+ * Labels tonen het volledige jaartal. Past niet elk jaartal naast elkaar, dan
+ * worden labels uitgedund op basis van `MIN_LABEL_BREEDTE_PX` (het laatste jaar
+ * blijft altijd staan); de streepjes blijven voor elk jaar staan.
+ * Wordt opnieuw getekend zodra de breedte van de slider verandert.
  */
+const MIN_LABEL_BREEDTE_PX = 34; // ruimte voor een volledig jaartal (2013), incl. marge
+
 function renderYearTicks(slider, jaren) {
   const container = document.getElementById('year-ticks');
   if (!container || !slider || !jaren?.length) return;
 
-  const minJ      = parseInt(slider.min, 10);
-  const maxJ      = parseInt(slider.max, 10);
-  const span      = Math.max(maxJ - minJ, 1);
-  const labelStap = jaren.length <= 16 ? 1 : Math.ceil(jaren.length / 12);
+  container._jaren = jaren;
+  const minJ = parseInt(slider.min, 10);
+  const maxJ = parseInt(slider.max, 10);
+  const span = Math.max(maxJ - minJ, 1);
+
+  // Hoeveel jaren passen er tussen twee labels? (breedte 0 bij verborgen paneel → eerst alles tonen)
+  const breedte   = container.clientWidth || slider.clientWidth || 0;
+  const pxPerJaar = breedte ? breedte / span : MIN_LABEL_BREEDTE_PX;
+  const labelStap = Math.max(1, Math.ceil(MIN_LABEL_BREEDTE_PX / pxPerJaar));
+  const laatste   = jaren.length - 1;
 
   container.innerHTML = '';
   jaren.forEach((jaar, i) => {
     const left = `${((jaar - minJ) / span) * 100}%`;
-    const edge = i === 0 ? 'start' : (i === jaren.length - 1 ? 'end' : 'middle');
+    const edge = i === 0 ? 'start' : (i === laatste ? 'end' : 'middle');
+    // Tel vanaf het laatste jaar terug; het eerste jaar alleen als er ruimte voor is
+    const toonLabel = (laatste - i) % labelStap === 0 || (i === 0 && (laatste % labelStap) >= labelStap / 2);
 
     const tick = document.createElement('span');
     Object.assign(tick, { className: 'year-tick', title: String(jaar) });
@@ -585,11 +529,26 @@ function renderYearTicks(slider, jaren) {
     const label = document.createElement('span');
     label.className    = 'year-tick-label';
     label.style.left   = left;
+    label.title        = String(jaar); // volledig jaartal bij hover
     label.dataset.edge = edge;
-    label.textContent  = (i % labelStap === 0 || i === jaren.length - 1) ? String(jaar) : '';
+    label.dataset.year = String(jaar);
+    label.textContent  = toonLabel ? String(jaar) : '';
 
     container.append(tick, label);
   });
+
+  updateYearTickHighlight(snapYearToAvailableYear(parseInt(slider.value, 10)));
+
+  // Eenmalig: opnieuw tekenen bij een andere breedte (zijbalk verkleinen, venster, mobiel)
+  if (!container._resizeObserver && typeof ResizeObserver !== 'undefined') {
+    let vorigeBreedte = container.clientWidth;
+    container._resizeObserver = new ResizeObserver(() => {
+      if (Math.abs(container.clientWidth - vorigeBreedte) < 4) return;
+      vorigeBreedte = container.clientWidth;
+      renderYearTicks(slider, container._jaren);
+    });
+    container._resizeObserver.observe(container);
+  }
 }
 
 /** Markeer het actieve jaar visueel in de tick-reeks. */
@@ -599,7 +558,7 @@ function updateYearTickHighlight(jaar) {
   container.querySelectorAll('.year-tick').forEach(t =>
     t.classList.toggle('is-active', jaar !== null && t.dataset.year === String(jaar)));
   container.querySelectorAll('.year-tick-label').forEach(l =>
-    l.classList.toggle('is-active', jaar !== null && l.textContent === String(jaar)));
+    l.classList.toggle('is-active', jaar !== null && l.dataset.year === String(jaar) && l.textContent !== ''));
 }
 
 /**
@@ -795,6 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================================
 
 Object.assign(window, {
+  fetchJsonMetRetry,
+  metMaxGelijktijdig,
+  meldMislukteJaren,
   loadMultipleFiles,
   loadAllAPIs,
   laadEnKoppelCbs,

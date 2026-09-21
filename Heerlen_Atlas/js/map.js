@@ -626,7 +626,10 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   });
 
   const alleWaarden = haalNumeriekeWaarden(fc, veld);
-  if (!alleWaarden.length) { alert(`Geen numerieke waarden gevonden voor "${veld}"`); return; }
+  if (!alleWaarden.length) {
+    window.toonMelding?.(`Geen data voor "${window.mooieVeldnaam?.(veld) || veld}" in dit jaar.`);
+    return;
+  }
 
   // Filter toepassen: gebruik alleen gefilterde waarden voor breekpunten
   const activeFilter     = window.appData?.filter || null;

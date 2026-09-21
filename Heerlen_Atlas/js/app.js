@@ -17,6 +17,32 @@ window.mooieVeldnaam = function (veld) {
   return metSpaties.charAt(0).toUpperCase() + metSpaties.slice(1);
 };
 
+/**
+ * Toont een korte melding onderin beeld die vanzelf verdwijnt en niets blokkeert
+ * (in plaats van alert(), waarbij je eerst op OK moet drukken). Dezelfde tekst
+ * wordt niet dubbel getoond. Globaal beschikbaar voor alle scripts.
+ */
+window.toonMelding = function (tekst, duurMs = 4500) {
+  let houder = document.getElementById('melding-houder');
+  if (!houder) {
+    houder = document.createElement('div');
+    houder.id = 'melding-houder';
+    houder.setAttribute('role', 'status');
+    houder.setAttribute('aria-live', 'polite');
+    document.body.appendChild(houder);
+  }
+  const bestaand = Array.from(houder.children).find(el => el.dataset.tekst === tekst);
+  if (bestaand) { clearTimeout(bestaand._timer); bestaand._timer = setTimeout(() => bestaand.remove(), duurMs); return; }
+
+  const melding = document.createElement('div');
+  melding.className = 'melding';
+  melding.dataset.tekst = tekst;
+  melding.textContent = tekst;
+  melding.addEventListener('click', () => melding.remove());
+  houder.appendChild(melding);
+  melding._timer = setTimeout(() => melding.remove(), duurMs);
+};
+
 // ============================================================================
 // COOKIES — Voorkeuren van de gebruiker onthouden (favorieten, aangemaakte variabelen)
 // ============================================================================
@@ -110,7 +136,30 @@ function getDefaultOpacity() {
 window.syncOpacityDefaults = function () {
   const slider = document.getElementById('opacity-range');
   if (slider) slider.value = String(getDefaultOpacity());
+  updateOpacityDisplay();
 };
+
+// Dekking: "magnetisch" naar 0/25/50/75/100% als je er dichtbij komt, en het actieve punt markeren
+const DEKKING_SNAPPUNTEN = [0, 0.25, 0.5, 0.75, 1];
+const DEKKING_SNAP_MARGE = 0.03; // ±3% rond een snappunt
+
+function updateOpacityDisplay() {
+  const slider  = document.getElementById('opacity-range');
+  const display = document.getElementById('opacity-display');
+  if (!slider) return;
+  const waarde = parseFloat(slider.value);
+  if (display) display.textContent = `${Math.round(waarde * 100)}%`;
+  slider.style.setProperty('--v', String(waarde));
+  document.querySelectorAll('.dekking-ticks span').forEach(el =>
+    el.classList.toggle('is-actief', Math.abs(parseFloat(el.style.getPropertyValue('--f')) - waarde) < 0.001));
+}
+
+document.getElementById('opacity-range')?.addEventListener('input', (e) => {
+  const waarde = parseFloat(e.target.value);
+  const dichtstbij = DEKKING_SNAPPUNTEN.find(p => Math.abs(p - waarde) <= DEKKING_SNAP_MARGE);
+  if (dichtstbij !== undefined) e.target.value = String(dichtstbij);
+  updateOpacityDisplay();
+});
 
 
 // ============================================================================
@@ -882,6 +931,7 @@ document.getElementById('filter-negative')?.addEventListener('click', () => {
   sidebar.addEventListener('click', (e) => {
     const kop = e.target.closest('.kaart-paneel > h3');
     if (!kop) return;
+    if (e.target.closest('button, input, select, a')) return; // knoppen in de kop klappen het paneel niet in
     const paneel = kop.parentElement;
     paneel.classList.toggle('is-ingeklapt');
   });

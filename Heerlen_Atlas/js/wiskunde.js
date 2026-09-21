@@ -260,32 +260,35 @@
    * @return {{ outputField: string, nullCount: number }|null}
    */
   function berekenEnRegistreerVariabele(fieldA, fieldB, op, outputFieldGewenst) {
-    const fc = window.appData?.lastFC;
-    if (!fc?.features?.length) return null;
+    // Reken op de data van ALLE jaren, niet op de (op jaar gefilterde) kaartdata:
+    // anders zou de complete dataset vervangen worden door alleen het gekozen jaar.
+    const state = window.multiLoaderState;
+    const bron  = state?.originalData?.features?.length ? state.originalData : window.appData?.lastFC;
+    if (!bron?.features?.length) return null;
 
     const outputField = outputFieldGewenst || ensureUniqueFieldName(
       buildDerivedFieldName(fieldA, fieldB, op),
       window.availableFields || []
     );
 
-    // Bereken de nieuwe waarden (diepe kopie zodat de originele data intact blijft)
-    const derivedFC = JSON.parse(JSON.stringify(fc));
+    // Bereken de nieuwe waarden. Eigenschappen worden gekopieerd zodat de originele
+    // data intact blijft; geometrie wordt gedeeld (dat is snel en veilig, want ongewijzigd).
     let nullCount = 0;
+    const derivedFC = {
+      ...bron,
+      features: bron.features.map(feature => {
+        const props  = { ...(feature.properties || {}) };
+        const result = calculateValue(toNumericOrNull(props[fieldA]), toNumericOrNull(props[fieldB]), op);
+        if (result === null) nullCount += 1;
+        props[outputField] = result;
+        return { ...feature, properties: props };
+      }),
+    };
 
-    derivedFC.features.forEach(feature => {
-      if (!feature.properties) feature.properties = {};
-      const props    = feature.properties;
-      const numericA = toNumericOrNull(props[fieldA]);
-      const numericB = toNumericOrNull(props[fieldB]);
-      const result   = calculateValue(numericA, numericB, op);
-
-      if (result === null) nullCount += 1;
-      props[outputField] = result;
-    });
-
-    // Sla op in de globale state
-    window.appData.lastFC = derivedFC;
-    if (window.multiLoaderState) window.multiLoaderState.originalData = derivedFC;
+    // Sla op in de globale state; de kaart houdt het huidige jaarfilter aan
+    const jaar = state?.yearFilter;
+    window.appData.lastFC = (jaar && window.filterFeaturesByYear) ? window.filterFeaturesByYear(derivedFC, jaar) : derivedFC;
+    if (state) state.originalData = derivedFC;
 
     // Registreer het nieuwe veld
     window.customFieldNames = Array.from(new Set([...(window.customFieldNames || []), outputField]));
@@ -355,6 +358,22 @@
 
     window.herllaadVisualisatie?.();
   }
+
+  /**
+   * Vult zelfgemaakte variabelen aan voor features die het veld nog niet hebben
+   * (bijvoorbeeld jaren die pas later, uit CBS StatLine, zijn toegevoegd).
+   */
+  window.vulAangemaakteVariabelenAan = function (fc) {
+    if (!fc?.features?.length) return;
+    leesOpgeslagenVariabelen().forEach(({ veld, a, b, op }) => {
+      if (!veld || !a || !b || !(window.customFieldNames || []).includes(veld)) return;
+      fc.features.forEach(f => {
+        const props = f.properties || (f.properties = {});
+        if (veld in props) return;
+        props[veld] = calculateValue(toNumericOrNull(props[a]), toNumericOrNull(props[b]), op);
+      });
+    });
+  };
 
   /**
    * Herstelt eerder aangemaakte (via cookie onthouden) berekende variabelen

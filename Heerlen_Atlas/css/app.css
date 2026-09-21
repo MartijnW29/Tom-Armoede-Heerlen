@@ -326,6 +326,10 @@ html.split-pane #open-split-screen {
 /* Elke <section class="kaart-paneel"> is in-/uitklapbaar via klik op de kop (h3). */
 .kaart-paneel > h3 {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
   padding-right: 22px;
   cursor: pointer;
   user-select: none;
@@ -763,28 +767,21 @@ button:focus-visible {
   margin: 0;
 }
 
+/* Grote jaarweergave als badge naast de "Filter op jaar"-titel */
+.waarde-badge,
 #year-display {
-  min-width: 56px;
-  font-weight: 600;
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(11, 114, 133, 0.10);
+  font-weight: 700;
   color: var(--kleur-primair);
-  font-size: 14px;
-}
-
-#year-filter-area {
-  padding-left: 8px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 253, 0.98));
-  border: 1px solid rgba(11, 114, 133, 0.10);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 10px 24px rgba(11, 114, 133, 0.10);
+  font-size: 13px;
 }
 
 #year-filter-area .slider-container {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(11, 114, 133, 0.08);
-  border-radius: 999px;
-  padding: 8px 10px 6px;
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.85);
+  /* Geen ovaal meer om de balk: de slider staat direct in het paneel */
+  padding: 4px 4px 0;
 }
 
 #year-filter-area .slider-container input[type="range"] {
@@ -838,8 +835,8 @@ button:focus-visible {
 .year-ticks {
   position: relative;
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 8px;  /* = halve breedte van de slider-knop, zodat streepjes onder het midden van de knop vallen */
+  right: 8px;
   bottom: 0;
   height: 22px;
   padding: 0;
@@ -850,16 +847,6 @@ button:focus-visible {
   position: absolute;
   transform: translateX(-50%);
   pointer-events: none;
-}
-
-.year-tick[data-edge="start"],
-.year-tick-label[data-edge="start"] {
-  transform: translateX(0);
-}
-
-.year-tick[data-edge="end"],
-.year-tick-label[data-edge="end"] {
-  transform: translateX(-100%);
 }
 
 .year-tick {
@@ -1566,4 +1553,153 @@ button:focus-visible {
     padding: 11px 12px;
     border-radius: 16px;
   }
+}
+/* Korte, niet-blokkerende meldingen (window.toonMelding) */
+#melding-houder {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 13000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+
+.melding {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(6, 24, 38, 0.92);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 10px 26px rgba(8, 24, 48, 0.28);
+}
+
+/* Afspeelknop + jaarbadge rechts in de kop van "Filter op jaar" */
+.jaar-acties {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.jaar-acties .year-play-button {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+
+/* Slider met waarde-badge en 0% / 50% / 100% onder de balk (Dekking) */
+.slider-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
+  margin-bottom: 2px;
+}
+
+.slider-kop label {
+  margin-bottom: 0;
+}
+
+
+/* Dekking-slider: eigen balk met streepjes op 0 / 25 / 50 / 75 / 100 % IN de balk zelf.
+   --v (0..1) wordt door app.js gezet; de knop is 16px breed, dus de knop loopt van
+   8px tot (breedte - 8px): dezelfde formule bepaalt vulling en streepjes. */
+.dekking-control {
+  position: relative;
+  padding-bottom: 20px;
+  margin-bottom: var(--ruimte-2);
+}
+
+#opacity-range {
+  --v: 0.5;
+  --spoor: linear-gradient(#fff, #fff);
+  --vulling: var(--kleur-primair);
+  --leeg: #d3dde6;
+  --balk-achtergrond:
+    var(--spoor) calc(8px + (100% - 16px) * 0    - 1px) 0 / 2px 100% no-repeat,
+    var(--spoor) calc(8px + (100% - 16px) * 0.25 - 1px) 0 / 2px 100% no-repeat,
+    var(--spoor) calc(8px + (100% - 16px) * 0.5  - 1px) 0 / 2px 100% no-repeat,
+    var(--spoor) calc(8px + (100% - 16px) * 0.75 - 1px) 0 / 2px 100% no-repeat,
+    var(--spoor) calc(8px + (100% - 16px) * 1    - 1px) 0 / 2px 100% no-repeat,
+    linear-gradient(to right, var(--vulling) calc(8px + (100% - 16px) * var(--v)), var(--leeg) 0);
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+#opacity-range::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--balk-achtergrond);
+}
+
+#opacity-range::-moz-range-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--balk-achtergrond);
+}
+
+#opacity-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 22px;
+  margin-top: -5px;
+  border-radius: 6px;
+  border: 2px solid #fff;
+  background: var(--kleur-primair-actief);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
+
+#opacity-range::-moz-range-thumb {
+  width: 12px;
+  height: 18px;
+  border-radius: 6px;
+  border: 2px solid #fff;
+  background: var(--kleur-primair-actief);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
+
+#opacity-range:focus-visible {
+  outline: 2px solid var(--kleur-focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Percentages onder de balk (zonder eigen streepjes: die staan al in de balk) */
+.dekking-ticks {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 14px;
+  pointer-events: none;
+}
+
+.dekking-ticks span {
+  position: absolute;
+  left: calc(var(--f) * 100%);
+  transform: translateX(-50%);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--kleur-tekst-zacht);
+}
+
+.dekking-ticks i {
+  display: none;
+}
+
+.dekking-ticks span.is-actief {
+  color: var(--kleur-primair);
+  font-weight: 700;
 }

@@ -99,12 +99,14 @@
 
     /* ── Kaartgebied ─────────────────────────────────────────── */
     #scene { flex: 1; position: relative; overflow: hidden; min-width: 0; }
-    #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; z-index: 1; }
     #gl.sleept { cursor: grabbing; }
     #gl.wijst { cursor: pointer; }
 
-    #zones { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    /* Expliciete z-index (i.p.v. alleen DOM-volgorde) voorkomt dat een zwakke/software-GPU de
+       buurtranden-laag soms achter de WebGL-canvas laat tekenen — een bekend soort compositing-bug. */
+    #zones { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; isolation: isolate; }
+    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 8; }
     .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translate(-50%, -100%);
       background: rgba(15,25,35,.86); border: 1px solid var(--rand); border-radius: 8px; padding: 3px 8px;
       font-size: 11px; line-height: 1.25; text-align: center; backdrop-filter: blur(4px);
@@ -200,8 +202,8 @@
         <option value="pastel">Pastel (groen &amp; water)</option>
         <option value="lucht">Luchtfoto</option>
       </select>
-      <div class="slider-kop"><label for="ovAlpha">Opacity van buurten</label><b id="ovAlphaW">55%</b></div>
-      <input type="range" id="ovAlpha" min="0" max="100" step="5" value="55" />
+      <div class="slider-kop"><label for="ovAlpha">Opacity van buurten</label><b id="ovAlphaW">25%</b></div>
+      <input type="range" id="ovAlpha" min="0" max="100" step="5" value="25" />
       <!-- Hoogte-overdrijving (terrein): standaard 1× en verborgen in het paneel; de waarde blijft instelbaar in de code -->
       <div id="exagBlok" hidden>
         <div class="slider-kop"><label for="exag">Hoogte-overdrijving</label><b id="exagW">1,0×</b></div>
@@ -435,7 +437,7 @@ const llVanMerc = (mx, my) => [mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 
 const S = {
   jaar: 2024, cache: {}, buurten: [], vars: [],
   kleurVar: 'percentage_koopwoningen', palet: 'rdylgn', laag: 'lucht',
-  exag: 1, hmul: 2, ovAlpha: 0.55,
+  exag: 1, hmul: 2, ovAlpha: 0.25,
   geselecteerd: -1, hover: -1, typeModus: false,
   dag: 1, dagDoel: 1, autoDraai: false, rondvlucht: false,
   centrum: { x: 0, z: 0 }, straal: 6000,
@@ -628,11 +630,17 @@ function vliegNaar(x, z, dist, phi = 0.95, theta = null) {
 function overzicht() { vliegNaar(S.centrum.x, S.centrum.z, Math.max(6000, S.straal * 2.5), 0.95, goal.theta); }
 
 // ── Hoogtegegevens (Terrarium) ──────────────────────────────────────────────
-const E = { x0: 0, y0: 0, nx: 0, ny: 0, data: null, min: 0 };
+const E = { x0: 0, y0: 0, nx: 0, ny: 0, data: null, min: 0, klaar: false };
 async function laadHoogte(tx0, tx1, ty0, ty1) {
   // chunk-bereik (z13) → hoogtetegels (z14), met 1 tegel marge voor de bilineaire steekproef
   E.x0 = tx0 * 2 - 1; E.y0 = ty0 * 2 - 1; E.nx = (tx1 - tx0 + 1) * 2 + 2; E.ny = (ty1 - ty0 + 1) * 2 + 2;
   const W = E.nx * 256;
+  // `E.data` is vanaf hier al truthy (een array vol NaN) terwijl de echte hoogtetegels nog
+  // binnenkomen — de render-lus draait intussen gewoon door. `E.klaar` markeert pas het moment
+  // waarop alle NaN's zijn opgevuld; alles dat op terreinhoogte rekent en niet elk frame opnieuw
+  // hoeft (zoals de buurtranden-cache in zoneVoorbereiden) moet op déze vlag wachten, niet op
+  // `E.data` alleen — anders wordt zo'n cache voorgoed gevuld met NaN uit dit tussenmoment.
+  E.klaar = false;
   E.data = new Float32Array(W * E.ny * 256).fill(NaN);
   const lijst = [];
   for (let j = 0; j < E.ny; j++) for (let i = 0; i < E.nx; i++) lijst.push([i, j]);
@@ -654,6 +662,7 @@ async function laadHoogte(tx0, tx1, ty0, ty1) {
   let som = 0, n = 0; for (let k = 0; k < E.data.length; k += 97) if (!isNaN(E.data[k])) { som += E.data[k]; n++; }
   const gem = n ? som / n : 0; E.min = Infinity;
   for (let k = 0; k < E.data.length; k++) { if (isNaN(E.data[k])) E.data[k] = gem; if (E.data[k] < E.min) E.min = E.data[k]; }
+  E.klaar = true;
 }
 /** Ruwe hoogte (m boven NAP) op wereldpositie. */
 function hoogteRuw(x, z) {
@@ -1596,35 +1605,56 @@ function zoneVoorbereiden() {
     b.zy = b.zr.map(r => Float32Array.from(r, ([x, z]) => terreinY(x, z) + 4));
   }
 }
+let zonesFoutGemeld = false;
 function tekenZones() {
+  // Canvasgrootte hier zelf bewaken (niet alleen bij window-resize via formaat()) — een DPI-wijziging
+  // zonder resize-event (bv. het venster naar een ander scherm met andere schaling slepen) liet deze
+  // canvas eerder soms stil verouderen, waardoor de rand op een verkeerde plek of helemaal niet tekende.
+  const cw = canvas.clientWidth, ch = canvas.clientHeight, dpr = Math.min(devicePixelRatio || 1, 2);
+  const gewensteW = Math.max(1, Math.round(cw * dpr)), gewensteH = Math.max(1, Math.round(ch * dpr));
+  if (zcv.width !== gewensteW || zcv.height !== gewensteH) { zcv.width = gewensteW; zcv.height = gewensteH; }
+
   const W = zcv.width, H = zcv.height;
   zctx.clearRect(0, 0, W, H);
-  if (!S.buurten.length || !E.data) return;
-  zoneVoorbereiden();
-  camera.updateMatrixWorld();
-  const e = _M.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements, sc = W / Math.max(1, canvas.clientWidth);
-  const pad = (b) => {
-    b.zr.forEach((r, ri) => {
-      const yy = b.zy[ri]; let voor = false;
-      for (let i = 0; i < r.length; i++) {
-        const x = r[i][0], y = yy[i], z = r[i][1];
-        const w = e[3] * x + e[7] * y + e[11] * z + e[15];
-        if (w < 1) { voor = false; continue; }
-        const px = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * W, py = (-(e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5 + 0.5) * H;
-        voor ? zctx.lineTo(px, py) : zctx.moveTo(px, py); voor = true;
-      }
-    });
-  };
-  zctx.lineJoin = "round"; zctx.lineCap = "round";
-  zctx.beginPath(); for (const b of S.buurten) pad(b);
-  zctx.strokeStyle = "rgba(8,16,36,0.55)"; zctx.lineWidth = 4.6 * sc; zctx.stroke();      // donkere rand eromheen (leesbaar op elke ondergrond)
-  zctx.strokeStyle = "rgba(255,255,255,0.97)"; zctx.lineWidth = 2 * sc; zctx.stroke();       // heldere lijn erbovenop
-  for (const i of [S.hover, S.geselecteerd]) {
-    if (i < 0 || !S.buurten[i]) continue;
-    const sel = i === S.geselecteerd;
-    zctx.beginPath(); pad(S.buurten[i]);
-    zctx.strokeStyle = sel ? "rgba(0,200,255,1)" : "rgba(255,255,255,0.95)"; zctx.lineWidth = (sel ? 3.6 : 3) * sc;
-    zctx.shadowColor = sel ? "rgba(0,200,255,0.9)" : "rgba(0,0,0,0.5)"; zctx.shadowBlur = 8 * sc; zctx.stroke(); zctx.shadowBlur = 0;
+  if (!S.buurten.length || !E.klaar || !cw || !ch) return;   // terrein nog niet volledig geladen, of het canvas heeft (nog) geen zichtbare afmeting
+
+  try {
+    zoneVoorbereiden();
+    camera.updateMatrixWorld();
+    const e = _M.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements, sc = W / cw;
+    const pad = (b) => {
+      b.zr.forEach((r, ri) => {
+        const yy = b.zy[ri]; let voor = false;
+        for (let i = 0; i < r.length; i++) {
+          const x = r[i][0], y = yy[i], z = r[i][1];
+          const w = e[3] * x + e[7] * y + e[11] * z + e[15];
+          if (w < 1) { voor = false; continue; }
+          const px = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * W, py = (-(e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5 + 0.5) * H;
+          // Eén ongeldig punt (bv. NaN uit een terreinhoogte die per ongeluk nog niet klaar was)
+          // mag nooit de hele gecombineerde lijn (alle buurten in één path) laten mislukken —
+          // dan liever dit ene stukje overslaan dan de rand van de hele kaart kwijtraken.
+          if (!isFinite(px) || !isFinite(py)) { voor = false; continue; }
+          voor ? zctx.lineTo(px, py) : zctx.moveTo(px, py); voor = true;
+        }
+      });
+    };
+    zctx.lineJoin = "round"; zctx.lineCap = "round";
+    zctx.beginPath(); for (const b of S.buurten) pad(b);
+    const randSterkte = klem(S.ovAlpha);   // de gewone rand schaalt mee met "Opacity van buurten"; de hover/selectie-gloed hieronder niet
+    zctx.strokeStyle = `rgba(8,16,36,${(0.55 * randSterkte).toFixed(3)})`; zctx.lineWidth = 4.6 * sc; zctx.stroke();      // donkere rand eromheen (leesbaar op elke ondergrond)
+    zctx.strokeStyle = `rgba(255,255,255,${(0.97 * randSterkte).toFixed(3)})`; zctx.lineWidth = 2 * sc; zctx.stroke();       // heldere lijn erbovenop
+    for (const i of [S.hover, S.geselecteerd]) {
+      if (i < 0 || !S.buurten[i]) continue;
+      const sel = i === S.geselecteerd;
+      zctx.beginPath(); pad(S.buurten[i]);
+      zctx.strokeStyle = sel ? "rgba(0,200,255,1)" : "rgba(255,255,255,0.95)"; zctx.lineWidth = (sel ? 3.6 : 3) * sc;
+      zctx.shadowColor = sel ? "rgba(0,200,255,0.9)" : "rgba(0,0,0,0.5)"; zctx.shadowBlur = 8 * sc; zctx.stroke(); zctx.shadowBlur = 0;
+    }
+  } catch (err) {
+    // Nooit de hele render-lus laten crashen door een probleem in de randenlaag — zonder deze
+    // vangnet stopte requestAnimationFrame(lus) hier stil, wat de indruk gaf dat "de rand er soms niet is"
+    // terwijl in werkelijkheid de hele scène was bevroren.
+    if (!zonesFoutGemeld) { zonesFoutGemeld = true; console.error('tekenZones mislukt:', err); }
   }
 }
 
@@ -1712,7 +1742,16 @@ function bewaakFps(nu) {
     zetStatus(`Traag (${Math.round(fps)} fps) — kwaliteit automatisch verlaagd naar ${KW_NAMEN[kwNiveau]}. Zelf kiezen kan onder Weergave.`);
   }
 }
+let lusFoutGemeld = false;
 function lus(nu) {
+  // Alles in een vangnet: één onverwachte fout in een van de stappen hieronder zou anders de hele
+  // requestAnimationFrame-keten stilzwijgend afbreken — de laatst getekende frame blijft dan
+  // "bevroren" staan (kaart lijkt te werken, maar draait/update niet meer) zonder enige melding.
+  try { lusStap(nu); }
+  catch (err) { if (!lusFoutGemeld) { lusFoutGemeld = true; console.error('lus() mislukt, ga toch door:', err); } }
+  requestAnimationFrame(lus);
+}
+function lusStap(nu) {
   const dt = Math.min(0.1, (nu - vorige) / 1000); vorige = nu; frame++;
   if (S.autoDraai && !punten.size) goal.theta += dt * 0.08;
   pasCameraToe(dt);
@@ -1751,7 +1790,6 @@ function lus(nu) {
     tekenBeeld();
     tekenZones();
   }
-  requestAnimationFrame(lus);
 }
 
 // Activiteit registreren: alles behalve rustig muisbewegen haalt het scherpe beeld weg (en start de timer opnieuw)

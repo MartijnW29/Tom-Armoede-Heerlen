@@ -254,6 +254,7 @@ function getHoverChartPanel() {
     const ingeklapt = panel.classList.toggle('is-collapsed');
     panel.querySelector('.hover-timeseries-chevron').textContent =
       ingeklapt ? 'Uitklappen ▲' : 'Inklappen ▼';
+    pasHoverPaneelPositieAan();
   });
 
   panel.addEventListener('mouseenter', () => { mouseIsOverPanel = true;  cancelHideHoverChartPanel(); });
@@ -377,6 +378,46 @@ function collectHoverSeries(baseFeature, fields) {
   return allValues.length ? { years: jaren, series, allValues, identity } : null;
 }
 
+/**
+ * Schuift het hover-tijdreekspaneel net naast het story-infokaartje (in
+ * plaats van linksonder) als het er anders onder terecht zou komen. De
+ * kaart is niet op elke slide even breed, dus de nieuwe positie wordt
+ * steeds uit de werkelijk gerenderde kaartbreedte berekend — niet uit een
+ * vaste waarde. Wordt na elke (her)weergave van het paneel aangeroepen, en
+ * bij resize.
+ */
+function pasHoverPaneelPositieAan() {
+  const panel = document.getElementById('hover-timeseries-panel');
+  if (!panel || !panel.classList.contains('is-visible')) return;
+
+  // Eerst terug naar de standaardpositie (zonder inline `left`), pas daarna
+  // beslissen — anders vergelijken we de al-verschoven positie met zichzelf.
+  panel.classList.remove('is-shifted');
+  panel.style.left = '';
+
+  const kaart = document.querySelector('.story-overlay:not([hidden]) .story-card');
+  if (!kaart) return;
+
+  const panelRect = panel.getBoundingClientRect();
+  const kaartRect = kaart.getBoundingClientRect();
+  const overlapt = panelRect.left < kaartRect.right && panelRect.right > kaartRect.left
+                && panelRect.top < kaartRect.bottom && panelRect.bottom > kaartRect.top;
+  if (!overlapt) return;
+
+  // Grens waar de zijbalk begint (als die rechts staat) — het paneel mag
+  // daar niet onder komen, ook niet als de story-kaart heel breed is.
+  const sidebar = document.getElementById('sidebar');
+  const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
+  const grensRechts = (sidebarRect && sidebarRect.width > 0 && sidebarRect.left >= kaartRect.right)
+    ? sidebarRect.left - 14
+    : window.innerWidth - 14;
+
+  const gewenst = kaartRect.right + 14;
+  panel.classList.add('is-shifted');
+  panel.style.left = `${Math.round(Math.min(gewenst, grensRechts - panelRect.width))}px`;
+}
+window.addEventListener('resize', () => pasHoverPaneelPositieAan());
+
 /** Toon een tekstbericht in het hover-paneel (bijv. bij ontbrekende data). */
 function renderHoverChartMessage(panel, titel, bericht) {
   const titleEl = panel.querySelector('.hover-timeseries-title');
@@ -385,6 +426,7 @@ function renderHoverChartMessage(panel, titel, bericht) {
   titleEl.textContent = titel;
   bodyEl.innerHTML    = `<div class="hover-timeseries-empty">${bericht}</div>`;
   panel.classList.add('is-visible');
+  pasHoverPaneelPositieAan();
 }
 
 /**
@@ -499,6 +541,7 @@ function toonHoverJarenGrafiek(feature, defaultField) {
   legenda.transition().delay(700).duration(300).ease(d3.easeQuadOut).style('opacity', 1);
 
   panel.classList.add('is-visible');
+  pasHoverPaneelPositieAan();
 }
 
 // Exporteer hide-functie voor gebruik vanuit andere modules

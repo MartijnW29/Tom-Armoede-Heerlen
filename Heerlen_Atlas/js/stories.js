@@ -80,6 +80,8 @@
     const numeric = Number(value);
 
     if (stat.format === 'currency') return Number.isFinite(numeric) ? NF_CURRENCY.format(numeric) : String(value);
+    // CBS levert inkomen/woningwaarde in duizenden euro's (bv. 23.6 → € 23.600)
+    if (stat.format === 'currency1000') return Number.isFinite(numeric) ? NF_CURRENCY.format(numeric * 1000) : String(value);
     if (stat.format === 'integer') return Number.isFinite(numeric) ? NF_NUMBER.format(numeric) : String(value);
     if (stat.format === 'decimal') return Number.isFinite(numeric) ? NF_DECIMAL.format(numeric) : String(value);
     if (stat.suffix === '%') return Number.isFinite(numeric) ? `${NF_DECIMAL.format(numeric)}%` : String(value);
@@ -267,16 +269,6 @@
 
       if (rawValue === undefined && stat.field) {
         rawValue = props[stat.field];
-
-        if (rawValue === undefined) {
-          const mappings = {
-            'aantal_inwoners': ['aantal_inwoners'],
-            'huishoudens': ['aantal_huishoudens', 'huishoudens'],
-            'werkloosheid': ['werkloosheid_pct', 'aantal_personen_met_een_ww_uitkering_totaal'],
-            'inkomen_mediaan': ['inkomen_mediaan', 'gemiddeld_gestandaardiseerd_inkomen_van_huishoudens', 'gemiddeld_inkomen_per_inwoner']
-          };
-          rawValue = getPropWithFallback(props, mappings[stat.field] || [stat.field]);
-        }
       }
 
       const numericValue = toNumber(rawValue);
@@ -387,6 +379,16 @@
   }
 
   // ==================== STORY CATALOGUS ====================
+  //
+  // Let op bij het schrijven van een nieuwe story: niet elk CBS-veld heeft
+  // in elk jaar echte data. Vooral de inkomens- en armoedecijfers
+  // (percentage_huishoudens_met_laag_inkomen, huishoudens_tot_120_percent_van_
+  // sociaal_minimum, gemiddeld_inkomen_per_inwoner, netto_arbeidsparticipatie,
+  // aantal_jongeren_met_jeugdzorg_in_natura, ...) ontbreken in de meest
+  // recente PDOK-jaren (2024/2025 zijn hiervoor leeg) maar zijn wél compleet
+  // voor 2019 t/m 2021. Kies daarom bewust een `year` per slide, en controleer
+  // met `window.debugStoryData()` of het veld voor dat jaar en die buurt een
+  // echte waarde heeft — anders toont de kaart alleen maar "geen data".
   function storyCatalog() {
     return [
       // === VERHAAL: ARMOEDE IN HEERLEN ===
@@ -401,52 +403,51 @@
             overline: 'Verhaal over onze stad',
             title: 'Armoede in Heerlen',
             body: 'Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.',
-            anchor: 'middle-right',
             backgroundImage: createBackdrop('Armoede in Heerlen', 'De onzichtbare realiteit achter de cijfers', ['#1a3a5e', '#e63946', '#f4a261'])
           },
           {
             paginatype: 'map',
-            year: 2024,
+            year: 2021,
             overline: 'De realiteit',
             title: 'Waar armoede het hardst toeslaat',
-            body: 'In sommige buurten van Heerlen leeft meer dan 1 op de 4 huishoudens onder de armoedegrens. Dit is geen cijfer — dit zijn gezinnen, paginatypeeren en ouderen.',
-            anchor: 'bottom-left',
-            field: 'aantal_huishoudens',
+            body: 'In Heksenberg heeft bijna de helft van de huishoudens een laag inkomen. Dit zijn geen cijfers — dit zijn gezinnen, jongeren en ouderen die elke maand moeten rondkomen.',
+            field: 'percentage_huishoudens_met_laag_inkomen',
             palette: 'oranges',
             focus: { field: 'buurtnaam', value: 'Heksenberg' },
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
               { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
-              { label: 'Werklozen', field: 'werkloosheid', suffix: '' },
-              { label: 'Gemiddeld inkomen', field: 'inkomen_mediaan', format: 'currency' }
+              { label: 'Huishoudens met laag inkomen', field: 'percentage_huishoudens_met_laag_inkomen', suffix: '%' },
+              { label: 'Rond het sociaal minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', suffix: '%' },
+              { label: 'Gemiddeld inkomen per inwoner', field: 'gemiddeld_inkomen_per_inwoner', format: 'currency1000' }
             ],
-            mapNote: 'Donkere kleuren = hogere concentratie van armoede-indicatoren'
+            mapNote: 'Donkerder oranje = een groter deel van de huishoudens met een laag inkomen (2021)'
           },
           {
             paginatype: 'map',
-            year: 2024,
-            overline: 'paginatypeeren in armoede',
+            year: 2021,
+            overline: 'Kinderen in armoede',
             title: 'De toekomst mag niet verloren gaan',
-            body: 'paginatypeeren die in armoede opgroeien hebben minder kansen op een goede opleiding en gezondheid. Heerlen heeft hier een grote opgave, maar ook veel betrokken mensen die helpen.',
-            anchor: 'middle-right',
-            field: 'aantal_jongeren_met_jeugdzorg_in_natura',
+            body: 'In Hoensbroek-Centrum heeft bijna 3 op de 4 huishoudens een laag inkomen, en groeien tientallen kinderen op met jeugdzorg. Wie in armoede opgroeit, heeft minder kansen op een goede opleiding en gezondheid — een opgave voor heel de stad.',
+            field: 'huishoudens_tot_120_percent_van_sociaal_minimum',
             palette: 'oranges',
             focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
             stats: [
               { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
-              { label: 'Huishoudens onder minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', format: 'integer' },
-              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' }
-            ]
+              { label: 'Huishoudens met laag inkomen', field: 'percentage_huishoudens_met_laag_inkomen', suffix: '%' },
+              { label: 'Rond het sociaal minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', suffix: '%' },
+              { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' },
+              { label: 'Netto arbeidsparticipatie', field: 'netto_arbeidsparticipatie', suffix: '%' }
+            ],
+            mapNote: 'Donkerder oranje = een groter deel van de huishoudens rond het sociaal minimum (2021)'
           },
           {
             paginatype: 'summary',
-            year: 2024,
             overline: 'Hoop en actie',
             title: 'Heerlen kan het beter',
-            body: 'Armoede is niet onvermijdelijk. Door samen te werken — gemeente, bewoners, bedrijven en organisaties — kunnen we de cirkel doorbreken. Veel buurten laten al zien dat het anders kan.',
-            anchor: 'top-right',
+            body: 'Armoede is niet overal in Heerlen hetzelfde. Sommige buurten kennen nauwelijks laag inkomen, andere juist heel veel — en dat verschil is precies waarom gerichte hulp werkt. Door samen te werken — gemeente, scholen, bewoners en organisaties — kan de cirkel doorbroken worden.',
             stats: [
-              { label: 'Samen kunnen we', value: 'meer', note: 'Ondersteuning, onderwijs en werkgelegenheid zijn de sleutels' }
+              { label: 'Sleutels tot verandering', value: 'onderwijs, werk en ondersteuning dichtbij huis' }
             ]
           }
         ]
@@ -544,55 +545,35 @@
   /**
    * Stap 3: Variabelen-selectors vervangen door de stats-fields van de slide,
    * in de volgorde waarin ze in slide.stats staan.
+   *
+   * Alleen slides van het type 'map' met minstens één bruikbaar veld passen de
+   * sidebar aan. Titel- en samenvattingsslides (geen "field" op hun stats)
+   * laten de sidebar met rust — zo blijft, als je de story halverwege sluit,
+   * gewoon de laatst getoonde variabele geselecteerd staan in plaats van dat
+   * hij leegvalt naar "-- geen --".
+   *
+   * De rijen worden opgebouwd via de normale `addFieldSelector`, zodat ze er
+   * precies zo uitzien (met de veld-picker) als wanneer je ze handmatig
+   * toevoegt, in plaats van kale <select>-elementen.
    */
-  function applyVariablesToUi(slide) {
-    const selectorsDiv = document.getElementById('selectors-div');
-    if (!selectorsDiv) return;
-
-    selectorsDiv.innerHTML = '';
+  function applyVariablesToUi(slide, fc) {
+    if (slide?.paginatype !== 'map') return;
 
     const statsFields = (slide?.stats || [])
       .map(s => s.field)
       .filter(f => f && (window.availableFields || []).includes(f));
+    if (!statsFields.length) return;
 
-    statsFields.forEach(field => {
-      const row = document.createElement('div');
-      row.className = 'field-row';
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:4px;';
+    const selectorsDiv = document.getElementById('selectors-div');
+    if (!selectorsDiv || typeof window.addFieldSelector !== 'function') return;
 
-      const sel = document.createElement('select');
-      sel.className = 'field-select-item';
-      sel.style.minWidth = '180px';
+    selectorsDiv.innerHTML = '';
+    statsFields.forEach(field => window.addFieldSelector(field));
 
-      const noneOpt = document.createElement('option');
-      noneOpt.value = '';
-      noneOpt.textContent = '-- geen --';
-      sel.appendChild(noneOpt);
-
-      (window.availableFields || []).forEach(f => {
-        const opt = document.createElement('option');
-        opt.value = f;
-        opt.textContent = f;
-        if (f === field) opt.selected = true;
-        sel.appendChild(opt);
-      });
-
-      // Luistert alleen naar handmatige gebruikerswijzigingen, niet naar
-      // de story-initialisatie zelf (die roept toonChoropleth rechtstreeks aan).
-      sel.addEventListener('change', () => window.herllaadVisualisatie?.());
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.textContent = 'Verwijder';
-      removeBtn.addEventListener('click', () => {
-        row.remove();
-        window.herllaadVisualisatie?.();
-      });
-
-      row.appendChild(sel);
-      row.appendChild(removeBtn);
-      selectorsDiv.appendChild(row);
-    });
+    // Vergelijkgrafieken meteen meenemen, net als bij een handmatige selectie.
+    if (fc && typeof window.renderMultiVariableCharts === 'function') {
+      window.renderMultiVariableCharts(fc, statsFields);
+    }
   }
 
   /**
@@ -852,7 +833,7 @@
 
     applyYearToSlider(slide);
     applyPaletteToUi(slide);
-    applyVariablesToUi(slide);
+    applyVariablesToUi(slide, fc);
 
     const map = getMap();
     if (!map) return;
@@ -929,7 +910,10 @@
     }
     state.prevButton.disabled = state.slideIndex === 0;
     state.nextButton.textContent = state.slideIndex === story.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
-    state.card.dataset.anchor = normalizeAnchors(slide.anchor || 'middle-right');
+    // Het infokaartje wisselt niet meer per slide van hoek (dat "sprong" eerder
+    // rond het scherm) — het staat vast. Alleen de titelslide (zonder kaart)
+    // staat linksonder; alle kaart- en afsluitslides staan linksboven.
+    state.card.dataset.anchor = slide.paginatype === 'voorpagina' ? 'bottom-left' : 'top-left';
     state.card.classList.toggle('is-voorpagina', slide.paginatype === 'voorpagina');
     state.card.classList.toggle('is-map', slide.paginatype === 'map');
     state.card.classList.toggle('is-summary', slide.paginatype === 'summary');

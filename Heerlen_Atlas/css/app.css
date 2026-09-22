@@ -914,6 +914,7 @@ button:focus-visible {
   z-index: 900;
   width: 360px;
   max-width: calc(100% - 28px);
+  transition: opacity 0.16s ease, bottom 0.28s ease, left 0.22s ease, right 0.22s ease;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--kleur-rand);
   border-radius: 8px;
@@ -929,6 +930,13 @@ button:focus-visible {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Staat een story-infokaartje (linksboven/-onder) in de weg? Dan schuift
+   map.js (pasHoverPaneelPositieAan) het paneel via een inline `left` vlak
+   naast de story-kaart — dat verschilt per slide (de kaart is niet overal
+   even breed), dus dat kan niet met een vaste CSS-waarde. De .is-shifted
+   klasse zelf hoeft hier niets te doen, maar blijft staan als hook.
+   `left` zit al in de transition hierboven, dus die verschuiving animeert. */
 
 .hover-timeseries-title {
   font-size: 12px;

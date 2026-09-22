@@ -113,6 +113,24 @@ document.getElementById('start').onclick = async () => {
     // 4. Verwerken --------------------------------------------------------
     const oppervlak = p => { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a / 2; };
     const GEBRUIK = { woonfunctie: 1, industriefunctie: 2, winkelfunctie: 4, kantoorfunctie: 8, onderwijsfunctie: 16, gezondheidszorgfunctie: 32, bijeenkomstfunctie: 64, overige: 128 };
+    // Alle 11 officiële BAG-gebruiksfuncties, voor de "gebouwtypen"-kleuring in huisjes-3d.html.
+    // Eén pand kan meerdere functies hebben (bv. "winkelfunctie,woonfunctie") — TYPE_MATCHVOLGORDE
+    // bepaalt dan welke telt: zeldzame/specifieke functies wegen zwaarder dan veelvoorkomende, zodat
+    // zo'n pand als winkel gekleurd wordt in plaats van te verdwijnen in de veel grotere groep woningen.
+    const TYPES = [
+      { key: 'woonfunctie', label: 'Woning' },
+      { key: 'winkelfunctie', label: 'Winkel' },
+      { key: 'kantoorfunctie', label: 'Kantoor' },
+      { key: 'industriefunctie', label: 'Industrie / bedrijf' },
+      { key: 'bijeenkomstfunctie', label: 'Bijeenkomst (horeca, kerk, theater)' },
+      { key: 'onderwijsfunctie', label: 'Onderwijs' },
+      { key: 'gezondheidszorgfunctie', label: 'Gezondheidszorg' },
+      { key: 'sportfunctie', label: 'Sport' },
+      { key: 'logiesfunctie', label: 'Logies (hotel, pension)' },
+      { key: 'celfunctie', label: 'Cel' },
+      { key: 'overige', label: 'Overig / onbekend' },
+    ];
+    const TYPE_MATCHVOLGORDE = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]; // index in TYPES; laatste (10, overig) is altijd het vangnet
     const bouw = [];
     let zonderHoogte = 0;
     for (const [id, f] of panden) {
@@ -123,6 +141,7 @@ document.getElementById('start').onclick = async () => {
       const doel = String(f.properties.gebruiksdoel || '');
       let vlag = 0; for (const k of Object.keys(GEBRUIK)) if (doel.includes(k.replace('functie', 'functie'))) vlag |= GEBRUIK[k];
       if (!vlag) vlag = doel ? 128 : 0;
+      let typ = 10; for (const idx of TYPE_MATCHVOLGORDE) { if (doel.includes(TYPES[idx].key)) { typ = idx; break; } }
       const hg = hoogte.get(id);
       let H = hg ? hg.top - hg.grond : NaN;
       if (!isFinite(H) || H < 1.5) { H = (vlag & 1) ? 6.5 : 8; if (!hg) zonderHoogte++; }
@@ -136,10 +155,12 @@ document.getElementById('start').onclick = async () => {
           if (p.length >= 3 && (ri === 0 || Math.abs(oppervlak(p)) > 4)) ringen.push(p);
         });
         if (!ringen.length || ringen[0].length < 3) continue;
-        bouw.push({ ringen, H, G: hg ? hg.grond : null, BJ: +f.properties.bouwjaar || 0, vlag, VO: Math.min(65535, +f.properties.aantal_verblijfsobjecten || 0) });
+        bouw.push({ ringen, H, G: hg ? hg.grond : null, BJ: +f.properties.bouwjaar || 0, vlag, typ, VO: Math.min(65535, +f.properties.aantal_verblijfsobjecten || 0) });
       }
     }
     log(`Verwerkt: ${bouw.length} gebouwen (${zonderHoogte} zonder 3D BAG-hoogte, standaardhoogte gebruikt)`);
+    const typTelling = new Array(TYPES.length).fill(0); for (const b of bouw) typTelling[b.typ]++;
+    log('Gebouwtypen: ' + TYPES.map((t, i) => `${t.label} ${typTelling[i]}`).join(' · '));
 
     // 5. Binair schrijven --------------------------------------------------
     let x0 = 1e9, z0 = 1e9, R = 0, V = 0;
@@ -147,16 +168,17 @@ document.getElementById('start').onclick = async () => {
     const N = bouw.length;
     const pad4 = n => (n + 3) & ~3;
     const KOP = 48;
-    const out = new Uint8Array(KOP + pad4(N) + pad4(R * 2) + pad4(V * 2) * 2 + pad4(N * 2) * 4 + pad4(N));
+    const out = new Uint8Array(KOP + pad4(N) + pad4(R * 2) + pad4(V * 2) * 2 + pad4(N * 2) * 4 + pad4(N) * 2);
     const odv = new DataView(out.buffer);
-    odv.setUint32(0, 0x31424748, true); odv.setUint32(4, N, true); odv.setUint32(8, R, true); odv.setUint32(12, V, true);
+    odv.setUint32(0, 0x32424748, true); odv.setUint32(4, N, true); odv.setUint32(8, R, true); odv.setUint32(12, V, true); // 'HGB2': + typ-sectie t.o.v. HGB1
     odv.setFloat64(16, LON0, true); odv.setFloat64(24, LAT0, true);
     odv.setFloat32(32, x0, true); odv.setFloat32(36, z0, true); odv.setFloat32(40, Q, true);
     let p = KOP;
     const secties = {};
     const sectie = (naam, bytes) => { secties[naam] = p; p += pad4(bytes); return secties[naam]; };
     const oRing = sectie('ringen', N), oLen = sectie('len', R * 2), oX = sectie('x', V * 2), oZ = sectie('z', V * 2),
-          oH = sectie('h', N * 2), oG = sectie('g', N * 2), oBJ = sectie('bj', N * 2), oVO = sectie('vo', N * 2), oV = sectie('vlag', N);
+          oH = sectie('h', N * 2), oG = sectie('g', N * 2), oBJ = sectie('bj', N * 2), oVO = sectie('vo', N * 2), oV = sectie('vlag', N),
+          oTy = sectie('typ', N);
     let ri = 0, vi = 0;
     bouw.forEach((b, i) => {
       out[oRing + i] = b.ringen.length;
@@ -172,6 +194,7 @@ document.getElementById('start').onclick = async () => {
       odv.setUint16(oBJ + i * 2, b.BJ, true);
       odv.setUint16(oVO + i * 2, b.VO, true);
       out[oV + i] = b.vlag;
+      out[oTy + i] = b.typ;
     });
     const blob = new Blob([out.subarray(0, p)], { type: 'application/octet-stream' });
     log(`Bestand: ${(blob.size / 1e6).toFixed(2)} MB — ${N} gebouwen, ${R} ringen, ${V} hoekpunten`);

@@ -187,6 +187,9 @@
         <option value="rdylgn">Rood → Groen</option>
         <option value="blues">Blauw</option>
       </select>
+      <div class="knoppen">
+        <button id="typeModus" class="sec" title="Elk van de 11 BAG-gebruiksfuncties (woning, winkel, kantoor, ...) krijgt een eigen kleur, in plaats van de buurtvariabele">🏘 Toon 11 gebouwtypen</button>
+      </div>
     </div>
 
     <div class="paneel">
@@ -204,8 +207,8 @@
         <div class="slider-kop"><label for="exag">Hoogte-overdrijving</label><b id="exagW">1,0×</b></div>
         <input type="range" id="exag" min="0.5" max="6" step="0.1" value="1" />
       </div>
-      <div class="slider-kop"><label for="hmul">Gebouwhoogte</label><b id="hmulW">1,0×</b></div>
-      <input type="range" id="hmul" min="0.5" max="4" step="0.1" value="1" />
+      <div class="slider-kop"><label for="hmul">Gebouwhoogte</label><b id="hmulW">2,0×</b></div>
+      <input type="range" id="hmul" min="0.5" max="4" step="0.1" value="2" />
       <label for="labelModus">Labels</label>
       <select id="labelModus">
         <option value="auto">Automatisch (geen overlap)</option>
@@ -327,6 +330,26 @@ const PALETTEN = {
   blues:   ['#c6dbef', '#6baed6', '#3182bd', '#08519c', '#08306b'],
 };
 
+// De 11 officiële BAG-gebruiksfuncties, elk met een vaste, goed te onderscheiden kleur.
+// Volgorde en index moeten gelijk zijn aan TYPES in tools/bake-gebouwen.html (het gebakken
+// getal per gebouw, g.typ, verwijst naar deze index).
+const GEBOUWTYPEN = [
+  { label: 'Woning',                                   kleur: '#4E79A7' },
+  { label: 'Winkel',                                    kleur: '#F28E2B' },
+  { label: 'Kantoor',                                   kleur: '#E15759' },
+  { label: 'Industrie / bedrijf',                       kleur: '#76B7B2' },
+  { label: 'Bijeenkomst (horeca, kerk, theater)',       kleur: '#59A14F' },
+  { label: 'Onderwijs',                                 kleur: '#EDC948' },
+  { label: 'Gezondheidszorg',                           kleur: '#B07AA1' },
+  { label: 'Sport',                                     kleur: '#FF9DA7' },
+  { label: 'Logies (hotel, pension)',                   kleur: '#9C755F' },
+  { label: 'Cel',                                       kleur: '#17BECF' },
+  { label: 'Overig / onbekend',                         kleur: '#9AA5B1' },
+];
+// Zelfde linear→sRGB-conversie als palLUT hierboven, zodat de gebouwtype-kleuren er even
+// levendig uitzien als de gradiëntpaletten (de shader gaat er met pow(.,2.2) weer vanaf).
+const GEBOUWTYPEN_RGB = GEBOUWTYPEN.map(t => { const c = new THREE.Color(t.kleur).convertLinearToSRGB(); return [c.r * 255, c.g * 255, c.b * 255]; });
+
 const NAMEN = {
   aantal_inwoners: 'Inwoners', aantal_huishoudens: 'Huishoudens', woningvoorraad: 'Woningvoorraad',
   bevolkingsdichtheid_inwoners_per_km2: 'Bevolkingsdichtheid (per km²)',
@@ -412,15 +435,15 @@ const llVanMerc = (mx, my) => [mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 
 const S = {
   jaar: 2024, cache: {}, buurten: [], vars: [],
   kleurVar: 'percentage_koopwoningen', palet: 'rdylgn', laag: 'lucht',
-  exag: 1, hmul: 1, ovAlpha: 0.55,
-  geselecteerd: -1, hover: -1,
+  exag: 1, hmul: 2, ovAlpha: 0.55,
+  geselecteerd: -1, hover: -1, typeModus: false,
   dag: 1, dagDoel: 1, autoDraai: false, rondvlucht: false,
   centrum: { x: 0, z: 0 }, straal: 6000,
   chunks: new Map(), gebouwen: null,
 };
 // Uniforms die alle materialen delen
 const U = {
-  uExag: { value: S.exag }, uHmul: { value: 1 }, uNacht: { value: 0 }, uGrow: { value: 0 }, uBodem: { value: 0 },
+  uExag: { value: S.exag }, uHmul: { value: 2 }, uNacht: { value: 0 }, uGrow: { value: 0 }, uBodem: { value: 0 },
 };
 
 // ── Three.js: renderer, scène, licht ───────────────────────────────────────
@@ -907,7 +930,9 @@ function verwerkFeatures(features) {
 // ── Gebouwen: binair bestand inlezen en mesh per chunk bouwen ──────────────
 function leesGebouwen(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, true) !== 0x31424748) throw new Error('onbekend gebouwenbestand');
+  const magic = dv.getUint32(0, true);
+  if (magic === 0x31424748) throw new Error('gebouwenbestand is nog het oude formaat (zonder gebouwtypen) — bak opnieuw met tools/bake-gebouwen.html');
+  if (magic !== 0x32424748) throw new Error('onbekend gebouwenbestand');
   const N = dv.getUint32(4, true), R = dv.getUint32(8, true), V = dv.getUint32(12, true);
   const x0 = dv.getFloat32(32, true), z0 = dv.getFloat32(36, true), Q = dv.getFloat32(40, true);
   let p = 48;
@@ -915,6 +940,7 @@ function leesGebouwen(buf) {
   const g = { N, R, V, x0, z0, Q };
   g.ringen = neem(Uint8Array, N); g.len = neem(Uint16Array, R); g.X = neem(Uint16Array, V); g.Z = neem(Uint16Array, V);
   g.H = neem(Uint16Array, N); g.G = neem(Int16Array, N); g.BJ = neem(Uint16Array, N); g.VO = neem(Uint16Array, N); g.vlag = neem(Uint8Array, N);
+  g.typ = neem(Uint8Array, N);
   g.rStart = new Uint32Array(N); g.vStart = new Uint32Array(N); g.vCnt = new Uint32Array(N);
   g.cx = new Float32Array(N); g.cz = new Float32Array(N); g.buurt = new Int16Array(N).fill(-1);
   g.chunk = new Array(N); g.vOff = new Uint32Array(N); g.elev = new Float32Array(N);
@@ -1065,6 +1091,21 @@ function paletKleur(naam, t, uit) {
 
 function kleurGebouwen() {
   const g = S.gebouwen; if (!g) return;
+
+  if (S.typeModus) {
+    for (const ch of S.chunks.values()) {
+      if (!ch.gebouwMesh) continue;
+      const col = ch.gebouwMesh.geometry.attributes.aCol.array;
+      for (const i of ch.gebouwen) {
+        const [r, gr, bl] = GEBOUWTYPEN_RGB[g.typ[i]] || GEBOUWTYPEN_RGB[10];
+        const o = g.vOff[i] * 4, e = o + g.vCnt[i] * 5 * 4;
+        for (let p = o; p < e; p += 4) { col[p] = r; col[p + 1] = gr; col[p + 2] = bl; col[p + 3] = 255; }
+      }
+      ch.gebouwMesh.geometry.attributes.aCol.needsUpdate = true;
+    }
+    return;
+  }
+
   const lut = palLUT(S.palet), lit = new Uint8Array(g.N), pct = isPct(S.kleurVar);
   // Gebouwen van een buurt staan op grootte gesorteerd (groot → klein).
   for (const b of S.buurten) {
@@ -1166,7 +1207,24 @@ function updateVisualisatie() {
   if (S.geselecteerd >= 0) toonDetails(S.geselecteerd);
 }
 
+function tekenGebouwtypenLegenda() {
+  const g = S.gebouwen, telling = new Array(GEBOUWTYPEN.length).fill(0);
+  if (g) for (let i = 0; i < g.N; i++) if (g.chunk[i]) telling[g.typ[i]]++;
+  $('legenda').innerHTML = `
+    <div class="uitleg" style="margin-top:0">Elk pand gekleurd naar zijn officiële BAG-gebruiksfunctie, ongeacht buurt of variabele.</div>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
+      ${GEBOUWTYPEN.map((t, i) => `
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tekst-zacht)">
+          <span style="width:12px;height:12px;flex:none;border-radius:3px;background:${t.kleur}"></span>
+          <span style="flex:1;color:var(--tekst)">${t.label}</span>
+          <span>${telling[i].toLocaleString('nl-NL')}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
 function tekenLegenda(kr) {
+  if (S.typeModus) return tekenGebouwtypenLegenda();
   const kv = S.kleurVar, stops = PALETTEN[S.palet].join(',');
   $('legenda').innerHTML = `
     <div class="verloop" style="background:linear-gradient(90deg,${stops})"></div>
@@ -1431,6 +1489,20 @@ $('jaar').onchange     = () => { stopRondvlucht(); laadJaar(+$('jaar').value); }
 $('kleurVar').onchange = e => { S.kleurVar = e.target.value; updateVisualisatie(); };
 $('palet').onchange    = e => { S.palet = e.target.value; updateVisualisatie(); };
 $('palet').value = S.palet;
+$('typeModus').onclick = () => {
+  S.typeModus = !S.typeModus;
+  $('typeModus').classList.toggle('aan', S.typeModus);
+  $('typeModus').textContent = S.typeModus ? '↩ Terug naar buurtvariabele' : '🏘 Toon 11 gebouwtypen';
+  // Variabele/palet hebben geen effect zolang de gebouwtypen-kleuring aan staat
+  $('kleurVar').disabled = $('palet').disabled = S.typeModus;
+  // Labels (de buurt-percentages) horen niet bij de gebouwtypen — uitzetten, en bij
+  // terugschakelen weer op de stand zetten die de gebruiker daarvoor had gekozen.
+  const labelSel = $('labelModus');
+  if (S.typeModus) { S.labelModusVoorType = labelSel.value; labelSel.value = 'uit'; }
+  else if (S.labelModusVoorType) labelSel.value = S.labelModusVoorType;
+  labelSel.disabled = S.typeModus;
+  updateVisualisatie();   // herbouwt zowel de gebouwkleuren als de legenda (en, indien uit, de normale gradiënt-legenda mét kr)
+};
 $('laag').value = S.laag;
 $('laag').onchange = e => { S.laag = e.target.value; for (const ch of S.chunks.values()) { ch.laagNu = null; ch.niveau = -1; } ondergrondBeheer(); };
 $('ovAlpha').oninput = e => { S.ovAlpha = +e.target.value / 100; $('ovAlphaW').textContent = e.target.value + '%'; clearTimeout(S.ovT); S.ovT = setTimeout(tekenAlleOverlays, 60); };

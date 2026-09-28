@@ -1280,9 +1280,11 @@ button:focus-visible {
     radial-gradient(circle at bottom right, rgba(11,114,133,0.20), transparent 100%),
 }
 
+/* Rijen: topbalk, voortgangsbalk, kaartgrid. Het grid krijgt de resterende hoogte
+   (minmax(0, 1fr)), zodat de story-kaart nooit hoger wordt dan het scherm. */
 .story-shell {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: clamp(16px, 3vw, 32px);
   gap: 16px;
 }
@@ -1316,16 +1318,22 @@ button:focus-visible {
   margin-left: 0;
 }
 
-/* Navigatie (teller + knoppen) staat onderaan de tekstkaart, waar mensen lezen */
+/* Navigatie (teller + knoppen) staat onderaan de tekstkaart, waar mensen lezen.
+   Past de kaart niet op het scherm, dan scrollt de tekst en blijft deze balk
+   onderaan in beeld (sticky, tot aan de rand van de kaart). */
 .story-card-nav {
+  position: sticky;
+  bottom: calc(-1 * var(--kaart-padding));
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 16px;
-  padding-top: 14px;
+  margin: 16px calc(-1 * var(--kaart-padding)) calc(-1 * var(--kaart-padding));
+  padding: 14px var(--kaart-padding) var(--kaart-padding);
   border-top: 1px solid rgba(6,24,38,0.12);
+  background: rgba(255,255,255,0.97);
 }
 
 .story-card-nav .story-counter {
@@ -1391,8 +1399,12 @@ button:focus-visible {
 }
 
 .story-card {
+  --kaart-padding: clamp(18px, 3vw, 28px);
   width: min(100%, 420px);
-  padding: clamp(18px, 3vw, 28px);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--kaart-padding);
   border-radius: 30px;
   background: rgba(255,255,255,0.92);
   border: 1px solid rgba(255,255,255,0.50);
@@ -1412,6 +1424,10 @@ button:focus-visible {
 .story-card[data-anchor="bottom-left"] { grid-column: 1; grid-row: 3; justify-self: start; align-self: end; }
 .story-card[data-anchor="bottom-center"] { grid-column: 2; grid-row: 3; justify-self: center; align-self: end; }
 .story-card[data-anchor="bottom-right"] { grid-column: 3; grid-row: 3; justify-self: end; align-self: end; }
+
+/* De kaart beslaat alle rijen (de hoogte van het scherm); align-self hierboven
+   bepaalt nog steeds of hij boven, midden of onder staat. */
+.story-card[data-anchor] { grid-row: 1 / -1; }
 
 .story-card::before {
   content: "";
@@ -1552,8 +1568,10 @@ button:focus-visible {
     flex: 1 1 0;
   }
 
+  /* Op een telefoon hooguit ~60% van het scherm, zodat de kaart erboven zichtbaar blijft (net als de intro) */
   .story-card {
-    padding: 16px;
+    --kaart-padding: 16px;
+    max-height: min(100%, 60vh);
     border-radius: 22px;
   }
 
@@ -1594,6 +1612,160 @@ button:focus-visible {
   color: #fff;
   font-size: 13px;
   box-shadow: 0 10px 26px rgba(8, 24, 48, 0.28);
+}
+
+/* Cookiemelding onderin beeld (window.toonCookieMelding, na de introductie) */
+.cookie-melding {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 12600;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(640px, calc(100vw - 24px));
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid var(--kleur-rand);
+  box-shadow: 0 20px 60px rgba(8, 24, 48, 0.25);
+  transform: translateX(-50%);
+  animation: cookie-in 0.35s ease both;
+}
+
+@keyframes cookie-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.cookie-melding h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.cookie-melding p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--kleur-tekst-zacht);
+}
+
+.cookie-melding-knoppen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cookie-melding-knoppen button {
+  margin: 0;
+  padding: 9px 16px;
+  border-radius: 999px;
+}
+
+.cookie-melding-knoppen .is-secundair {
+  background: #e7eef2;
+  color: #0b3040;
+}
+
+@media (max-width: 520px) {
+  .cookie-melding {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cookie-melding-knoppen {
+    flex-direction: row;
+  }
+
+  .cookie-melding-knoppen button {
+    flex: 1;
+  }
+}
+
+/* Verhalenpaneel: alle stories op een rij (window.openVerhalenPaneel) */
+.verhalen-paneel {
+  position: fixed;
+  inset: 0;
+  z-index: 12450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 10, 18, 0.45);
+  backdrop-filter: blur(3px);
+  animation: verhalen-in 0.3s ease both;
+}
+
+@keyframes verhalen-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.verhalen-paneel-kaart {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 26px 26px 20px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 250, 253, 0.97));
+  box-shadow: 0 32px 90px rgba(8, 24, 48, 0.35);
+}
+
+.verhalen-paneel-kaart::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 6px;
+  background: linear-gradient(90deg, #0b7285, #ffb703);
+}
+
+.verhalen-paneel-kicker {
+  margin: 0 0 6px;
+  color: var(--kleur-primair);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.verhalen-paneel-kaart h2 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+  color: #061826;
+}
+
+.verhalen-paneel-uitleg {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #0b3040;
+}
+
+.verhalen-paneel-lijst {
+  display: grid;
+  gap: 10px;
+}
+
+.verhalen-paneel-lijst .story-menu-button {
+  margin: 0;
+  border-left: 5px solid var(--verhaal-kleur, var(--kleur-primair));
+}
+
+.verhalen-paneel-acties {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.verhalen-paneel-acties button {
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #e7eef2;
+  color: #0b3040;
 }
 
 /* Afspeelknop + jaarbadge rechts in de kop van "Filter op jaar" */

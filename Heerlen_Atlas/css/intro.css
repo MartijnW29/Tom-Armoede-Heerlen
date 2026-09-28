@@ -1,0 +1,792 @@
+/* ========================================================================== */
+/* INTRO.CSS — Introductieverhaal "De armoedegrens trekken" (js/intro.js)      */
+/* ========================================================================== */
+/*
+  Gebruikt de thema-variabelen uit app.css (:root). De vaste kleuren van de
+  grens (zwart met rode stippellijn) staan hieronder in --intro-grens-*.
+*/
+
+.intro {
+  --intro-grens-lijn: #061826;
+  --intro-grens-spoor: #e11d48;
+  --intro-paneel-breedte: min(420px, calc(100vw - 48px));
+
+  position: fixed;
+  inset: 0;
+  z-index: 12500;
+  background: var(--kleur-achtergrond);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.intro[hidden] {
+  display: none;
+}
+
+.intro.is-zichtbaar {
+  opacity: 1;
+}
+
+body.intro-open {
+  overflow: hidden;
+}
+
+.intro button {
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ========== Kaart ========== */
+.intro-kaart {
+  position: absolute;
+  inset: 0;
+}
+
+/* Rustige, grijze ondergrond zodat de grenzen en kleuren het verhaal vertellen */
+.intro-kaart .leaflet-tile-pane {
+  filter: grayscale(1) contrast(0.9) brightness(1.06);
+  opacity: 0.55;
+}
+
+.intro-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(245, 247, 250, 0.78);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  z-index: 500;
+}
+
+/* Blur alleen als de scrim zichtbaar is: een schermvullende backdrop-filter kost veel rekenkracht */
+.intro.is-vergelijking .intro-scrim {
+  opacity: 1;
+  pointer-events: auto;
+  backdrop-filter: blur(2px);
+}
+
+/* Labels "Noord" en "Zuid" op de kaart (stap 2) */
+.intro-helft-icoon {
+  pointer-events: none;
+}
+
+.intro-helft-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  padding: 8px 14px 9px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 26px rgba(8, 24, 48, 0.22);
+  color: #061826;
+  line-height: 1.1;
+  transform: translate(-50%, -50%) scale(0.92);
+  opacity: 0;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.intro-helft-icoon.is-zichtbaar .intro-helft-label {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.intro-helft-label-naam {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--kleur-primair);
+}
+
+.intro-helft-label-waarde {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.intro-helft-label-uitleg {
+  font-size: 11px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.leaflet-tooltip.intro-tooltip {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(6, 24, 38, 0.92);
+  color: #fff;
+  font-size: 12px;
+  box-shadow: 0 8px 20px rgba(8, 24, 48, 0.25);
+}
+
+.leaflet-tooltip.intro-tooltip::before {
+  border-top-color: rgba(6, 24, 38, 0.92);
+}
+
+/* ========== Tekstpaneel ========== */
+.intro-paneel {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 800;
+  width: var(--intro-paneel-breedte);
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 26px 22px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 28px 80px rgba(8, 24, 48, 0.24);
+  color: #061826;
+}
+
+.intro-inhoud {
+  transition: opacity 0.17s ease, transform 0.17s ease;
+}
+
+.intro-inhoud.is-wisselend {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* Voortgang: teller, balk en "overslaan" */
+.intro-voortgang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.intro-teller {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(6, 24, 38, 0.07);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.intro-voortgang-balk {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: #e7eef2;
+  overflow: hidden;
+}
+
+.intro-voortgang-balk span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b7285, #ffb703);
+  transition: width 0.3s ease;
+}
+
+.intro .intro-overslaan {
+  flex-shrink: 0;
+  padding: 4px 0;
+  background: none;
+  color: var(--kleur-tekst-zacht);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.intro .intro-overslaan:hover {
+  background: none;
+  color: var(--kleur-primair);
+}
+
+.intro-kicker {
+  margin: 0 0 6px;
+  color: var(--kleur-primair);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.intro-titel {
+  margin: 0 0 12px;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.intro-titel:focus {
+  outline: none;
+}
+
+.intro-tekst p {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #0b3040;
+}
+
+.intro-tekst .intro-nadruk {
+  margin: 14px 0;
+  padding-left: 12px;
+  border-left: 4px solid var(--intro-grens-spoor);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #061826;
+}
+
+.intro-teaser {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(11, 114, 133, 0.09), rgba(255, 183, 3, 0.10));
+}
+
+.intro-teaser p:last-child {
+  margin-bottom: 0;
+}
+
+.intro-extra {
+  margin-top: 16px;
+}
+
+.intro-bron {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #627d8a;
+}
+
+/* Laden / foutmelding */
+.intro-laden {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(11, 114, 133, 0.07);
+  font-size: 13px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-laden.is-fout {
+  flex-direction: column;
+  align-items: flex-start;
+  background: rgba(225, 29, 72, 0.07);
+  color: #9f1239;
+}
+
+.intro-laden p {
+  margin: 0;
+}
+
+.intro-laden-bolletje {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--kleur-primair);
+  animation: intro-puls 1s ease-in-out infinite;
+}
+
+@keyframes intro-puls {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+
+/* Noord / Zuid-tegels (stap 2) */
+.intro-helften {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.intro-helft {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--kleur-paneel-zacht);
+  border: 1px solid rgba(8, 24, 48, 0.08);
+}
+
+.intro-helft-kleur {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.intro-helft-naam {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kleur-primair);
+}
+
+.intro-helft-waarde {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.intro-helft-meta {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--kleur-tekst-zacht);
+}
+
+/* Spreiding binnen noord en zuid (stap 3) */
+.intro-spreiding {
+  margin: 0 0 14px;
+  padding: 10px 14px 10px 30px;
+  border-radius: 16px;
+  background: var(--kleur-paneel-zacht);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* ========== Legenda (vaste kleurschaal) ========== */
+.intro-legenda {
+  margin-top: 4px;
+}
+
+.intro-legenda-titel {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-legenda-balk {
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.intro-legenda-ticks {
+  position: relative;
+  height: 16px;
+  margin: 3px 6px 0;
+}
+
+.intro-legenda-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--kleur-tekst-zacht);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== Armoedegrens-schuif (stap 4) ========== */
+.intro-drempel {
+  --pos: 0;
+  margin-bottom: 14px;
+  padding: 14px 16px 12px;
+  border-radius: 20px;
+  background: var(--kleur-paneel-zacht);
+  border: 1px solid rgba(8, 24, 48, 0.08);
+}
+
+.intro-drempel-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+
+.intro-drempel-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kleur-primair);
+}
+
+.intro-drempel-gekozen {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.intro-drempel-baan {
+  position: relative;
+  height: 52px;
+  border-radius: 12px;
+}
+
+.intro-drempel-baan:has(.intro-drempel-invoer:focus-visible) {
+  box-shadow: 0 0 0 3px var(--kleur-focus);
+}
+
+.intro-drempel-spoor {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: #bcccdc;
+  border-radius: 999px;
+}
+
+.intro-drempel-punt {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--f) * 100%);
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #9fb3c8;
+}
+
+/* De schuifknop ziet eruit als de grens op de kaart: zwart met rode stippellijn */
+.intro-drempel-lijn {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: calc(14px + var(--pos) * (100% - 28px));
+  width: 7px;
+  margin-left: -3.5px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(to bottom, var(--intro-grens-spoor) 0 6px, transparent 6px 12px) center / 2px 100% no-repeat,
+    var(--intro-grens-lijn);
+  box-shadow: 0 0 0 2.5px #fff, 0 6px 14px rgba(8, 24, 48, 0.28);
+  transition: left 0.5s cubic-bezier(0.22, 0.9, 0.24, 1);
+  pointer-events: none;
+}
+
+.intro-drempel-invoer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.intro-drempel-stops {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.intro .intro-drempel-stop {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 2px;
+  border-radius: 8px;
+  background: none;
+  color: var(--kleur-tekst-zacht);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.intro .intro-drempel-stop:first-child { text-align: left; align-items: flex-start; }
+.intro .intro-drempel-stop:last-child  { text-align: right; align-items: flex-end; }
+
+.intro .intro-drempel-stop:hover {
+  background: rgba(11, 114, 133, 0.07);
+}
+
+.intro .intro-drempel-stop.is-actief {
+  color: #061826;
+}
+
+.intro-drempel-stop small {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.intro-drempel-uitleg {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #0b3040;
+}
+
+.intro-drempel-stad {
+  margin: 0;
+  font-size: 13px;
+}
+
+.intro-drempel-stad strong {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.intro-drempel-boodschap {
+  max-height: 0;
+  margin: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-weight: 800;
+  color: #061826;
+  transition: max-height 0.35s ease, opacity 0.35s ease, margin 0.35s ease;
+}
+
+.intro-drempel-boodschap.is-zichtbaar {
+  max-height: 60px;
+  margin-top: 10px;
+  opacity: 1;
+}
+
+/* ========== Navigatie ========== */
+/* Blijft onderaan het paneel staan, ook als de tekst moet scrollen (kleine schermen) */
+.intro-navigatie {
+  --paneel-x: 26px;
+  --paneel-onder: 22px;
+  position: sticky;
+  bottom: calc(-1 * var(--paneel-onder));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 18px calc(-1 * var(--paneel-x)) calc(-1 * var(--paneel-onder));
+  padding: 14px var(--paneel-x) var(--paneel-onder);
+  border-top: 1px solid rgba(6, 24, 38, 0.1);
+  background: rgba(255, 255, 255, 0.97);
+}
+
+.intro-navigatie-rechts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.intro .intro-knop,
+.intro .intro-knop-secundair,
+.intro .intro-vorige {
+  padding: 11px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.intro .intro-knop {
+  background: linear-gradient(135deg, #0b7285, #0a5f6f);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(11, 114, 133, 0.22);
+}
+
+.intro .intro-knop:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.intro .intro-knop:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.intro .intro-knop-secundair {
+  background: #e7eef2;
+  color: #0b3040;
+}
+
+.intro .intro-knop-secundair:hover {
+  background: #dbe5eb;
+}
+
+.intro .intro-vorige {
+  padding-left: 4px;
+  padding-right: 8px;
+  background: none;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro .intro-vorige:hover:not(:disabled) {
+  background: none;
+  color: var(--kleur-primair);
+}
+
+.intro .intro-vorige:disabled {
+  visibility: hidden;
+}
+
+.intro-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #627d8a;
+}
+
+/* ========== Vergelijking: drie kaarten naast elkaar (stap 5) ========== */
+.intro-vergelijking {
+  position: absolute;
+  z-index: 700;
+  top: 50%;
+  left: calc(24px + var(--intro-paneel-breedte) + 24px);
+  right: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 22px 16px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 28px 80px rgba(8, 24, 48, 0.2);
+  transform: translateY(-50%);
+}
+
+.intro-vergelijking[hidden] {
+  display: none;
+}
+
+.intro-vergelijking-kaarten {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.intro-mini {
+  margin: 0;
+  animation: intro-mini-in 0.5s ease both;
+  animation-delay: var(--vertraging, 0ms);
+}
+
+@keyframes intro-mini-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.intro-mini figcaption {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+}
+
+.intro-mini-titel {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.intro-mini-sub {
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-mini svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.intro-mini svg path {
+  stroke: #fff;
+  stroke-width: 0.6;
+}
+
+.intro-mini-stad {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-mini-stad strong {
+  font-size: 16px;
+  color: #061826;
+}
+
+/* ========== Smalle schermen: paneel onderaan, kaart erboven ========== */
+@media (max-width: 759px) {
+  .intro-paneel {
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    max-height: 58vh;
+    padding: 16px 18px;
+    border-radius: 22px;
+  }
+
+  .intro-navigatie {
+    --paneel-x: 18px;
+    --paneel-onder: 16px;
+  }
+
+  .intro-titel {
+    font-size: 22px;
+  }
+
+  .intro-tekst p {
+    font-size: 14px;
+  }
+
+  .intro-tekst .intro-nadruk {
+    font-size: 16px;
+  }
+
+  .intro .leaflet-control-zoom {
+    display: none;
+  }
+
+  .intro.is-vergelijking .intro-paneel {
+    max-height: 44vh;
+  }
+
+  .intro-vergelijking {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    padding: 12px 12px 8px;
+    border-radius: 20px;
+    transform: none;
+  }
+
+  .intro-vergelijking-kaarten {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .intro-mini-titel {
+    font-size: 11px;
+  }
+
+  .intro-mini-sub,
+  .intro-mini-stad {
+    font-size: 10px;
+  }
+
+  .intro-mini-stad strong {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro,
+  .intro * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

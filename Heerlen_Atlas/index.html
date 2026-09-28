@@ -26,6 +26,7 @@
 
   <!-- Projectstijlen -->
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/intro.css" />
 </head>
 
 <body>
@@ -108,6 +109,7 @@
         </div>
 
         <div class="actie-rij">
+          <button id="start-intro" type="button">Introductie bekijken</button>
           <button id="start-tour" type="button">Rondleiding starten</button>
           <button id="open-split-screen" type="button">Splitscherm</button>
           <button id="open-3d" type="button">3D versie bekijken</button>
@@ -258,6 +260,8 @@
     6. multi-loader.js       — API-laden en jaarfilter
     7. d3_charts.js          — vergelijkgrafieken
     8. stories.js            — verhalen/stories
+    9. intro.js              — introductieverhaal "De armoedegrens trekken"
+                               (start direct; cookiemelding volgt na de intro)
   ─────────────────────────────────────────────────────────────────────── -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/vendor/d3.v7.min.js"></script>
@@ -272,6 +276,7 @@
   <script src="js/multi-loader.js"></script>
   <script src="js/d3_charts.js"></script>
   <script src="js/stories.js"></script>
+  <script src="js/intro.js"></script>
 
 
   <!-- ── TOUR MODAL ────────────────────────────────────────────────────────

@@ -488,6 +488,50 @@
     });
   }
 
+  // ==================== VERHALENPANEEL ====================
+  /**
+   * Paneel midden in beeld met alle verhalen uit de catalogus (o.a. geopend
+   * via "Ontdek de verhalen" aan het einde van de introductie). Een klik op
+   * een verhaal sluit het paneel en start dat verhaal; sluiten laat de kaart zien.
+   */
+  function openVerhalenPaneel() {
+    document.getElementById('verhalen-paneel')?.remove();
+
+    const paneel = document.createElement('div');
+    paneel.id = 'verhalen-paneel';
+    paneel.className = 'verhalen-paneel';
+    paneel.innerHTML = `
+      <div class="verhalen-paneel-kaart" role="dialog" aria-modal="true" aria-labelledby="verhalen-paneel-titel">
+        <p class="verhalen-paneel-kicker">Verhalen over Heerlen</p>
+        <h2 id="verhalen-paneel-titel">Kies een verhaal</h2>
+        <p class="verhalen-paneel-uitleg">Elk verhaal neemt je stap voor stap mee langs de kaart en de cijfers achter één thema.</p>
+        <div class="verhalen-paneel-lijst">
+          ${storyCatalog().map(story => `
+            <button type="button" class="story-menu-button" data-story-id="${escapeHtml(story.id)}"
+                    style="--verhaal-kleur:${escapeHtml(story.colors?.[0] || '#0b7285')}">
+              <span class="story-menu-title">${escapeHtml(story.title)}</span>
+              <span class="story-menu-meta">${escapeHtml(story.summary)} · ${story.slides.length} slides</span>
+            </button>`).join('')}
+        </div>
+        <div class="verhalen-paneel-acties">
+          <button type="button" class="verhalen-paneel-sluit">Verken de kaart zelf</button>
+        </div>
+      </div>`;
+
+    const sluit = () => { paneel.remove(); document.removeEventListener('keydown', opEscape); };
+    const opEscape = (e) => { if (e.key === 'Escape') sluit(); };
+
+    paneel.addEventListener('click', (e) => {
+      const verhaal = e.target.closest('[data-story-id]');
+      if (verhaal) { sluit(); openStory(verhaal.getAttribute('data-story-id')); return; }
+      if (e.target === paneel || e.target.closest('.verhalen-paneel-sluit')) sluit();
+    });
+    document.addEventListener('keydown', opEscape);
+
+    document.body.appendChild(paneel);
+    paneel.querySelector('.story-menu-button')?.focus();
+  }
+
   function updateMenuActiveState() {
     if (!state.menu) return;
     state.menu.querySelectorAll('.story-menu-button').forEach(btn => {
@@ -921,6 +965,7 @@
     state.kicker.textContent = slide.overline || story.title;
     state.title.textContent = slide.title || story.title;
     state.copy.textContent = slide.body || '';
+    state.card.scrollTop = 0; // een lange vorige slide kan naar beneden gescrold zijn
 
     applyStoryScene(slide, fc);
     const feature = resolveSlideFeature(slide, fc);
@@ -1018,6 +1063,7 @@
   });
 
   window.startStory = openStory;
+  window.openVerhalenPaneel = openVerhalenPaneel;
   window.closeStory = closeStory;
   window.nextStorySlide = nextSlide;
   window.prevStorySlide = prevSlide;

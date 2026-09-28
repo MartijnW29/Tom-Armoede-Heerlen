@@ -47,8 +47,12 @@ window.toonMelding = function (tekst, duurMs = 4500) {
 // COOKIES — Voorkeuren van de gebruiker onthouden (favorieten, aangemaakte variabelen)
 // ============================================================================
 
-/** Zet een cookie met een houdbaarheid in dagen (standaard 365 dagen). */
+// Keuze uit de cookiemelding ('geaccepteerd' of 'geweigerd'); zelf altijd toegestaan
+const COOKIE_KEUZE_NAAM = 'atlas_cookie_keuze';
+
+/** Zet een cookie met een houdbaarheid in dagen (standaard 365 dagen). Na weigeren wordt niets meer opgeslagen. */
 window.zetCookie = function (naam, waarde, dagen = 365) {
+  if (naam !== COOKIE_KEUZE_NAAM && window.leesCookie(COOKIE_KEUZE_NAAM) === 'geweigerd') return;
   const verloopt = new Date();
   verloopt.setTime(verloopt.getTime() + dagen * 24 * 60 * 60 * 1000);
   document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt.toUTCString()};path=/;SameSite=Lax`;
@@ -59,6 +63,45 @@ window.leesCookie = function (naam) {
   const veilig = naam.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1');
   const match  = document.cookie.match(new RegExp('(?:^|; )' + veilig + '=([^;]*)'));
   return match ? decodeURIComponent(match[1]) : null;
+};
+
+/**
+ * Cookiemelding onderin beeld. Wordt eenmalig getoond (na de introductie) zolang
+ * er nog geen keuze is gemaakt; de keuze zelf wordt in een cookie onthouden.
+ * Bij weigeren worden de al opgeslagen voorkeuren-cookies verwijderd.
+ */
+window.toonCookieMelding = function () {
+  if (window.leesCookie(COOKIE_KEUZE_NAAM) || document.getElementById('cookie-melding')) return;
+
+  const melding = document.createElement('section');
+  melding.id = 'cookie-melding';
+  melding.className = 'cookie-melding';
+  melding.setAttribute('role', 'dialog');
+  melding.setAttribute('aria-labelledby', 'cookie-melding-titel');
+  melding.innerHTML = `
+    <div class="cookie-melding-tekst">
+      <h2 id="cookie-melding-titel">Cookies</h2>
+      <p>De atlas gebruikt alleen functionele cookies om je favoriete en zelfgemaakte variabelen te
+      onthouden. Er worden geen gegevens gedeeld of voor advertenties gebruikt.</p>
+    </div>
+    <div class="cookie-melding-knoppen">
+      <button type="button" data-keuze="geaccepteerd">Accepteren</button>
+      <button type="button" data-keuze="geweigerd" class="is-secundair">Weigeren</button>
+    </div>`;
+
+  melding.addEventListener('click', (e) => {
+    const keuze = e.target.closest('[data-keuze]')?.dataset.keuze;
+    if (!keuze) return;
+    window.zetCookie(COOKIE_KEUZE_NAAM, keuze);
+    if (keuze === 'geweigerd') {
+      document.cookie.split('; ').map(c => c.split('=')[0])
+        .filter(naam => naam.startsWith('atlas_') && naam !== COOKIE_KEUZE_NAAM)
+        .forEach(naam => { document.cookie = `${naam}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`; });
+    }
+    melding.remove();
+  });
+
+  document.body.appendChild(melding);
 };
 
 // ============================================================================

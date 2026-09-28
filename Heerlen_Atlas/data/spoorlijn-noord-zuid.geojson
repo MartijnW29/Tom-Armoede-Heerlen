@@ -1,0 +1,28 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "naam": "Spoorlijn Voerendaal - Heerlen - Kerkrade (onderste spoorlijn)",
+        "gebruik": "Scheidslijn Noord/Zuid in de introductie (stap 2)",
+        "benadering": true,
+        "opmerking": "Tijdelijke benadering; vervangen door de echte spoorgeometrie (OpenStreetMap/ProRail)."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [5.9050, 50.8735],
+          [5.9267, 50.8800],
+          [5.9450, 50.8845],
+          [5.9600, 50.8880],
+          [5.9742, 50.8912],
+          [5.9880, 50.8885],
+          [6.0020, 50.8845],
+          [6.0200, 50.8790],
+          [6.0400, 50.8720]
+        ]
+      }
+    }
+  ]
+}

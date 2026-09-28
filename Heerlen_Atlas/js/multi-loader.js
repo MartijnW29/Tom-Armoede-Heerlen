@@ -450,6 +450,8 @@ function toonGemergedData(fc) {
   window.bringSmallPolygonsToFront?.(window.appData.dataLayer);
   window.appData.baseGeoLayer = laag;
 
+  // Tijdens de introductie bepaalt het verhaal zelf waar de kaart naartoe kijkt
+  if (window.introVerhaal?.actief) return;
   try { window.appData.map.fitBounds(laag.getBounds(), { maxZoom: 14 }); } catch (_) {}
 }
 

@@ -678,7 +678,15 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
   const activeFilter     = window.appData?.filter || null;
   const gefilterd        = filtreerdFeatures(fc, veld, activeFilter);
   const gefilterdWaarden = gefilterd.map(f => +f.properties[veld]).filter(v => !isNaN(v));
-  const teGebruiken      = gefilterdWaarden.length ? gefilterdWaarden : alleWaarden;
+
+  // Vaste kleurschaal: de breekpunten komen uit ALLE jaren samen, niet alleen uit
+  // het getoonde jaar. Zo betekent een kleur (bv. rood) in elk jaar hetzelfde en
+  // kun je jaren eerlijk met elkaar vergelijken.
+  const alleJarenFC       = window.multiLoaderState?.originalData;
+  const alleJarenWaarden  = alleJarenFC?.features?.length ? haalNumeriekeWaarden(alleJarenFC, veld) : [];
+  const alleJarenGefilterd = alleJarenWaarden.filter(w => waardePasseertFilter(w, alleJarenWaarden, activeFilter));
+  const teGebruiken = alleJarenGefilterd.length ? alleJarenGefilterd
+    : (gefilterdWaarden.length ? gefilterdWaarden : alleWaarden);
 
   const breuken = methode === 'equal'
     ? berekenBreaksEqualInterval(teGebruiken, aantalKlassen)

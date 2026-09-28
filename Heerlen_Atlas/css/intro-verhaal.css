@@ -1,0 +1,493 @@
+/* ========================================================================== */
+/* INTRO-VERHAAL.CSS — Introductie "De armoedegrens trekken"                  */
+/* ========================================================================== */
+
+:root {
+  --intro-grens: #d62839;
+  --intro-grens-zacht: rgba(214, 40, 57, 0.14);
+  --intro-breedte: 400px;
+  --intro-schaduw: 0 12px 40px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+/* --- Tijdens de introductie: geen zijbalk en geen geavanceerde functies --- */
+body.intro-actief #sidebar,
+body.intro-actief #sidebar-toggle,
+body.intro-actief #legend-widget,
+body.intro-actief .hover-timeseries-panel,
+body.intro-actief .intro-hulp {
+  display: none !important;
+}
+
+.intro-verhaal[hidden] { display: none; }
+
+/* --- Tekstkaartje ------------------------------------------------------------ */
+.intro-kaartje {
+  position: fixed;
+  z-index: 1200;
+  top: 16px;
+  left: 16px;
+  width: var(--intro-breedte);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--kleur-paneel, #fff);
+  color: var(--kleur-tekst, #243b53);
+  border-radius: 14px;
+  box-shadow: var(--intro-schaduw);
+  overflow: hidden;
+  animation: intro-in 0.45s ease both;
+}
+
+@keyframes intro-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.intro-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 0;
+  font-size: 12px;
+}
+
+.intro-teller {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--kleur-tekst-zacht, #486581);
+}
+
+.intro-overslaan {
+  border: 0;
+  background: none;
+  color: var(--kleur-tekst-zacht, #486581);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.intro-overslaan:hover { color: var(--kleur-tekst, #243b53); }
+
+.intro-voortgang { padding: 6px 18px 0; }
+
+/* Scrollt binnen het kaartje, nooit de pagina of de kaart */
+.intro-inhoud {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 18px 8px;
+  scrollbar-gutter: stable;
+}
+
+.intro-titel {
+  margin: 10px 0 8px;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #102a43;
+  text-wrap: balance;
+}
+
+.intro-tekst p { margin: 0 0 10px; font-size: 14.5px; line-height: 1.55; }
+
+.intro-vraag {
+  font-size: 17px !important;
+  font-weight: 700;
+  color: var(--intro-grens);
+}
+
+.intro-nadruk {
+  font-size: 16px !important;
+  font-weight: 700;
+  padding-left: 10px;
+  border-left: 3px dashed var(--intro-grens);
+}
+
+.intro-acties {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--kleur-rand, #d9e2ec);
+}
+
+.intro-acties-rechts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+
+.intro-terug,
+.intro-knop {
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--kleur-rand, #d9e2ec);
+  background: #fff;
+  color: var(--kleur-tekst, #243b53);
+  cursor: pointer;
+}
+.intro-terug { border-color: transparent; padding-left: 4px; white-space: nowrap; }
+.intro-knop { white-space: nowrap; }
+.intro-terug[hidden] { display: none; }
+.intro-terug:hover, .intro-knop:hover { background: var(--kleur-paneel-zacht, #f9fbfd); }
+
+.intro-knop-primair {
+  background: var(--kleur-primair, #0b7285);
+  border-color: var(--kleur-primair, #0b7285);
+  color: #fff;
+  font-weight: 600;
+}
+.intro-knop-primair:hover { background: var(--kleur-primair-hover, #0a5d6c); }
+.intro-knop:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.intro-knop:focus-visible,
+.intro-terug:focus-visible,
+.intro-overslaan:focus-visible,
+.grens-schuif-baan:focus-visible,
+.grens-schuif-label:focus-visible {
+  outline: 3px solid var(--kleur-focus, rgba(11, 114, 133, 0.35));
+  outline-offset: 2px;
+}
+
+.intro-bron {
+  margin: 0;
+  padding: 0 18px 12px;
+  font-size: 11px;
+  color: var(--kleur-tekst-zacht, #486581);
+}
+.intro-bron:empty { display: none; }
+
+.intro-hint { font-size: 13px; color: var(--intro-grens); margin: -4px 0 10px; }
+.intro-hint:empty { display: none; }
+
+/* --- Laden ------------------------------------------------------------------- */
+.intro-laden { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--kleur-tekst-zacht, #486581); margin: 8px 0; }
+.intro-laden-lijn {
+  width: 36px; height: 0;
+  border-top: 3px dashed var(--intro-grens);
+  animation: intro-laden 1s linear infinite;
+}
+@keyframes intro-laden { from { opacity: 0.3; } 50% { opacity: 1; } to { opacity: 0.3; } }
+
+/* --- Grens-schuif: de rode stippellijn is de schuifknop ---------------------- */
+.grens-schuif { user-select: none; -webkit-user-select: none; }
+
+.grens-schuif-baan {
+  position: relative;
+  height: 40px;
+  margin: 0 12px;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: 6px;
+}
+
+.grens-schuif-lijn {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: #e4e9ef;
+}
+
+.grens-schuif-stop {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  margin: -7px 0 0 -1px;
+  padding: 0;
+  border: 0;
+  background: #9fb3c8;
+  pointer-events: none;
+}
+.grens-schuif-stop.is-voorbij,
+.grens-schuif-stop.is-actief { background: var(--intro-grens); }
+.grens-schuif-stop.is-geblokkeerd { opacity: 0.35; }
+
+.grens-schuif-knop {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 28px;
+  margin-left: -14px;
+  display: flex;
+  justify-content: center;
+  cursor: grab;
+}
+.grens-schuif.is-slepend .grens-schuif-knop { cursor: grabbing; }
+
+/* De knop is de grens zelf: een rode stippellijn */
+.grens-schuif-streep {
+  display: block;
+  width: 4px;
+  height: 100%;
+  border-radius: 2px;
+  background: repeating-linear-gradient(to bottom, var(--intro-grens) 0 6px, transparent 6px 10px);
+  filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+  transition: transform 0.15s ease;
+}
+.grens-schuif-knop:hover .grens-schuif-streep,
+.grens-schuif.is-slepend .grens-schuif-streep { transform: scaleX(1.4); }
+
+.grens-schuif-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.grens-schuif-label {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht, #486581);
+  cursor: pointer;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.grens-schuif-label:first-child { text-align: left; }
+.grens-schuif-label:last-child  { text-align: right; }
+.grens-schuif-label.is-actief { color: var(--intro-grens); font-weight: 700; }
+.grens-schuif-label.is-geblokkeerd { opacity: 0.45; cursor: default; }
+
+/* compacte versie als voortgangsbalk */
+.grens-schuif-klein .grens-schuif-baan { height: 26px; }
+.grens-schuif-klein .grens-schuif-streep { width: 3px; background: repeating-linear-gradient(to bottom, var(--intro-grens) 0 5px, transparent 5px 8px); }
+.grens-schuif-klein .grens-schuif-label { font-size: 11px; }
+
+/* --- Drempel (stap 4) --------------------------------------------------------- */
+.intro-drempel {
+  margin: 4px 0 10px;
+  padding: 10px 10px 8px;
+  border-radius: 10px;
+  background: var(--intro-grens-zacht);
+}
+.intro-drempel-titel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--intro-grens);
+  margin: 0 0 2px 2px;
+}
+.intro-drempel .grens-schuif-label { font-size: 12.5px; }
+
+.intro-def-uitleg p { font-size: 13.5px; line-height: 1.5; margin: 6px 0; }
+.intro-def-label { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.intro-def-label em { font-weight: 400; font-style: normal; color: var(--kleur-tekst-zacht, #486581); font-size: 13px; }
+.intro-def-streep { display: inline-block; width: 18px; border-top: 3px dashed var(--intro-grens); }
+
+/* --- Legenda ------------------------------------------------------------------ */
+.intro-legenda { margin: 10px 0 4px; }
+.intro-legenda-titel { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.intro-legenda-balk { position: relative; height: 12px; border-radius: 3px; }
+.intro-legenda-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 0;
+  border-left: 2px solid #102a43;
+}
+.intro-legenda-marker b {
+  position: absolute;
+  top: -16px;
+  left: -5px;
+  font-size: 10px;
+  color: #102a43;
+}
+.intro-legenda-schaal { display: flex; justify-content: space-between; font-size: 11px; color: var(--kleur-tekst-zacht, #486581); margin-top: 3px; }
+.intro-legenda-noot { font-size: 11px; color: var(--kleur-tekst-zacht, #486581); margin-top: 2px; }
+
+/* --- Labels op de kaart (NOORD / ZUID) ---------------------------------------- */
+.intro-label-icoon { background: none; border: 0; }
+.intro-label {
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  animation: intro-fade 0.5s 0.9s ease both;
+}
+@keyframes intro-fade { from { opacity: 0; } to { opacity: 1; } }
+.intro-label-naam { font-size: 18px; font-weight: 800; letter-spacing: 0.12em; color: #102a43; }
+.intro-label-waarde { font-size: 13px; color: var(--kleur-tekst, #243b53); }
+
+.intro-tooltip { font-size: 12.5px; }
+
+/* --- Stap 5: kaarten naast elkaar (optie A) ------------------------------------ */
+.intro-verhaal[data-stap="5"] .intro-kaartje {
+  --intro-breedte: min(960px, calc(100vw - 32px));
+  left: 50%;
+  transform: translateX(-50%);
+  animation: none;
+}
+.intro-verhaal[data-stap="5"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1150;
+  background: rgba(16, 42, 67, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.intro-kaarten {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 6px 0 4px;
+}
+
+.intro-kleine-kaart {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--kleur-rand, #d9e2ec);
+  border-radius: 10px;
+  background: #fff;
+}
+.intro-kleine-kaart svg { display: block; width: 100%; height: auto; }
+.intro-kleine-kaart figcaption { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; font-size: 13px; }
+.intro-kleine-kaart figcaption .intro-def-streep { margin-bottom: 2px; }
+.intro-kleine-kaart figcaption span:last-child { font-size: 12px; color: var(--kleur-tekst-zacht, #486581); }
+
+.intro-teaser {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--kleur-paneel-zacht, #f9fbfd);
+  border: 1px solid var(--kleur-rand, #d9e2ec);
+}
+.intro-teaser p { margin: 0 0 6px; font-size: 13.5px; line-height: 1.5; }
+.intro-teaser p:last-child { margin-bottom: 0; }
+
+/* --- Stories oplichten na "Ontdek de verhalen" --------------------------------- */
+#stories-area.is-uitgelicht {
+  animation: intro-uitlichten 2.4s ease;
+}
+@keyframes intro-uitlichten {
+  0%, 100% { box-shadow: none; }
+  20%, 60% { box-shadow: 0 0 0 3px var(--intro-grens); }
+}
+
+/* --- Hulpknop "?" op de kaart ------------------------------------------------- */
+.intro-hulp { position: relative; background: #fff; }
+.intro-hulp-knop {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: #fff;
+  font: 700 16px/30px inherit;
+  color: #102a43;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.intro-hulp-knop:hover { background: #f4f4f4; }
+.intro-hulp-menu {
+  position: absolute;
+  top: 0;
+  left: 38px;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: var(--intro-schaduw);
+  overflow: hidden;
+}
+.intro-hulp-menu[hidden] { display: none; }
+.intro-hulp-menu button {
+  border: 0;
+  background: #fff;
+  text-align: left;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.intro-hulp-menu button:hover { background: var(--kleur-paneel-zacht, #f9fbfd); }
+
+/* --- Cookiemelding ------------------------------------------------------------ */
+.cookie-melding {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(16, 42, 67, 0.25);
+}
+.cookie-paneel {
+  width: min(560px, 100%);
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: var(--intro-schaduw);
+  padding: 18px 20px;
+  animation: intro-in 0.35s ease both;
+}
+.cookie-paneel h2 { margin: 0 0 6px; font-size: 18px; color: #102a43; }
+.cookie-paneel p { margin: 0 0 14px; font-size: 14px; line-height: 1.5; }
+.cookie-acties { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* --- Kleine schermen: kaartje als onderblad, kaart erboven zichtbaar --------- */
+@media (max-width: 700px) {
+  .intro-kaartje {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 58vh;
+    max-height: 58dvh;
+    border-radius: 14px;
+  }
+  .intro-titel { font-size: 19px; margin-top: 6px; }
+  .intro-label { padding: 4px 8px; }
+  .intro-label-naam { font-size: 14px; }
+  .intro-label-waarde { font-size: 12px; }
+  .intro-tekst p { font-size: 14px; }
+  .intro-verhaal[data-stap="5"] .intro-kaartje {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    transform: none;
+    width: auto;
+    max-height: none;
+  }
+  .intro-kaarten {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 78%;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    padding-bottom: 6px;
+  }
+  .intro-kleine-kaart { scroll-snap-align: start; }
+  /* Laatste stap: terug kan via de voortgangsbalk, zodat beide eindknoppen naast elkaar passen */
+  .intro-verhaal[data-stap="5"] .intro-terug { display: none; }
+  .intro-verhaal[data-stap="5"] .intro-acties-rechts { width: 100%; flex-wrap: nowrap; }
+  .intro-verhaal[data-stap="5"] .intro-acties-rechts .intro-knop { flex: 1 1 0; padding: 10px 8px; font-size: 13.5px; }
+  .intro-acties { padding: 8px 12px 10px; }
+  .intro-knop { padding: 9px 12px; }
+  .grens-schuif-klein .grens-schuif-label { font-size: 10px; }
+}
+
+@media (max-height: 560px) and (min-width: 701px) {
+  .intro-titel { font-size: 19px; }
+  .intro-tekst p { font-size: 13.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-kaartje, .intro-label, .cookie-paneel { animation: none; }
+  #stories-area.is-uitgelicht { animation: none; outline: 3px solid var(--intro-grens); }
+}

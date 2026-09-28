@@ -47,8 +47,13 @@ window.toonMelding = function (tekst, duurMs = 4500) {
 // COOKIES — Voorkeuren van de gebruiker onthouden (favorieten, aangemaakte variabelen)
 // ============================================================================
 
+// Cookie waarin de keuze uit de cookiemelding staat (zie intro-verhaal.js).
+// Bij "Alleen noodzakelijke" worden voorkeur-cookies (favorieten, eigen variabelen) niet opgeslagen.
+const COOKIE_KEUZE_NAAM = 'atlas_cookie_keuze';
+
 /** Zet een cookie met een houdbaarheid in dagen (standaard 365 dagen). */
 window.zetCookie = function (naam, waarde, dagen = 365) {
+  if (naam !== COOKIE_KEUZE_NAAM && window.leesCookie(COOKIE_KEUZE_NAAM) === 'noodzakelijk') return;
   const verloopt = new Date();
   verloopt.setTime(verloopt.getTime() + dagen * 24 * 60 * 60 * 1000);
   document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt.toUTCString()};path=/;SameSite=Lax`;

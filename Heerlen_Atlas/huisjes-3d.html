@@ -103,8 +103,7 @@
     #gl.sleept { cursor: grabbing; }
     #gl.wijst { cursor: pointer; }
 
-    /* Expliciete z-index (i.p.v. alleen DOM-volgorde) voorkomt dat een zwakke/software-GPU de
-       buurtranden-laag soms achter de WebGL-canvas laat tekenen — een bekend soort compositing-bug. */
+    /* Expliciete z-index: sommige (software-)GPU's tekenen de randenlaag anders achter de WebGL-canvas */
     #zones { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; isolation: isolate; }
     #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 8; }
     .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translate(-50%, -100%);
@@ -136,10 +135,10 @@
     #typeLegenda { position: absolute; top: 12px; right: 12px; z-index: 24; width: 250px; max-width: calc(100% - 24px); max-height: calc(100% - 24px);
       overflow-y: auto; padding: 12px 14px; border-radius: 10px; background: rgba(15,25,35,.92); border: 1px solid var(--rand); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
     #typeLegenda h4 { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tekst-zacht); margin-bottom: 9px; }
-    #gpuWaarschuwing { position: absolute; top: 12px; left: 56px; right: 12px; z-index: 26; max-width: 640px; padding: 10px 14px; border-radius: 9px;
-      background: rgba(60,30,10,.95); border: 1px solid var(--accent2); color: #ffd9c2; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
-    #gpuWaarschuwing b { color: #fff; }
-    #gpuWaarschuwing button { float: right; flex: none; padding: 2px 8px; margin-left: 10px; background: transparent; color: #ffd9c2; border: 1px solid rgba(255,255,255,.25); }
+    .type-lijst { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+    .type-rij { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--tekst-zacht); }
+    .type-rij i { width: 12px; height: 12px; flex: none; border-radius: 3px; }
+    .type-rij b { flex: 1; font-weight: 400; color: var(--tekst); }
     #hulp { position: absolute; right: 14px; bottom: 14px; z-index: 15; background: rgba(15,25,35,.85);
       border: 1px solid var(--rand); border-radius: 8px; padding: 9px 13px; font-size: 11px; color: var(--tekst-zacht); line-height: 1.7; }
     #hulp strong { color: var(--tekst); }
@@ -276,7 +275,6 @@
     <div id="tooltip"></div>
     <button id="sidebar-knop" title="Paneel tonen/verbergen">☰</button>
     <div id="typeLegenda" hidden></div>
-    <div id="gpuWaarschuwing" hidden></div>
     <div id="status" class="laden">Laden…</div>
     <div id="hulp">
       <strong>Besturing</strong><br>
@@ -348,8 +346,8 @@ const GEBOUWTYPEN = [
   { label: 'Cel',                                       kleur: '#17BECF' },
   { label: 'Overig / onbekend',                         kleur: '#9AA5B1' },
 ];
-// Zelfde linear→sRGB-conversie als palLUT hierboven, zodat de gebouwtype-kleuren er even
-// levendig uitzien als de gradiëntpaletten (de shader gaat er met pow(.,2.2) weer vanaf).
+// Zelfde linear→sRGB-conversie als palLUT, zodat de typekleuren even levendig zijn als de paletten
+// (de shader rekent met pow(.,2.2) weer terug).
 const GEBOUWTYPEN_RGB = GEBOUWTYPEN.map(t => { const c = new THREE.Color(t.kleur).convertLinearToSRGB(); return [c.r * 255, c.g * 255, c.b * 255]; });
 
 const NAMEN = {
@@ -402,8 +400,7 @@ function zetStatus(t, type = '') {
   const e = $('status');
   e.textContent = t; e.className = type; e.style.opacity = 1;
   clearTimeout(statusVervaagT);
-  // Gewone (niet-ladende, niet-foutieve) meldingen — zoals "klaar" of een trage-fps-waarschuwing —
-  // hoeven niet permanent te blijven staan; na een tijdje vervaagt de balk vanzelf.
+  // Gewone meldingen vervagen na een tijdje vanzelf
   if (type === '') statusVervaagT = setTimeout(() => { e.style.opacity = 0; }, 6000);
 }
 function voortgang(pct, tekst, sub = '') {
@@ -450,6 +447,7 @@ const S = {
   dag: 1, dagDoel: 1, autoDraai: false, rondvlucht: false,
   centrum: { x: 0, z: 0 }, straal: 6000,
   chunks: new Map(), gebouwen: null,
+  kwAuto: true, scherpte: 'auto', rustNiveau: 0, hq: false, basisNiveau: 0,
 };
 // Uniforms die alle materialen delen
 const U = {
@@ -643,11 +641,7 @@ async function laadHoogte(tx0, tx1, ty0, ty1) {
   // chunk-bereik (z13) → hoogtetegels (z14), met 1 tegel marge voor de bilineaire steekproef
   E.x0 = tx0 * 2 - 1; E.y0 = ty0 * 2 - 1; E.nx = (tx1 - tx0 + 1) * 2 + 2; E.ny = (ty1 - ty0 + 1) * 2 + 2;
   const W = E.nx * 256;
-  // `E.data` is vanaf hier al truthy (een array vol NaN) terwijl de echte hoogtetegels nog
-  // binnenkomen — de render-lus draait intussen gewoon door. `E.klaar` markeert pas het moment
-  // waarop alle NaN's zijn opgevuld; alles dat op terreinhoogte rekent en niet elk frame opnieuw
-  // hoeft (zoals de buurtranden-cache in zoneVoorbereiden) moet op déze vlag wachten, niet op
-  // `E.data` alleen — anders wordt zo'n cache voorgoed gevuld met NaN uit dit tussenmoment.
+  // E.data bestaat al (vol NaN) terwijl de tegels binnenkomen; caches op terreinhoogte wachten op E.klaar
   E.klaar = false;
   E.data = new Float32Array(W * E.ny * 256).fill(NaN);
   const lijst = [];
@@ -756,7 +750,6 @@ function maakChunk(tx, ty) {
     }
     ch.idxAttr[s] = new THREE.BufferAttribute(arr, 1);
   }
-  const idx = ch.idxAttr[1].array;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(pos.length), 3));
@@ -939,7 +932,7 @@ function verwerkFeatures(features) {
       cx: cx / (buiten || 1), cz: cz / (buiten || 1),
       naam: p.buurtnaam || p.buurt || p.naam || 'Onbekend', wijk: p.wijknaam || p.wijkcode || '',
       kleur: new THREE.Color(0x777777),
-      nBouw: 0, nWoon: 0, woonLijst: [], woonTot: 0, v: null, t: null, frac: 0,
+      nBouw: 0, nWoon: 0, v: null, t: null, frac: 0,
     };
   });
 }
@@ -959,16 +952,20 @@ function leesGebouwen(buf) {
   g.H = neem(Uint16Array, N); g.G = neem(Int16Array, N); g.BJ = neem(Uint16Array, N); g.VO = neem(Uint16Array, N); g.vlag = neem(Uint8Array, N);
   g.typ = neem(Uint8Array, N);
   g.rStart = new Uint32Array(N); g.vStart = new Uint32Array(N); g.vCnt = new Uint32Array(N);
-  g.cx = new Float32Array(N); g.cz = new Float32Array(N); g.buurt = new Int16Array(N).fill(-1);
+  g.cx = new Float32Array(N); g.cz = new Float32Array(N); g.opp = new Float32Array(N); g.buurt = new Int16Array(N).fill(-1);
   g.chunk = new Array(N); g.vOff = new Uint32Array(N); g.elev = new Float32Array(N);
   let r = 0, v = 0;
   for (let i = 0; i < N; i++) {
     g.rStart[i] = r; g.vStart[i] = v;
-    let tot = 0, sx = 0, sz = 0;
+    let tot = 0, sx = 0, sz = 0, a = 0;
     const n0 = g.len[r];
     for (let k = 0; k < g.ringen[i]; k++) tot += g.len[r + k];
-    for (let k = 0; k < n0; k++) { sx += g.X[v + k]; sz += g.Z[v + k]; }
+    for (let k = 0; k < n0; k++) {
+      const j = v + (k + 1) % n0;
+      sx += g.X[v + k]; sz += g.Z[v + k]; a += g.X[v + k] * g.Z[j] - g.X[j] * g.Z[v + k];
+    }
     g.vCnt[i] = tot; g.cx[i] = x0 + (sx / n0) * Q; g.cz[i] = z0 + (sz / n0) * Q;
+    g.opp[i] = Math.abs(a) / 2 * Q * Q;                      // voetafdruk in m²
     r += g.ringen[i]; v += tot;
   }
   return g;
@@ -981,10 +978,7 @@ async function bouwGebouwMeshes() {
   for (let i = 0; i < g.N; i++) {
     const [lon, lat] = naarLL(g.cx[i], g.cz[i]), mx = mercX(lon), my = mercY(lat);
     const ch = S.chunks.get(Math.floor(mx * NC) + '_' + Math.floor(my * NC));
-    if (!ch) continue;
-    { const r0 = g.rStart[i], o = g.vStart[i], n = g.len[r0]; let a = 0;
-      for (let k = 0; k < n; k++) { const j = o + (k + 1) % n; a += g.X[o + k] * g.Z[j] - g.X[j] * g.Z[o + k]; }
-      if (Math.abs(a) / 2 * g.Q * g.Q < MIN_OPP) continue; }        // schuurtjes en garages: onzichtbaar op deze schaal
+    if (!ch || g.opp[i] < MIN_OPP) continue;                    // schuurtjes en garages: onzichtbaar op deze schaal
     g.chunk[i] = ch; g.elev[i] = hoogteMerc(mx, my);
     (perChunk.get(ch) || perChunk.set(ch, []).get(ch)).push(i);
   }
@@ -1061,16 +1055,8 @@ async function bouwGebouwMeshes() {
 // ── Data koppelen: gebouwen → buurten, kleuren, kleurvlak ───────────────────
 function wijsBuurtenToe() {
   const g = S.gebouwen, cel = 300, index = new Map();
-  if (!g.opp) {                                       // voetafdruk per gebouw (m²), eenmalig
-    g.opp = new Float32Array(g.N);
-    for (let i = 0; i < g.N; i++) {
-      const o = g.vStart[i], n = g.len[g.rStart[i]]; let a = 0;
-      for (let k = 0; k < n; k++) { const j = o + (k + 1) % n; a += g.X[o + k] * g.Z[j] - g.X[j] * g.Z[o + k]; }
-      g.opp[i] = Math.abs(a) / 2 * g.Q * g.Q;
-    }
-  }
   for (const b of S.buurten) {
-    b.nBouw = 0; b.nWoon = 0; b.woonLijst = []; b.woonTot = 0; b.lijst = []; b.seed = hashInt(b.i * 131 + 7);
+    b.nBouw = 0; b.nWoon = 0; b.lijst = [];
     for (let cx = Math.floor(b.bb[0] / cel); cx <= Math.floor(b.bb[2] / cel); cx++) for (let cz = Math.floor(b.bb[1] / cel); cz <= Math.floor(b.bb[3] / cel); cz++) {
       const k = cx + ',' + cz; (index.get(k) || index.set(k, []).get(k)).push(b);
     }
@@ -1082,7 +1068,7 @@ function wijsBuurtenToe() {
     for (const b of kand) if (inBuurt(g.cx[i], g.cz[i], b)) {
       g.buurt[i] = b.i; b.nBouw++;
       if (g.chunk[i]) b.lijst.push(i);                                  // alleen gebouwen die echt getekend worden
-      if (g.vlag[i] & 1) { b.nWoon++; b.woonLijst.push(i); b.woonTot += Math.max(1, g.VO[i]); }
+      if (g.vlag[i] & 1) b.nWoon++;
       break;
     }
   }
@@ -1163,26 +1149,24 @@ function koppelChunkBuurten() {
 }
 function tekenOverlay(ch) {
   const ctx = ch.ovCtx, W = ch.ovCanvas.width;
-  ctx.clearRect(0, 0, W, W);
-  ctx.lineJoin = 'round';
-  // alles buiten Heerlen licht gedempt, zodat de gemeente uitkomt
-  ctx.fillStyle = "rgba(38,48,66,0.42)"; ctx.fillRect(0, 0, W, W);
-  ctx.globalCompositeOperation = "destination-out";
-  for (const b of ch.buurten) {
-    ctx.beginPath();
-    for (const poly of b.mpolys) for (const ring of poly) { ring.forEach(([mx, my], k) => { const x = (mx * NC - ch.tx) * W, y = (my * NC - ch.ty) * W; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); }
-    ctx.fill("evenodd");
-  }
-  ctx.globalCompositeOperation = "source-over";
-  for (const b of ch.buurten) {
-    const sel = b.i === S.geselecteerd, hov = b.i === S.hover;
+  const pad = b => {
     ctx.beginPath();
     for (const poly of b.mpolys) for (const ring of poly) {
       ring.forEach(([mx, my], k) => { const x = (mx * NC - ch.tx) * W, y = (my * NC - ch.ty) * W; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
       ctx.closePath();
     }
-    const alpha = klem(S.ovAlpha + (sel ? 0.12 : hov ? 0.12 : 0), 0, 1);
-    if (alpha > 0) { ctx.globalAlpha = alpha; ctx.fillStyle = b.v == null ? '#6b7280' : '#' + b.kleur.getHexString(); ctx.fill('evenodd'); ctx.globalAlpha = 1; }
+  };
+  ctx.clearRect(0, 0, W, W);
+  // alles buiten Heerlen licht gedempt, zodat de gemeente uitkomt
+  ctx.fillStyle = 'rgba(38,48,66,0.42)'; ctx.fillRect(0, 0, W, W);
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const b of ch.buurten) { pad(b); ctx.fill('evenodd'); }
+  ctx.globalCompositeOperation = 'source-over';
+  for (const b of ch.buurten) {
+    const alpha = klem(S.ovAlpha + (b.i === S.geselecteerd || b.i === S.hover ? 0.12 : 0));
+    if (!alpha) continue;
+    pad(b);
+    ctx.globalAlpha = alpha; ctx.fillStyle = b.v == null ? '#6b7280' : '#' + b.kleur.getHexString(); ctx.fill('evenodd'); ctx.globalAlpha = 1;
   }
   ch.ovTex.needsUpdate = true;
 }
@@ -1227,22 +1211,14 @@ function updateVisualisatie() {
 function tekenGebouwtypenLegenda() {
   const g = S.gebouwen, telling = new Array(GEBOUWTYPEN.length).fill(0);
   if (g) for (let i = 0; i < g.N; i++) if (g.chunk[i]) telling[g.typ[i]]++;
-  // Deze legenda zweeft rechtsboven in beeld (i.p.v. in de zijbalk) zodat hij altijd bij de
-  // gekleurde gebouwen staat, ook als de zijbalk is ingeklapt.
+  // Zweeft rechtsboven in beeld, zodat hij ook zichtbaar blijft met ingeklapte zijbalk
   $('typeLegenda').hidden = false;
   $('typeLegenda').innerHTML = `
     <h4>11 gebouwtypen</h4>
     <div class="uitleg" style="margin-top:0">Elk pand gekleurd naar zijn officiële BAG-gebruiksfunctie, ongeacht buurt of variabele.</div>
-    <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
-      ${GEBOUWTYPEN.map((t, i) => `
-        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tekst-zacht)">
-          <span style="width:12px;height:12px;flex:none;border-radius:3px;background:${t.kleur}"></span>
-          <span style="flex:1;color:var(--tekst)">${t.label}</span>
-          <span>${telling[i].toLocaleString('nl-NL')}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
+    <div class="type-lijst">
+      ${GEBOUWTYPEN.map((t, i) => `<div class="type-rij"><i style="background:${t.kleur}"></i><b>${t.label}</b>${telling[i].toLocaleString('nl-NL')}</div>`).join('')}
+    </div>`;
   $('legenda').innerHTML = `<div class="uitleg" style="margin-top:0">Zie rechtsboven in beeld.</div>`;
 }
 function tekenLegenda(kr) {
@@ -1518,13 +1494,12 @@ $('typeModus').onclick = () => {
   $('typeModus').textContent = S.typeModus ? '↩ Terug naar buurtvariabele' : '🏘 Toon 11 gebouwtypen';
   // Variabele/palet hebben geen effect zolang de gebouwtypen-kleuring aan staat
   $('kleurVar').disabled = $('palet').disabled = S.typeModus;
-  // Labels (de buurt-percentages) horen niet bij de gebouwtypen — uitzetten, en bij
-  // terugschakelen weer op de stand zetten die de gebruiker daarvoor had gekozen.
+  // Buurtlabels horen niet bij de gebouwtypen; bij terugschakelen de oude stand herstellen
   const labelSel = $('labelModus');
   if (S.typeModus) { S.labelModusVoorType = labelSel.value; labelSel.value = 'uit'; }
   else if (S.labelModusVoorType) labelSel.value = S.labelModusVoorType;
   labelSel.disabled = S.typeModus;
-  updateVisualisatie();   // herbouwt zowel de gebouwkleuren als de legenda (en, indien uit, de normale gradiënt-legenda mét kr)
+  updateVisualisatie();
 };
 $('laag').value = S.laag;
 $('laag').onchange = e => { S.laag = e.target.value; for (const ch of S.chunks.values()) { ch.laagNu = null; ch.niveau = -1; } ondergrondBeheer(); };
@@ -1556,7 +1531,6 @@ function formaat() {
 }
 addEventListener('resize', formaat);
 
-// ── Hoofdlus ────────────────────────────────────────────────────────────────
 // ── Gesplitst tekenen: kaart (laag 1) + lucht (3) op volle resolutie, gebouwen (laag 2) op lagere resolutie eroverheen ──
 let gebRT = null;
 const compScene = new THREE.Scene(), compCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -1621,9 +1595,7 @@ function zoneVoorbereiden() {
 }
 let zonesFoutGemeld = false;
 function tekenZones() {
-  // Canvasgrootte hier zelf bewaken (niet alleen bij window-resize via formaat()) — een DPI-wijziging
-  // zonder resize-event (bv. het venster naar een ander scherm met andere schaling slepen) liet deze
-  // canvas eerder soms stil verouderen, waardoor de rand op een verkeerde plek of helemaal niet tekende.
+  // Grootte elk frame controleren: een andere schermschaling geeft geen resize-event
   const cw = canvas.clientWidth, ch = canvas.clientHeight, dpr = Math.min(devicePixelRatio || 1, 2);
   const gewensteW = Math.max(1, Math.round(cw * dpr)), gewensteH = Math.max(1, Math.round(ch * dpr));
   if (zcv.width !== gewensteW || zcv.height !== gewensteH) { zcv.width = gewensteW; zcv.height = gewensteH; }
@@ -1644,9 +1616,7 @@ function tekenZones() {
           const w = e[3] * x + e[7] * y + e[11] * z + e[15];
           if (w < 1) { voor = false; continue; }
           const px = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / w * 0.5 + 0.5) * W, py = (-(e[1] * x + e[5] * y + e[9] * z + e[13]) / w * 0.5 + 0.5) * H;
-          // Eén ongeldig punt (bv. NaN uit een terreinhoogte die per ongeluk nog niet klaar was)
-          // mag nooit de hele gecombineerde lijn (alle buurten in één path) laten mislukken —
-          // dan liever dit ene stukje overslaan dan de rand van de hele kaart kwijtraken.
+          // Eén ongeldig punt overslaan i.p.v. het hele pad (alle buurten samen) te verliezen
           if (!isFinite(px) || !isFinite(py)) { voor = false; continue; }
           voor ? zctx.lineTo(px, py) : zctx.moveTo(px, py); voor = true;
         }
@@ -1665,14 +1635,12 @@ function tekenZones() {
       zctx.shadowColor = sel ? "rgba(0,200,255,0.9)" : "rgba(0,0,0,0.5)"; zctx.shadowBlur = 8 * sc; zctx.stroke(); zctx.shadowBlur = 0;
     }
   } catch (err) {
-    // Nooit de hele render-lus laten crashen door een probleem in de randenlaag — zonder deze
-    // vangnet stopte requestAnimationFrame(lus) hier stil, wat de indruk gaf dat "de rand er soms niet is"
-    // terwijl in werkelijkheid de hele scène was bevroren.
+    // Een fout in de randenlaag mag de render-lus niet stilleggen
     if (!zonesFoutGemeld) { zonesFoutGemeld = true; console.error('tekenZones mislukt:', err); }
   }
 }
 
-let vorige = performance.now(), frame = 0;
+// ── Schaduw volgt de camera ─────────────────────────────────────────────────
 let schaduwSleutel = '';
 function volgZon(nu) {
   // Schaduwbereik volgt de camera-focus in grote stappen. Zolang niets verandert (bijv. alleen draaien)
@@ -1741,7 +1709,6 @@ function updateLod() {
     renderer.shadowMap.needsUpdate = true;
   }
 }
-S.kwAuto = true; S.scherpte = "auto"; S.rustNiveau = 0; S.hq = false; S.basisNiveau = 0;
 let fpsTeller = 0, fpsStart = performance.now();
 let fpsVorige = performance.now();
 function bewaakFps(nu) {
@@ -1756,11 +1723,10 @@ function bewaakFps(nu) {
     zetStatus(`Traag (${Math.round(fps)} fps) — kwaliteit automatisch verlaagd naar ${KW_NAMEN[kwNiveau]}. Zelf kiezen kan onder Weergave.`);   // vervaagt vanzelf, zie zetStatus()
   }
 }
-let lusFoutGemeld = false;
+// ── Hoofdlus ────────────────────────────────────────────────────────────────
+let vorige = performance.now(), frame = 0, lusFoutGemeld = false;
 function lus(nu) {
-  // Alles in een vangnet: één onverwachte fout in een van de stappen hieronder zou anders de hele
-  // requestAnimationFrame-keten stilzwijgend afbreken — de laatst getekende frame blijft dan
-  // "bevroren" staan (kaart lijkt te werken, maar draait/update niet meer) zonder enige melding.
+  // Vangnet: één fout zou anders de hele requestAnimationFrame-keten stil afbreken (bevroren beeld)
   try { lusStap(nu); }
   catch (err) { if (!lusFoutGemeld) { lusFoutGemeld = true; console.error('lus() mislukt, ga toch door:', err); } }
   requestAnimationFrame(lus);
@@ -1800,7 +1766,7 @@ function lusStap(nu) {
     if (S.hq) { tekenen = S.hqVuil; if (tekenen) S.hqVuil = false; }
   }
   if (tekenen) {
-    if (frame % (kwNiveau >= 5 && kwNiveau < 6 ? 8 : kwNiveau >= 4 && kwNiveau < 6 ? 4 : 2) === 0 || S.hq) updateLabels();
+    if (S.hq || frame % (kwNiveau === 5 ? 8 : kwNiveau === 4 ? 4 : 2) === 0) updateLabels();
     tekenBeeld();
     tekenZones();
   }

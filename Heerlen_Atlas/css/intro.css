@@ -145,7 +145,7 @@ body.intro-open {
   max-height: calc(100% - 48px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 22px 26px 22px;
+  padding: 22px 26px;
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.6);

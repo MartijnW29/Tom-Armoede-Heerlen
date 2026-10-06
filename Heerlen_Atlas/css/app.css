@@ -1530,25 +1530,21 @@ button:focus-visible {
 .introjs-button { background: linear-gradient(135deg, #0b7285, #0a5f6f); color:#fff; border-radius:999px; padding:8px 12px; border:none; box-shadow: 0 8px 20px rgba(11,114,133,0.14); font-weight:700 }
 .introjs-button:disabled { opacity:0.6 }
 .introjs-prevbutton, .introjs-skipbutton { background:#e7eef2; color:#0b3040; box-shadow:none }
-.introjs-bullets { display:flex; gap:10px; align-items:center; margin-right:auto; padding:6px 8px; }
-.introjs-bullets li { list-style: none; }
-.introjs-bullets li a,
-.introjs-bullets li { display:block; width:14px; height:14px; border-radius:50%; background:#f1f6f8; border:1px solid rgba(8,24,48,0.06); box-shadow: 0 4px 10px rgba(8,24,48,0.06); transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease; cursor:pointer; }
-.introjs-bullets li:hover a,
-.introjs-bullets li:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 20px rgba(8,24,48,0.08); }
-/* Stronger selectors to catch both li and inner anchor states from Intro.js */
-.introjs-bullets li.active a,
-.introjs-bullets li.active,
-.introjs-bullets li.introjs-active,
-.introjs-bullets li.introjs-active a {
-  background-image: linear-gradient(90deg,#ffd166,#ffb703) !important;
-  background-color: transparent !important;
-  box-shadow: 0 12px 28px rgba(255,167,29,0.18) !important;
-  transform: scale(1.35) !important;
-  border-color: transparent !important;
+/* Bolletjes: selectors met "ul li a" zodat ze die van intro.js zelf overtreffen */
+.introjs-bullets ul { display: flex; gap: 10px; align-items: center; padding: 6px 8px; }
+.introjs-bullets ul li a {
+  display: block; width: 14px; height: 14px; border-radius: 50%;
+  background: #f1f6f8; border: 1px solid rgba(8,24,48,0.06); box-shadow: 0 4px 10px rgba(8,24,48,0.06);
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
-.introjs-bullets li a:focus,
-.introjs-bullets li:focus { outline: 2px solid rgba(11,114,133,0.16); outline-offset: 3px; }
+.introjs-bullets ul li a:hover,
+.introjs-bullets ul li a:focus { transform: translateY(-3px) scale(1.05); box-shadow: 0 8px 20px rgba(8,24,48,0.08); }
+.introjs-bullets ul li a.active {
+  width: 14px; border-color: transparent;
+  background: linear-gradient(90deg, #ffd166, #ffb703);
+  box-shadow: 0 12px 28px rgba(255,167,29,0.18);
+  transform: scale(1.35);
+}
 .introjs-helperLayer {
   box-shadow: 0 0 0 2000px rgba(2,10,18,0.38), 0 0 32px 14px rgba(255, 214, 102, 0.14);
 }

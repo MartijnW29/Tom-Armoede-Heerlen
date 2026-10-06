@@ -219,6 +219,7 @@ async function laadEnKoppelCbs() {
       window.vulAangemaakteVariabelenAan(fc);
       updateYearSlider(fc);
       window.populateFieldSelect(fc);
+      window.dispatchEvent(new Event('atlas:data-geladen'));
     }
     knop.textContent = aantal ? `✓ CBS-jaren toegevoegd (${aantal})` : 'Geen extra CBS-jaren nodig';
   } catch (err) {
@@ -270,6 +271,7 @@ function verwerkGeladen(fc) {
 
   updateYearSlider(fc);
   window.populateFieldSelect(fc);
+  window.dispatchEvent(new Event('atlas:data-geladen'));
 }
 
 
@@ -415,13 +417,12 @@ function opPeriodeGewijzigd({ target }) {
   jaarSlider.value !== voor ? updateYearDisplay() : werkTijdlijnBij();
 }
 
-/** Toon één jaar op de kaart zonder opnieuw in te zoomen. */
+/** Toon één jaar op de kaart. */
 function applyYearFilter(jaar) {
   const alles = window.multiLoaderState.originalData || window.appData.lastFC;
   if (!alles) return;
   window.multiLoaderState.yearFilter = jaar;
   window.appData.lastFC = filterFeaturesByYear(alles, jaar);
-  window.appData.skipFitOnNextRender = true;
   window.herlaadVisualisatie();
 }
 

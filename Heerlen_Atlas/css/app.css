@@ -1870,6 +1870,11 @@ button:focus-visible {
   margin-top: 18px;
 }
 
+.story-stats-leeg {
+  margin: 0;
+  color: #888;
+}
+
 .story-stat {
   padding: 12px 14px;
   border-radius: 18px;

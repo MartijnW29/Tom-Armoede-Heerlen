@@ -22,7 +22,6 @@ const KAART_CONFIG = {
   // Info-venster: deze velden staan bovenaan (als ze bestaan)
   voorkeurvelden: ['naam', 'name', 'buurtnaam', 'id', 'code'],
 
-  maxZoomNaDataLoad: 14,
   waasKleur:     '#f5f7fa',  // alles buiten Heerlen vervaagt naar wit
   waasDekking:   0.7,
 };
@@ -405,17 +404,8 @@ window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rd
     }).addTo(appData.dataLayer);
   }
 
+  // Kleuren verandert nooit de kaartuitsnede; inzoomen gebeurt alleen bij het laden van data
   waas.toon(fc);
-
-  // Alleen bij een nieuwe dataset naar de data zoomen (niet bij een ander jaar, palet of veld)
-  if (appData.lastLoadedData !== fc) {
-    if (!appData.skipFitOnNextRender) {
-      try { map.fitBounds(appData.choroplethLayer.getBounds(), { maxZoom: KAART_CONFIG.maxZoomNaDataLoad }); } catch (_) { /* lege laag */ }
-    }
-    delete appData.skipFitOnNextRender;
-    appData.lastLoadedData = fc;
-  }
-
   tekenLegenda(breuken, kleuren, veld);
 };
 

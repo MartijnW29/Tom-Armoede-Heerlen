@@ -1086,10 +1086,11 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-intro')?.addEventListener('click', openIntro);
 
-    // Geen introductie in de helften van het splitscherm
-    const splitHelft = document.documentElement.classList.contains('split-pane');
+    // Geen introductie in (of bij terugkomst uit) het splitscherm
+    const overslaan = document.documentElement.classList.contains('split-pane')
+      || new URLSearchParams(location.search).get('intro') === 'uit';
     const alGezien = window.leesCookie?.(INTRO_CONFIG.gezienCookie) === '1';
-    if (!splitHelft && (INTRO_CONFIG.altijdTonen || !alGezien)) openIntro();
+    if (!overslaan && (INTRO_CONFIG.altijdTonen || !alGezien)) openIntro();
     else window.toonCookieMelding?.();
   });
 

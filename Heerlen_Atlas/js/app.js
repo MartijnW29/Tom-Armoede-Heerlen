@@ -770,5 +770,8 @@ document.getElementById('verken-info-toggle').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-expanded', String(!info.hidden));
 });
 
-document.getElementById('open-split-screen').addEventListener('click', () => { window.location.href = 'split-screen.html'; });
+document.getElementById('open-split-screen').addEventListener('click', () => {
+  history.replaceState(null, '', '?intro=uit');   // met de terugknop van de browser geen introductie
+  window.location.href = 'split-screen.html';
+});
 document.getElementById('open-3d').addEventListener('click', () => { window.location.href = 'huisjes-3d.html'; });

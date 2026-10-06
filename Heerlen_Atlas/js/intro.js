@@ -85,11 +85,10 @@
   // HULPFUNCTIES — Opmaak en kleuren
   // ==========================================================================
 
-  function escapeHtml(waarde) {
-    return String(waarde ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  const escapeHtml = (waarde) => String(waarde ?? '').replace(/[&<>"']/g, t => `&#${t.charCodeAt(0)};`);
+
+  // Lengtegraden liggen op deze breedte dichter bij elkaar: afstanden in graden hiermee corrigeren
+  const COS_BREEDTE = Math.cos(50.89 * Math.PI / 180);
 
   const pct = (v, decimaal = false) => v == null ? 'geen cijfers' : `${(decimaal ? NF_DECIMAL : NF_HEEL).format(v)}%`;
 
@@ -269,12 +268,7 @@
   // DATA — Laden en klaarzetten
   // ==========================================================================
 
-  async function haalJson(url) {
-    if (window.fetchJsonMetRetry) return window.fetchJsonMetRetry(url);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} bij ${url}`);
-    return res.json();
-  }
+  const haalJson = (url) => window.fetchJsonMetRetry(url);  // met opnieuw proberen (multi-loader.js)
 
   const getal = (v) => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
 
@@ -475,11 +469,10 @@
       .sort((a, b) => a[0][1] - b[0][1]);
 
     // Afstand van elke buurt tot het spoor (0–1): de buurtkaart "valt uiteen" vanaf de lijn
-    const coslat = Math.cos(50.89 * Math.PI / 180);
     const spoorPunten = spoorgrens.flat();
     buurten.forEach(b => {
       const [lon, lat] = b.zwaartepunt;
-      b.afstandTotSpoor = Math.min(...spoorPunten.map(([la, lo]) => Math.hypot((lo - lon) * coslat, la - lat)));
+      b.afstandTotSpoor = Math.min(...spoorPunten.map(([la, lo]) => Math.hypot((lo - lon) * COS_BREEDTE, la - lat)));
     });
     const maxAfstand = Math.max(...buurten.map(b => b.afstandTotSpoor)) || 1;
     buurten.forEach(b => { b.afstandTotSpoor /= maxAfstand; });
@@ -569,10 +562,9 @@
 
   /** Cumulatieve lengtes langs een lijn (graden, lengtegraad gecorrigeerd). */
   function cumulatief(lijn) {
-    const coslat = Math.cos(50.89 * Math.PI / 180);
     const cum = [0];
     for (let i = 1; i < lijn.length; i++) {
-      cum.push(cum[i - 1] + Math.hypot((lijn[i][1] - lijn[i - 1][1]) * coslat, lijn[i][0] - lijn[i - 1][0]));
+      cum.push(cum[i - 1] + Math.hypot((lijn[i][1] - lijn[i - 1][1]) * COS_BREEDTE, lijn[i][0] - lijn[i - 1][0]));
     }
     return cum;
   }
@@ -936,8 +928,7 @@
 
     if (!staat.miniKaartPaden) {
       // Vlakke projectie: lengtegraad schalen met cos(breedtegraad), dan in het vak passen
-      const k = Math.cos(50.89 * Math.PI / 180);
-      const schaal = (c) => (typeof c[0] === 'number' ? [c[0] * k, c[1]] : c.map(schaal));
+      const schaal = (c) => (typeof c[0] === 'number' ? [c[0] * COS_BREEDTE, c[1]] : c.map(schaal));
       const vlak = m.buurten.map(b => ({ type: 'Feature', geometry: { type: b.feature.geometry.type, coordinates: schaal(b.feature.geometry.coordinates) } }));
       const projectie = d3.geoIdentity().reflectY(true).fitSize([breedte, hoogte], { type: 'FeatureCollection', features: vlak });
       const pad = d3.geoPath(projectie);

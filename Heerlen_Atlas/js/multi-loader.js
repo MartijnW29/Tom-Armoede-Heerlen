@@ -394,19 +394,17 @@ async function loadAllAPIs() {
 
     if (!collections.length) { alert("Geen geldige GeoJSON data ontvangen van de API's"); return; }
 
-    // Koppel wijknamen aan buurten als beide datasets aanwezig zijn (PDOK)
-    try {
-      const buurtFC = collections.find(fc => fc.features.some(f => f.properties?.buurt || f.properties?.buurtnaam));
-      const wijkFC  = collections.find(fc => fc.features.some(f => f.properties?.wijk  || f.properties?.wijknaam));
-      if (buurtFC && wijkFC) {
-        addWijkenToBuurten(buurtFC, wijkFC);
-        window.multiLoaderState.buurtenFC = buurtFC;
-        window.multiLoaderState.wijkenFC  = wijkFC;
-      }
-    } catch (e) { console.warn('Kon wijk-buurt overlaps niet berekenen:', e); }
+    // Wijken worden alleen grenslijnen en wijknamen; de kaartkleuren gaan over buurten.
+    // (Samengevoegd lagen de wijkvlakken gekleurd onder de buurten en telden ze mee in de legenda.)
+    const isWijkLaag = (fc) => fc.features.some(f => f.properties?.wijknaam && !f.properties?.buurtnaam);
+    const wijkLagen  = collections.filter(isWijkLaag);
+    const buurtLagen = collections.filter(fc => !isWijkLaag(fc));
+    if (wijkLagen.length && buurtLagen.length) {
+      window.multiLoaderState.wijkenFC = wijkLagen[0];
+      buurtLagen.forEach(fc => addWijkenToBuurten(fc, wijkLagen[0]));
+    }
 
-    const samengevoegd = mergeFeatureCollections(collections);
-    verwerkGeladen(samengevoegd);
+    verwerkGeladen(mergeFeatureCollections(buurtLagen.length ? buurtLagen : collections));
 
     // Vul de jaren vóór 2022 aan met CBS StatLine (2013–2021).
     await laadEnKoppelCbs();

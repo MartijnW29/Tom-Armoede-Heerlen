@@ -13,8 +13,10 @@ const APP_CONFIG = {
   kaartCentrum:    [50.8889, 5.9794],
   standaardZoom:   12,
   maxZoom:         19,
-  zoomStap:        0.5,    // per scrollklik/knop een halve stap: rustiger inzoomen
-  scrollPxPerZoom: 120,    // meer scrollen per zoomniveau = zachter
+  zoomStap:        0.5,    // +/- knoppen: een halve stap per klik
+  scrollSnelheid:  0.01,   // zoomniveaus per wiel-eenheid: één wieltik ≈ een halve stap
+  scrollVolgen:    0.25,   // deel van de resterende afstand per beeldje: lager = zachter uitlopen
+  tekenMarge:      0.6,    // vlakken tot 60% van de kaartbreedte buiten beeld tekenen (voor uitzoomen)
 
   // --- Ondergronden (keuze via het tandwiel); 'licht' is de grijze look van de introductie ---
   standaardOndergrond: 'licht',
@@ -28,7 +30,7 @@ const APP_CONFIG = {
   // --- Visualisatie ---
   standaardMethode:       'quantile',  // 'quantile' of 'equal'
   standaardPalet:         'rdylgn',
-  standaardDekking:       0.5,
+  standaardDekking:       0.65,
   standaardAantalKlassen: 5,
 
   // --- Variabelen bij het opstarten: kaart en info-venster ---
@@ -175,14 +177,66 @@ window.toggleFavorietVeld = function (veld) {
 // ============================================================================
 
 const map = L.map('map', {
-  zoomSnap:            0.25,
-  zoomDelta:           APP_CONFIG.zoomStap,
-  wheelPxPerZoomLevel: APP_CONFIG.scrollPxPerZoom,
+  zoomSnap:        0.25,
+  zoomDelta:       APP_CONFIG.zoomStap,
+  scrollWheelZoom: false,  // vervangen door vloeiend zoomen hieronder
 }).setView(APP_CONFIG.kaartCentrum, APP_CONFIG.standaardZoom);
 
-// Tijdens een zoom-animatie loopt de lichte waas buiten Heerlen achter; even verbergen oogt rustiger
-map.on('zoomstart', () => map.getContainer().classList.add('is-zoomend'));
-map.on('zoomend',   () => map.getContainer().classList.remove('is-zoomend'));
+/**
+ * Vloeiend zoomen met het muiswiel: elk beeldje schuift de kaart een stukje richting het
+ * doel-zoomniveau, rond het punt onder de muis (zoals de plugin Leaflet.SmoothWheelZoom).
+ * Gebruikt de interne _move-functies van Leaflet 1.9, net als Leaflet's eigen animaties.
+ */
+const VloeiendZoomen = L.Handler.extend({
+  addHooks() {
+    L.DomEvent.on(this._map.getContainer(), 'wheel', this._opWiel, this);
+    this._map.on('mousemove', this._volgMuis, this);
+  },
+  removeHooks() {
+    L.DomEvent.off(this._map.getContainer(), 'wheel', this._opWiel, this);
+    this._map.off('mousemove', this._volgMuis, this);
+  },
+
+  // De muis blijft gevolgd, zodat je tijdens het zoomen ook kunt slepen
+  _volgMuis(e) { this._muis = e.containerPoint; },
+
+  _opWiel(e) {
+    L.DomEvent.stop(e);
+    const kaart = this._map;
+    this._muis = kaart.mouseEventToContainerPoint(e);
+    if (!this._bezig) {
+      this._bezig = true;
+      this._doel = kaart.getZoom();
+      kaart._stop();
+      kaart._moveStart(true, false);
+      requestAnimationFrame(() => this._stap());
+    }
+    const doel = this._doel + L.DomEvent.getWheelDelta(e) * APP_CONFIG.scrollSnelheid;
+    this._doel = Math.max(kaart.getMinZoom(), Math.min(kaart.getMaxZoom(), doel));
+  },
+
+  _stap() {
+    const kaart = this._map;
+    const klaar = Math.abs(this._doel - kaart.getZoom()) < 0.005;
+    const zoom = klaar ? this._doel : kaart.getZoom() + (this._doel - kaart.getZoom()) * APP_CONFIG.scrollVolgen;
+    // Wat nu onder de muis ligt, blijft na deze stap onder de muis liggen
+    const anker = kaart.containerPointToLatLng(this._muis);
+    const verschuiving = this._muis.subtract(kaart.getSize().divideBy(2));
+    // De browser schaalt de bestaande tekening van de vlakken mee (licht en vloeiend);
+    // aan het eind (_moveEnd) tekent Leaflet ze één keer scherp opnieuw
+    kaart._move(kaart.unproject(kaart.project(anker, zoom).subtract(verschuiving), zoom), zoom);
+
+    if (!klaar) { requestAnimationFrame(() => this._stap()); return; }
+    this._bezig = false;
+    kaart._moveEnd(true);
+  },
+});
+map.addHandler('vloeiendZoomen', VloeiendZoomen);
+map.vloeiendZoomen.enable();
+
+// Vlakken ook een eind buiten beeld tekenen (standaard 10%), zodat er bij uitzoomen geen lege
+// randen zijn tot het opnieuw tekenen. Geldt voor alle lagen die hierna gemaakt worden.
+L.Renderer.prototype.options.padding = APP_CONFIG.tekenMarge;
 
 window.appData = {
   map,
@@ -374,6 +428,10 @@ if (window.isSplitScreenPane) {
 window.herlaadVisualisatie = function () {
   window.vernieuwVeldSelecties();  // velden zonder (gefilterde) data vallen af
 
+  // Het kleurblokje in de kaartrij toont het palet dat nu op de kaart staat
+  const stappen = haalKleurSchema(paletSelect.value, 5).map((kleur, i) => `${kleur} ${i * 20}% ${(i + 1) * 20}%`);
+  document.querySelectorAll('.rij-kleuren').forEach(el => { el.style.background = `linear-gradient(to right, ${stappen.join(', ')})`; });
+
   const veld = window.getSelectedFields()[0];
   const fc   = window.appData.lastFC;
   if (!veld || !fc) return;
@@ -398,14 +456,16 @@ window.customFieldNames = window.customFieldNames || [];
 
 const isCustomField = (veld) => window.customFieldNames.includes(veld);
 
-/** Bruikbare velden (zonder verborgen velden), opgesplitst in favorieten, zelfgemaakte en de rest. */
+/**
+ * Bruikbare velden (zonder verborgen velden): zelfgemaakte en de rest. Favorieten staan
+ * daarnaast ook nog apart, dus een favoriet blijft ook op zijn eigen plek staan.
+ */
 window.getFieldGroupsForUi = function () {
   const velden = [...new Set(window.availableFields)].filter(v => v && !VARIABELEN_CONFIG.verborgenVelden.includes(v));
-  const overig = velden.filter(v => !window.favorieteVelden.has(v));
   return {
     favorites: velden.filter(v => window.favorieteVelden.has(v)),
-    custom:    overig.filter(isCustomField),
-    standard:  overig.filter(v => !isCustomField(v)),
+    custom:    velden.filter(isCustomField),
+    standard:  velden.filter(v => !isCustomField(v)),
   };
 };
 
@@ -456,7 +516,7 @@ function veldHeeftBeschikbareData(veld) {
  * terug op leeg — behalve in de kaartrij: de kaart toont altijd iets.
  */
 function vulVeldSelect(sel, gewenst = sel.value, categorieen = veldCategorieen()) {
-  const velden = categorieen.flatMap(c => c.velden);
+  const velden = [...new Set(categorieen.flatMap(c => c.velden))];
   const isKaartRij = sel.closest('.field-row') === document.querySelector('#selectors-div .field-row');
   const terugval = isKaartRij ? (velden.includes(APP_CONFIG.standaardVeld1) ? APP_CONFIG.standaardVeld1 : velden[0] ?? '') : '';
   sel.replaceChildren(new Option('', ''), ...velden.map(v => new Option(window.mooieVeldnaam(v), v)));
@@ -488,7 +548,12 @@ window.addFieldSelector = function (standaardWaarde) {
   verwijder.setAttribute('aria-label', 'Variabele verwijderen');
   verwijder.addEventListener('click', () => { rij.remove(); werkRijRollenBij(); window.herlaadVisualisatie(); });
 
-  rij.append(icoon, sel, maakVeldPicker(sel), verwijder);
+  // Alleen zichtbaar in de kaartrij: de kleuren op de kaart; een klik opent de kaartweergave
+  const kleuren = maak('button', { type: 'button', className: 'rij-kleuren', title: 'Kleuren op de kaart aanpassen' });
+  kleuren.setAttribute('aria-label', 'Kleuren op de kaart aanpassen');
+  kleuren.addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('kaartweergave-toggle').click(); });
+
+  rij.append(icoon, sel, maakVeldPicker(sel), verwijder, kleuren);
   rijen.appendChild(rij);
   vulVeldSelect(sel, standaardWaarde);
   werkRijRollenBij();
@@ -579,7 +644,7 @@ function vernieuwVeldPickerInhoud(sel, categorieen = veldCategorieen()) {
   const naarCategorie = (naam) => (e) => { e.stopPropagation(); picker.categorie = naam; vernieuwVeldPickerInhoud(sel); };
 
   if (term) {
-    const treffers = categorieen.flatMap(c => c.velden).filter(v => window.mooieVeldnaam(v).toLowerCase().includes(term));
+    const treffers = [...new Set(categorieen.flatMap(c => c.velden))].filter(v => window.mooieVeldnaam(v).toLowerCase().includes(term));
     lijst.replaceChildren(...treffers.map(v => maakVeldItem(sel, v, categorieVanVeld(v))));
     if (!treffers.length) lijst.append(leeg('Geen variabelen gevonden.'));
     return;
@@ -599,7 +664,6 @@ function vernieuwVeldPickerInhoud(sel, categorieen = veldCategorieen()) {
       type: 'button', className: 'veld-picker-categorie',
       innerHTML: `<span class="veld-picker-naam">${naam}</span><span class="veld-picker-aantal">${velden.length}</span><span aria-hidden="true">›</span>`,
     });
-    knop.classList.toggle('is-actief', velden.includes(sel.value));
     knop.addEventListener('click', naarCategorie(naam));
     return knop;
   }));
@@ -613,7 +677,6 @@ function maakVeldItem(sel, veld, categorieLabel) {
   const naam = window.mooieVeldnaam(veld);
   const isFavoriet = window.favorieteVelden.has(veld);
   const item = maak('div', { className: 'veld-picker-item' });
-  item.classList.toggle('is-geselecteerd', veld === sel.value);
 
   const ster = maak('button', {
     type: 'button', className: 'veld-ster', textContent: isFavoriet ? '★' : '☆',

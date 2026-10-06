@@ -163,9 +163,9 @@
 
   /** Vul beide keuzelijsten opnieuw en behoud de gekozen velden (als die nog bestaan). */
   function vernieuwFormuleVelden() {
-    const { favorites, custom, standard } = window.getFieldGroupsForUi();
-    const alle = [...favorites, ...custom, ...standard];
-    const isZelfgemaakt = (v) => window.customFieldNames.includes(v);
+    const { custom, standard } = window.getFieldGroupsForUi();
+    const alle = [...custom, ...standard];
+    const isZelfgemaakt = (v) => custom.includes(v);
     const groep = (label, velden) => {
       const optgroup = Object.assign(document.createElement('optgroup'), { label });
       optgroup.append(...velden.map(v => new Option(window.mooieVeldnaam(v), v)));

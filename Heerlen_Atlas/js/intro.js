@@ -330,11 +330,6 @@
     return gewicht ? som / gewicht : null;
   }
 
-  function ringen(geom) {
-    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-    return polys.flat();
-  }
-
   function polygonen(geom) {
     return geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
   }
@@ -354,60 +349,6 @@
     return { punt: [cx / (6 * a), cy / (6 * a)], oppervlak: Math.abs(a) };
   }
 
-  /**
-   * Alle randsegmenten met de buurten waar ze bij horen. Aangrenzende buurten
-   * delen in PDOK exact dezelfde punten, dus een gedeelde rand komt twee keer voor.
-   */
-  function randSegmenten(buurten) {
-    const segmenten = new Map();
-    for (const b of buurten) {
-      for (const ring of ringen(b.feature.geometry)) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          const p = ring[i], q = ring[i + 1];
-          const kp = p.join(','), kq = q.join(',');
-          if (kp === kq) continue;
-          const sleutel = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
-          const seg = segmenten.get(sleutel) || { a: p, b: q, buurten: [] };
-          seg.buurten.push(b);
-          segmenten.set(sleutel, seg);
-        }
-      }
-    }
-    return [...segmenten.values()];
-  }
-
-  /** Rijg losse segmenten aaneen tot zo lang mogelijke lijnen ([lat, lng]-arrays). */
-  function maakKetens(segmenten) {
-    const sleutel = p => p.join(',');
-    const perPunt = new Map();
-    segmenten.forEach((s, i) => [s.a, s.b].forEach(p => {
-      const k = sleutel(p);
-      if (!perPunt.has(k)) perPunt.set(k, []);
-      perPunt.get(k).push(i);
-    }));
-
-    const gebruikt = new Array(segmenten.length).fill(false);
-    const volg = (startIndex, startPunt) => {
-      const keten = [startPunt];
-      let punt = startPunt, index = startIndex;
-      while (index !== undefined) {
-        gebruikt[index] = true;
-        const s = segmenten[index];
-        punt = sleutel(s.a) === sleutel(punt) ? s.b : s.a;
-        keten.push(punt);
-        index = perPunt.get(sleutel(punt)).find(j => !gebruikt[j]);
-      }
-      return keten;
-    };
-
-    const ketens = [];
-    // Eerst open lijnen vanaf hun eindpunt, daarna gesloten ringen
-    for (const [k, lijst] of perPunt) {
-      if (lijst.length === 1 && !gebruikt[lijst[0]]) ketens.push(volg(lijst[0], k.split(',').map(Number)));
-    }
-    segmenten.forEach((s, i) => { if (!gebruikt[i]) ketens.push(volg(i, s.a)); });
-    return ketens.map(k => k.map(([lon, lat]) => [lat, lon]));
-  }
 
   function bouwModel(features, cijfers) {
     const noordSet = new Set(INTRO_CONFIG.noordBuurten);
@@ -462,7 +403,8 @@
     buurten.forEach(b => { b.helft = b.noord ? noord : zuid; });
 
     // Grenzen uit de gedeelde randen: 1× = gemeentegrens, Noord↔Zuid = de spoorgrens
-    const segmenten = randSegmenten(buurten);
+    // randSegmenten en maakKetens staan in map.js (ook gebruikt voor de gemeentegrens op de kaart)
+    const segmenten = randSegmenten(buurten, b => b.feature.geometry);
     const gemeentegrens = maakKetens(segmenten.filter(s => s.buurten.length === 1));
     const spoorgrens = maakKetens(segmenten.filter(s => s.buurten.length === 2 && s.buurten[0].noord !== s.buurten[1].noord))
       .map(k => (k[0][1] > k.at(-1)[1] ? k.reverse() : k))   // van west naar oost tekenen
@@ -619,7 +561,7 @@
       zoomSnap: 0.25,
     });
     L.control.zoom({ position: 'topright' }).addTo(kaart);
-    L.control.attribution({ position: 'topright', prefix: false }).addTo(kaart);
+    L.control.attribution({ position: 'bottomright', prefix: false }).addTo(kaart);
     L.tileLayer(INTRO_CONFIG.tegelUrl, { maxZoom: 19, attribution: INTRO_CONFIG.tegelAttributie }).addTo(kaart);
     kaart.fitBounds(INTRO_CONFIG.startBounds);
 

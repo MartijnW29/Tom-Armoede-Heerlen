@@ -12,8 +12,9 @@ const KAART_CONFIG = {
   // Randen (dezelfde rustige look als de introductie)
   randKleur:       '#ffffff',
   randBreedte:     1,
-  wijkRandKleur:   '#243b53',
-  wijkRandBreedte: 2,
+  // Gemeentegrens: witte gloed met een donkere lijn erin (zoals in de introductie)
+  grensGloed: { color: '#ffffff', weight: 6, opacity: 0.7, lineJoin: 'round' },
+  grensLijn:  { color: '#061826', weight: 2.2, opacity: 0.85, lineJoin: 'round' },
 
   // Buurten buiten het filter of zonder waarde
   buitenFilterStijl: { color: '#999', weight: 0.6, fillOpacity: 0.45, fillColor: '#bdbdbd' },
@@ -21,9 +22,6 @@ const KAART_CONFIG = {
 
   // Info-venster: deze velden staan bovenaan (als ze bestaan)
   voorkeurvelden: ['naam', 'name', 'buurtnaam', 'id', 'code'],
-
-  waasKleur:     '#f5f7fa',  // alles buiten Heerlen vervaagt naar wit
-  waasDekking:   0.7,
 };
 
 const TRENDGRAFIEK_CONFIG = {
@@ -34,9 +32,10 @@ const TRENDGRAFIEK_CONFIG = {
   identiteitsvelden: ['code', 'id', 'buurtcode', 'wijkcode', 'buurtnaam', 'wijknaam', 'naam', 'name'],
 };
 
-// Lagen boven elkaar: waas (400, in de kaartcontainer) < kleuren < wijkgrenzen
-[['choroplethPane', 460], ['choroplethWijkBorderPane', 475]].forEach(([naam, z]) => {
-  map.createPane(naam).style.zIndex = z;
+// Lagen boven elkaar: ondergrond (200) < kleuren < gemeentegrens < info-venster (700).
+// De grens laat de muis door naar de buurten eronder.
+[['choroplethPane', 460, true], ['grensPane', 475, false]].forEach(([naam, z, muis]) => {
+  Object.assign(map.createPane(naam).style, { zIndex: z, pointerEvents: muis ? '' : 'none' });
 });
 
 
@@ -205,7 +204,7 @@ function getFeatureIdentity(feature) {
 
 const heeftIdentiteit = (feature, identiteit) => identiteit && String(feature?.properties?.[identiteit.key]) === identiteit.value;
 
-/** Gemiddelde waarde per jaar en per veld voor dezelfde buurt in alle jaren; waarden buiten het filter tellen niet mee. */
+/** Gemiddelde waarde per jaar en per veld voor dezelfde buurt in de gekozen periode; waarden buiten het filter tellen niet mee. */
 function verzamelTrend(buurt, velden) {
   const bron = window.multiLoaderState.originalData || window.appData.lastFC;
   if (!bron?.features?.length) return null;
@@ -215,11 +214,12 @@ function verzamelTrend(buurt, velden) {
   const kandidaten = zelfde.length ? zelfde : bron.features;
   const filter = window.appData.filter;
   const alleWaarden = Object.fromEntries(velden.map(v => [v, haalNumeriekeWaarden(bron, v)]));
+  const { start, eind } = haalPeriode();  // alleen de jaren van de gekozen periode op de tijdlijn
 
   const perJaar = new Map();
   for (const f of kandidaten) {
     const jaar = getYearFromFeature(f);
-    if (!Number.isFinite(jaar)) continue;
+    if (!Number.isFinite(jaar) || jaar < start || jaar > eind) continue;
     if (!perJaar.has(jaar)) perJaar.set(jaar, Object.fromEntries(velden.map(v => [v, []])));
     for (const v of velden) {
       const waarde = f.properties?.[v];
@@ -340,11 +340,11 @@ function toonTrendgrafiek(buurt, standaardVeld) {
  *   klassenFC: dataset voor de klassengrenzen (alle jaren), zodat dezelfde kleur
  *   elk jaar dezelfde waarde betekent.
  */
-window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rdylgn', opacity = 0.5, classes = 5, klassenFC } = {}) {
+window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rdylgn', opacity = 0.65, classes = 5, klassenFC } = {}) {
   if (!fc?.features?.length) return;
   const { appData } = window;
 
-  ['baseGeoLayer', 'choroplethLayer', 'choroplethWijkBorderLayer'].forEach(sleutel => {
+  ['baseGeoLayer', 'choroplethLayer'].forEach(sleutel => {
     if (appData[sleutel]) appData.dataLayer.removeLayer(appData[sleutel]);
     appData[sleutel] = null;
   });
@@ -396,75 +396,89 @@ window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rd
   }).addTo(appData.dataLayer);
   window.bringSmallPolygonsToFront(appData.dataLayer);
 
-  if (wijkenFC?.features?.length) {
-    appData.choroplethWijkBorderLayer = L.geoJSON(wijkenFC, {
-      style: { color: KAART_CONFIG.wijkRandKleur, weight: KAART_CONFIG.wijkRandBreedte, opacity: 0.8, fillOpacity: 0 },
-      pane: 'choroplethWijkBorderPane',
-      interactive: false,
-    }).addTo(appData.dataLayer);
-  }
-
   // Kleuren verandert nooit de kaartuitsnede; inzoomen gebeurt alleen bij het laden van data
-  waas.toon(fc);
+  gemeentegrens.toon(fc);
   tekenLegenda(breuken, kleuren, veld);
 };
 
 
+map.on('popupclose', planVerbergTrend);
+
+
 // ============================================================================
-// WAAS BUITEN HEERLEN — Een SVG-masker met de buurten (en het open info-venster)
-// als gaten, zodat alles daarbuiten lichter wordt. Eén keer opgebouwd en
-// bij elke kaartbeweging (hoogstens één keer per frame) bijgewerkt.
+// GEMEENTEGRENS — De buitenrand van alle buurten samen, als zwarte lijn.
+// Aangrenzende buurten delen in PDOK exact dezelfde punten: een rand die maar
+// bij één buurt hoort, ligt aan de buitenkant. (Ook gebruikt door intro.js.)
 // ============================================================================
 
-const waas = (function () {
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svgEl = (tag, attributen) => {
-    const el = document.createElementNS(svgNS, tag);
-    Object.entries(attributen).forEach(([k, v]) => el.setAttribute(k, v));
-    return el;
-  };
-  const vlak = { x: 0, y: 0, width: '100%', height: '100%' };
-
-  const masker = svgEl('mask', { id: 'choropleth-dim-mask' });
-  masker.append(svgEl('rect', { ...vlak, fill: 'white' }));
-  const svg = svgEl('svg', { class: 'choropleth-dim-svg', preserveAspectRatio: 'none' });
-  svg.append(svgEl('defs', {}), svgEl('rect', { ...vlak, fill: KAART_CONFIG.waasKleur, opacity: KAART_CONFIG.waasDekking, mask: 'url(#choropleth-dim-mask)' }));
-  svg.firstChild.append(masker);
-
-  let fc = null;
-  let popupEl = null;
-  let frame = null;
-
-  const ringNaarPad = (ring) => ring.map(([lon, lat], i) => {
-    const p = map.latLngToContainerPoint([lat, lon]);
-    return `${i ? 'L' : 'M'}${p.x},${p.y}`;
-  }).join(' ') + ' Z';
-
-  function werkBij() {
-    frame = null;
-    masker.replaceChildren(masker.firstChild);
-    if (popupEl) {
-      const p = popupEl.getBoundingClientRect(), k = map.getContainer().getBoundingClientRect();
-      const x = Math.max(0, p.left - k.left), y = Math.max(0, p.top - k.top);
-      const w = Math.min(k.width - x, p.width), h = Math.min(k.height - y, p.height);
-      if (w > 0 && h > 0) masker.append(svgEl('rect', { x, y, width: w, height: h, rx: 12, ry: 12, fill: 'black' }));
-    }
-    for (const { geometry: g } of fc?.features || []) {
-      const polygonen = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
-      polygonen.forEach(poly => masker.append(svgEl('path', { d: poly.map(ringNaarPad).join(' '), fill: 'black' })));
+/** Alle randsegmenten met de items waar ze bij horen; een gedeelde rand komt twee keer voor. */
+function randSegmenten(items, geometrieVan) {
+  const segmenten = new Map();
+  for (const item of items) {
+    const g = geometrieVan(item);
+    const ringen = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).flat();
+    for (const ring of ringen) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const p = ring[i], q = ring[i + 1];
+        const kp = p.join(','), kq = q.join(',');
+        if (kp === kq) continue;
+        const sleutel = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
+        const seg = segmenten.get(sleutel) || { a: p, b: q, buurten: [] };
+        seg.buurten.push(item);
+        segmenten.set(sleutel, seg);
+      }
     }
   }
+  return [...segmenten.values()];
+}
 
-  const plan = () => { frame ??= requestAnimationFrame(werkBij); };
-  map.on('move moveend zoom zoomend viewreset resize', plan);
-  map.on('popupopen',  (e) => { popupEl = e.popup.getElement(); plan(); });
-  map.on('popupclose', () => { popupEl = null; plan(); planVerbergTrend(); });
+/** Rijg losse segmenten aaneen tot zo lang mogelijke lijnen ([lat, lng]-arrays). */
+function maakKetens(segmenten) {
+  const sleutel = p => p.join(',');
+  const perPunt = new Map();
+  segmenten.forEach((s, i) => [s.a, s.b].forEach(p => {
+    const k = sleutel(p);
+    if (!perPunt.has(k)) perPunt.set(k, []);
+    perPunt.get(k).push(i);
+  }));
+
+  const gebruikt = new Array(segmenten.length).fill(false);
+  const volg = (startIndex, startPunt) => {
+    const keten = [startPunt];
+    let punt = startPunt, index = startIndex;
+    while (index !== undefined) {
+      gebruikt[index] = true;
+      const s = segmenten[index];
+      punt = sleutel(s.a) === sleutel(punt) ? s.b : s.a;
+      keten.push(punt);
+      index = perPunt.get(sleutel(punt)).find(j => !gebruikt[j]);
+    }
+    return keten;
+  };
+
+  const ketens = [];
+  // Eerst open lijnen vanaf hun eindpunt, daarna gesloten ringen
+  for (const [k, lijst] of perPunt) {
+    if (lijst.length === 1 && !gebruikt[lijst[0]]) ketens.push(volg(lijst[0], k.split(',').map(Number)));
+  }
+  segmenten.forEach((s, i) => { if (!gebruikt[i]) ketens.push(volg(i, s.a)); });
+  return ketens.map(k => k.map(([lon, lat]) => [lat, lon]));
+}
+
+const gemeentegrens = (function () {
+  const lijn = (stijl) => L.polyline([], { pane: 'grensPane', interactive: false, ...stijl });
+  const lagen = [lijn(KAART_CONFIG.grensGloed), lijn(KAART_CONFIG.grensLijn)];
+  let sleutel = null;  // de grens verandert alleen als er andere buurten op de kaart staan
 
   return {
-    toon(nieuweFC) {
-      fc = nieuweFC;
-      if (!svg.isConnected) map.getContainer().appendChild(svg);
-      werkBij();
+    toon(fc) {
+      const codes = fc.features.map(f => f.properties?.buurtcode).join();
+      if (codes !== sleutel) {
+        const ketens = maakKetens(randSegmenten(fc.features, f => f.geometry).filter(s => s.buurten.length === 1));
+        lagen.forEach(l => l.setLatLngs(ketens));
+        sleutel = codes;
+      }
+      lagen.forEach(l => { if (!map.hasLayer(l)) l.addTo(map); });
     },
   };
 })();

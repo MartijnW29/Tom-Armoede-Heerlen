@@ -12,18 +12,22 @@
 (function () {
   'use strict';
 
-  // --- CBS-tabelcodes per jaar (Kerncijfers wijken en buurten <jaar>) ---------
+  // ==========================================================================
+  // CONFIGURATIE
+  // ==========================================================================
+
+  // CBS-tabelcodes per jaar (Kerncijfers wijken en buurten <jaar>)
   const CBS_TABELLEN = {
     2013: '82339NED', 2014: '82931NED', 2015: '83220NED', 2016: '83487NED',
     2017: '83765NED', 2018: '84286NED', 2019: '84583NED', 2020: '84799NED',
     2021: '85039NED',
   };
 
-  const CBS_BASIS_URL = 'https://opendata.cbs.nl/ODataApi/OData';
-  const GEMEENTE_CODE_DEEL = '0917';                 // Heerlen (komt voor in GM0917, WK0917xx, BU0917xxxx)
-  const CBS_CODE_REGEX = /^(GM|WK|BU)0917/;
+  const CBS_BASIS_URL      = 'https://opendata.cbs.nl/ODataApi/OData';
+  const GEMEENTE_CODE_DEEL = '0917';   // Heerlen (komt voor in GM0917, WK0917xx, BU0917xxxx)
+  const CBS_CODE_REGEX     = /^(GM|WK|BU)0917/;
 
-  // --- Vertaaltabel CBS → PDOK ------------------------------------------------
+  // Vertaaltabel CBS → PDOK.
   // Sleutel: CBS-veldnaam zonder volgnummer, gevolgd door "|" en de eenheid waar
   // dezelfde naam meerdere keren voorkomt (stroom kWh / gas m³).
   // Waarde: PDOK-veldnaam. Is de PDOK-naam een percentage en levert CBS in dat
@@ -176,10 +180,22 @@
 
   const EENHEID_TAG = { '%': 'pct', 'aantal': 'aantal', 'kWh': 'kwh', 'm³': 'm3', 'ha': 'ha', 'km': 'km' };
 
+  // Identificerende velden die van de kaartvorm meegaan naar oudere jaren
+  const IDENTITEIT = ['buurtcode', 'buurtnaam', 'wijkcode', 'wijknaam', 'gemeentecode', 'gemeentenaam',
+    'overlapping_wijken', 'water', 'meest_voorkomende_postcode'];
 
-  // --- Hulpfuncties -----------------------------------------------------------
+
+  // ==========================================================================
+  // HULPFUNCTIES
+  // ==========================================================================
 
   const zonderVolgnummer = (sleutel) => sleutel.replace(/_\d+$/, '');
+  const codeVan = (p) => String(p.buurtcode || p.wijkcode || p.gemeentecode || '').trim();
+
+  function numeriek(v) {
+    if (typeof v === 'number') return v;
+    return typeof v === 'string' && v.trim() !== '' && !isNaN(+v) ? +v : null;
+  }
 
   function slug(tekst) {
     return String(tekst).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -194,33 +210,32 @@
       || `cbs_${slug(topic.Title)}_${EENHEID_TAG[eenheid] || slug(eenheid)}`.replace(/_$/, '');
   }
 
-  // Met opnieuw proberen (zie multi-loader.js); valt terug op gewone fetch als die er niet is
-  async function haalJson(url) {
-    if (window.fetchJsonMetRetry) return window.fetchJsonMetRetry(url);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} bij ${url}`);
-    return res.json();
-  }
+
+  // ==========================================================================
+  // LADEN — Eén jaar uit CBS StatLine
+  // ==========================================================================
 
   /** Haal voor één jaar de Heerlen-rijen op, vertaald naar { code: { veldnaam: waarde } }. */
   async function laadJaar(jaar, tabel) {
-    const meta = (await haalJson(`${CBS_BASIS_URL}/${tabel}/DataProperties?$format=json`)).value;
+    const meta = (await window.fetchJsonMetRetry(`${CBS_BASIS_URL}/${tabel}/DataProperties?$format=json`)).value;
     const geoSleutel = meta.find(m => m.Type === 'GeoDetail')?.Key || 'WijkenEnBuurten';
     const topics = meta.filter(m => m.Type === 'Topic' && !OVERSLAAN.test(m.Key));
 
-    // Per sleutel: veldnaam + of de waarde omgerekend moet worden
+    // Per CBS-sleutel de veldnaam en eenheid; komt een veldnaam vaker voor, dan wint de eerste
     const velden = {};
     topics.forEach(t => {
       const naam = veldnaamVoor(t);
-      if (Object.values(velden).some(v => v.naam === naam)) return; // eerste treffer wint
-      velden[t.Key] = { naam, eenheid: (t.Unit || '').trim() };
+      if (!Object.values(velden).some(v => v.naam === naam)) velden[t.Key] = { naam, eenheid: (t.Unit || '').trim() };
     });
+    const sleutelVan = (naam) => Object.keys(velden).find(k => velden[k].naam === naam);
+    const inwonersSleutel    = sleutelVan('aantal_inwoners');
+    const huishoudensSleutel = sleutelVan('aantal_huishoudens');
 
     const filter = encodeURIComponent(`substringof('${GEMEENTE_CODE_DEEL}',${geoSleutel})`);
     let url = `${CBS_BASIS_URL}/${tabel}/TypedDataSet?$filter=${filter}&$format=json`;
     const rijen = [];
     while (url) {
-      const json = await haalJson(url);
+      const json = await window.fetchJsonMetRetry(url);
       rijen.push(...(json.value || []));
       url = json['odata.nextLink'] || null;
     }
@@ -230,8 +245,8 @@
       const code = String(rij[geoSleutel] || '').trim();
       if (!CBS_CODE_REGEX.test(code)) continue;
 
-      const inwoners   = numeriek(rij[Object.keys(velden).find(k => velden[k].naam === 'aantal_inwoners')]);
-      const huishouds  = numeriek(rij[Object.keys(velden).find(k => velden[k].naam === 'aantal_huishoudens')]);
+      const inwoners    = numeriek(rij[inwonersSleutel]);
+      const huishoudens = numeriek(rij[huishoudensSleutel]);
       const props = {};
 
       for (const [sleutel, { naam, eenheid }] of Object.entries(velden)) {
@@ -240,7 +255,7 @@
 
         // Sommige jaren geven aantallen waar PDOK een percentage heeft (bv. leeftijdsgroepen)
         if (naam.startsWith('percentage_') && eenheid === 'aantal') {
-          const noemer = NOEMER_HUISHOUDENS.has(naam) ? huishouds : inwoners;
+          const noemer = NOEMER_HUISHOUDENS.has(naam) ? huishoudens : inwoners;
           if (!noemer) continue;
           waarde = Math.round((waarde / noemer) * 100);
         }
@@ -251,20 +266,10 @@
     return perCode;
   }
 
-  function numeriek(v) {
-    if (typeof v === 'number') return v;
-    if (typeof v === 'string' && v.trim() !== '' && !isNaN(+v.trim())) return +v.trim();
-    return null;
-  }
 
-  const codeVan = (p) => String(p.buurtcode || p.wijkcode || p.gemeentecode || '').trim();
-
-  // Identificerende velden die we van de kaartvorm meenemen naar oudere jaren
-  const IDENTITEIT = ['buurtcode', 'buurtnaam', 'wijkcode', 'wijknaam', 'gemeentecode', 'gemeentenaam',
-    'overlapping_wijken', 'water', 'meest_voorkomende_postcode'];
-
-
-  // --- Publieke functie -------------------------------------------------------
+  // ==========================================================================
+  // KOPPELEN — Oudere jaren aan de kaartvormen hangen
+  // ==========================================================================
 
   /**
    * Voeg de jaren 2013–2021 toe aan de FeatureCollection: de kaartvormen van het
@@ -274,9 +279,8 @@
   async function laadCbsHistorie(fc) {
     if (!fc?.features?.length) return 0;
 
-    const jaren = fc.features.map(f => window.getYearFromFeature?.(f)).filter(Number.isFinite);
-    const vroegste = Math.min(...jaren);
-    const sjabloon = fc.features.filter(f => window.getYearFromFeature?.(f) === vroegste);
+    const vroegste = Math.min(...fc.features.map(window.getYearFromFeature).filter(Number.isFinite));
+    const sjabloon = fc.features.filter(f => window.getYearFromFeature(f) === vroegste);
     const doelJaren = Object.keys(CBS_TABELLEN).map(Number).filter(j => j < vroegste);
     if (!sjabloon.length || !doelJaren.length) return 0;
 
@@ -284,23 +288,19 @@
       try { return [jaar, await laadJaar(jaar, CBS_TABELLEN[jaar])]; }
       catch (err) { console.warn(`CBS ${jaar} laden mislukt:`, err); return [jaar, null]; }
     };
-    const resultaten = window.metMaxGelijktijdig ? await window.metMaxGelijktijdig(doelJaren, 3, taak) : await Promise.all(doelJaren.map(taak));
-    window.meldMislukteJaren?.(resultaten.filter(([, r]) => !r).map(([j]) => j), 'CBS');
+    const resultaten = await window.metMaxGelijktijdig(doelJaren, 3, taak);
+    window.meldMislukteJaren(resultaten.filter(([, r]) => !r).map(([j]) => j), 'CBS');
 
     let toegevoegd = 0;
-    for (const [jaar, perCode] of resultaten) {
-      if (!perCode) continue;
+    for (const [jaar, perCode] of resultaten.filter(([, r]) => r)) {
       let gekoppeld = 0;
       for (const vorm of sjabloon) {
-        const cijfers = perCode[codeVan(vorm.properties || {})];
-        if (!cijfers) continue; // gebied bestond dit jaar niet (of andere code)
-        const props = { jaar };
-        IDENTITEIT.forEach(k => { if (k in vorm.properties) props[k] = vorm.properties[k]; });
-        Object.assign(props, cijfers);
-        fc.features.push({ type: 'Feature', properties: props, geometry: vorm.geometry });
+        const cijfers = perCode[codeVan(vorm.properties)];
+        if (!cijfers) continue;  // gebied bestond dit jaar niet (of had een andere code)
+        const identiteit = Object.fromEntries(IDENTITEIT.filter(k => k in vorm.properties).map(k => [k, vorm.properties[k]]));
+        fc.features.push({ type: 'Feature', properties: { jaar, ...identiteit, ...cijfers }, geometry: vorm.geometry });
         gekoppeld++;
       }
-      console.log(`CBS ${jaar}: ${gekoppeld} van ${sjabloon.length} gebieden gekoppeld`);
       if (gekoppeld) toegevoegd++;
     }
     return toegevoegd;

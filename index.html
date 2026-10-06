@@ -5,114 +5,87 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Opportunity Atlas — Heerlen</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #0b7285 0%, #084c59 100%);
-      min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
+      min-height: 100vh;
       padding: 20px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0b7285 0%, #084c59 100%);
     }
-    
+
     .container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-      max-width: 600px;
       width: 100%;
+      max-width: 600px;
       padding: 60px 40px;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
       text-align: center;
     }
-    
-    h1 {
-      color: #0b7285;
-      font-size: 32px;
-      margin-bottom: 20px;
-    }
-    
-    .subtitle {
-      color: #486581;
-      font-size: 16px;
-      margin-bottom: 40px;
-      line-height: 1.6;
-    }
-    
+
+    h1 { margin-bottom: 20px; font-size: 32px; color: #0b7285; }
+    h2 { margin-bottom: 15px; font-size: 18px; color: #0b7285; }
+
+    .subtitle { margin-bottom: 40px; font-size: 16px; line-height: 1.6; color: #486581; }
+
     .description {
-      color: #243b53;
-      font-size: 14px;
       margin-bottom: 50px;
-      line-height: 1.8;
-      text-align: left;
-      background: #f9fbfd;
       padding: 20px;
-      border-radius: 8px;
       border-left: 4px solid #0b7285;
-    }
-    
-    .features {
-      text-align: left;
-      margin-bottom: 50px;
-    }
-    
-    .features h2 {
-      color: #0b7285;
-      font-size: 18px;
-      margin-bottom: 15px;
-    }
-    
-    .features ul {
-      list-style: none;
-    }
-    
-    .features li {
-      color: #486581;
+      border-radius: 8px;
+      background: #f9fbfd;
       font-size: 14px;
-      padding: 8px 0;
-      padding-left: 25px;
-      position: relative;
+      line-height: 1.8;
+      color: #243b53;
+      text-align: left;
     }
-    
-    .features li:before {
+
+    .features { margin-bottom: 50px; text-align: left; }
+    .features ul { list-style: none; }
+
+    .features li {
+      position: relative;
+      padding: 8px 0 8px 25px;
+      font-size: 14px;
+      color: #486581;
+    }
+
+    .features li::before {
       content: "✓";
       position: absolute;
       left: 0;
-      color: #0b7285;
       font-weight: bold;
+      color: #0b7285;
     }
-    
+
     .cta-button {
       display: inline-block;
-      background: linear-gradient(135deg, #0b7285 0%, #084c59 100%);
-      color: white;
       padding: 15px 40px;
-      border: none;
       border-radius: 8px;
+      background: linear-gradient(135deg, #0b7285 0%, #084c59 100%);
+      box-shadow: 0 4px 15px rgba(11, 114, 133, 0.3);
       font-size: 16px;
       font-weight: 600;
-      cursor: pointer;
+      color: #fff;
       text-decoration: none;
       transition: transform 0.2s, box-shadow 0.2s;
-      box-shadow: 0 4px 15px rgba(11, 114, 133, 0.3);
     }
-    
+
     .cta-button:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(11, 114, 133, 0.4);
     }
-    
+
     .version-info {
       margin-top: 50px;
       padding-top: 20px;
       border-top: 1px solid #d9e2ec;
-      color: #486581;
       font-size: 12px;
+      color: #486581;
     }
   </style>
 </head>
@@ -120,26 +93,26 @@
   <div class="container">
     <h1>Opportunity Atlas</h1>
     <p class="subtitle">Heerlen Proefversie</p>
-    
+
     <div class="description">
-      De Opportunity Atlas is een interactieve kaartapplicatie waarmee u economische en sociale indicatoren van Heerlen kunt verkennen. 
-      U kunt meerdere datasets tegelijk laden, filteren op specifieke jaren en verschillende visualisaties creëren.
+      De Opportunity Atlas is een interactieve kaart waarmee u sociale en economische cijfers van de buurten
+      in Heerlen verkent: per jaar, naast elkaar en in verhalen die uitleggen wat de cijfers betekenen.
     </div>
-    
+
     <div class="features">
       <h2>Functies</h2>
       <ul>
-        <li>Laad meerdere bestanden en API's tegelijk</li>
-        <li>Filter data op jaar met een interactieve slider</li>
-        <li>Visualiseer data met choro-maten en D3-grafieken</li>
-        <li>Selecteer meerdere variabelen voor analyse</li>
-        <li>Pas geavanceerde filters toe (min/max, percentielen)</li>
-        <li>Integratie met PDOK en custom API's</li>
+        <li>Buurtcijfers van CBS en PDOK van 2013 tot en met 2025</li>
+        <li>Een tijdlijn om een jaar of periode te kiezen, met trend per buurt</li>
+        <li>Stories die stap voor stap een onderwerp op de kaart uitleggen</li>
+        <li>Zelf variabelen berekenen met een formule</li>
+        <li>Splitscherm om twee kaarten naast elkaar te vergelijken</li>
+        <li>Alle gebouwen van Heerlen in 3D</li>
       </ul>
     </div>
-    
-    <a href="Heerlen_Atlas\index.html" class="cta-button">Start Applicatie</a>
-    
+
+    <a href="Heerlen_Atlas/index.html" class="cta-button">Start Applicatie</a>
+
     <div class="version-info">
       <p>Proefversie 1.0 | <strong>Heerlen 2024</strong></p>
     </div>

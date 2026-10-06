@@ -1,88 +1,141 @@
 // ============================================================================
-// app.js — Heerlen Opportunity Atlas
-// Kaart-initialisatie, event-listeners, filter- en visualisatie-logica
+// APP.JS — Heerlen Opportunity Atlas
+// Kaart, kaartweergave, "Verken de data" en de zijbalk
 // ============================================================================
 
-/**
- * Maak een technische veldnaam prettig leesbaar voor weergave aan de gebruiker:
- * underscores worden spaties en de eerste letter wordt een hoofdletter
- * (bv. "aantal_inwoners" → "Aantal inwoners"). De onderliggende data-sleutel
- * (het veld zelf, gebruikt om waarden op te zoeken) blijft altijd ongewijzigd —
- * dit is uitsluitend voor de weergave. Globaal beschikbaar voor alle scripts.
- */
-window.mooieVeldnaam = function (veld) {
-  if (!veld || typeof veld !== 'string') return veld;
-  const metSpaties = veld.replace(/_/g, ' ').trim();
-  if (!metSpaties) return veld;
-  return metSpaties.charAt(0).toUpperCase() + metSpaties.slice(1);
+
+// ============================================================================
+// CONFIGURATIE — Pas hier de projectinstellingen aan
+// ============================================================================
+
+const APP_CONFIG = {
+  // --- Kaart ---
+  kaartCentrum:    [50.8889, 5.9794],
+  standaardZoom:   12,
+  maxZoom:         19,
+  zoomStap:        0.5,    // +/- knoppen: een halve stap per klik
+  scrollSnelheid:  0.01,   // zoomniveaus per wiel-eenheid: één wieltik ≈ een halve stap
+  scrollVolgen:    0.25,   // deel van de resterende afstand per beeldje: lager = zachter uitlopen
+  tekenMarge:      0.6,    // vlakken tot 60% van de kaartbreedte buiten beeld tekenen (voor uitzoomen)
+
+  // --- Ondergronden (keuze via het tandwiel); 'licht' is de grijze look van de introductie ---
+  standaardOndergrond: 'licht',
+  ondergronden: {
+    licht:     { naam: 'Licht',     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attributie: '© OpenStreetMap contributors' },
+    kaart:     { naam: 'Kaart',     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attributie: '© OpenStreetMap contributors' },
+    luchtfoto: { naam: 'Luchtfoto', url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_ortho25/EPSG:3857/{z}/{x}/{y}.jpeg', attributie: '© Beeldmateriaal.nl / PDOK' },
+  },
+  voorbeeldTegel: { z: 13, x: 4232, y: 2746 },  // tegel van Heerlen-centrum voor de voorbeeldplaatjes
+
+  // --- Visualisatie ---
+  standaardMethode:       'quantile',  // 'quantile' of 'equal'
+  standaardPalet:         'rdylgn',
+  standaardDekking:       0.65,
+  standaardAantalKlassen: 5,
+
+  // --- Variabelen bij het opstarten: kaart en info-venster ---
+  standaardVeld1: 'aantal_inwoners',
+  standaardVeld2: 'aantal_huishoudens',
 };
 
-/**
- * Toont een korte melding onderin beeld die vanzelf verdwijnt en niets blokkeert
- * (in plaats van alert(), waarbij je eerst op OK moet drukken). Dezelfde tekst
- * wordt niet dubbel getoond. Globaal beschikbaar voor alle scripts.
- */
+const VARIABELEN_CONFIG = {
+  // Technische velden die niets zeggen op een kaart
+  verborgenVelden: ['jaar', 'indelingswijziging_wijken_en_buurten', 'meest_voorkomende_postcode'],
+
+  // Categorieën in het keuzemenu; de eerste passende regel wint, dus volgorde is belangrijk
+  categorieen: [
+    ['Inkomen en armoede',                   /inkomen|koopkracht|sociaal_minimum|vermogen/],
+    ['Werk en uitkeringen',                  /uitkering|arbeidsparticipatie|werknemers|zelfstandigen/],
+    ['Zorg en welzijn',                      /wmo|jeugdzorg/],
+    ['Opleiding',                            /opleidingsniveau/],
+    ['Energie',                              /elektriciteit|gasverbruik/],
+    ['Vervoer en bereikbaarheid',            /auto|motortweewielers|station|oprit/],
+    ['Wonen',                                /woning|huur|koop|bouwjaar|leegstand|gezins|bewoond|stadsverwarming|eigendom/],
+    ['Huishoudens',                          /huishoud/],
+    ['Bedrijven',                            /bedrijf|bedrijven/],
+    ['Voorzieningen: zorg en veiligheid',    /huisarts|apotheek|ziekenhuis|brandweer/],
+    ['Voorzieningen: onderwijs en opvang',   /onderwijs|havo|vmbo|kinderdagverblijf|opvang/],
+    ['Voorzieningen: winkels en horeca',     /supermarkt|winkels|warenhuis|cafe|restaurant|hotel/],
+    ['Voorzieningen: cultuur en vrije tijd', /bioscoop|theater|muse|poppodium|attractiepark|zwembad|sauna|ijsbaan|zonnebank|bibliotheek/],
+    ['Bevolking',                            /inwoners|mannen|vrouwen|personen_\d|geboorte|sterfte|gehuwd|gescheid|verweduwd|migratie|percentage_uit_/],
+    ['Gebied',                               /oppervlakte|dichtheid|stedelijkheid|dekking/],
+  ],
+  overigeCategorie: 'Overig',
+};
+
+const COOKIES = {
+  keuze:      'atlas_cookie_keuze',   // 'geaccepteerd' of 'geweigerd'; deze mag altijd
+  favorieten: 'atlas_favoriete_velden',
+  ondergrond: 'atlas_ondergrond',
+};
+
+const ICONEN = {
+  kaart:      '<svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zm0 2.2 6 2v11.6l-6-2V6.2z"/></svg>',
+  info:       '<svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h1v2l2.5-2H19V6H5z"/></svg>',
+  prullenbak: '<svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 12H7L6 9zm4 2v8h1.5v-8H10zm3 0v8h1.5v-8H13z"/></svg>',
+};
+
+
+// ============================================================================
+// HULPFUNCTIES — Gedeeld met alle scripts
+// ============================================================================
+
+/** Maak een element met eigenschappen in één keer, bv. maak('button', { type: 'button', textContent: 'OK' }). */
+function maak(tag, eigenschappen = {}) {
+  return Object.assign(document.createElement(tag), eigenschappen);
+}
+
+/** "aantal_inwoners" → "Aantal inwoners". Alleen voor weergave; de data-sleutel blijft ongewijzigd. */
+window.mooieVeldnaam = function (veld) {
+  const tekst = typeof veld === 'string' ? veld.replace(/_/g, ' ').trim() : '';
+  return tekst ? tekst[0].toUpperCase() + tekst.slice(1) : veld;
+};
+
+/** Korte melding onderin beeld die vanzelf verdwijnt (in plaats van alert). Dezelfde tekst komt er niet dubbel bij. */
 window.toonMelding = function (tekst, duurMs = 4500) {
   let houder = document.getElementById('melding-houder');
   if (!houder) {
-    houder = document.createElement('div');
-    houder.id = 'melding-houder';
+    houder = maak('div', { id: 'melding-houder' });
     houder.setAttribute('role', 'status');
     houder.setAttribute('aria-live', 'polite');
     document.body.appendChild(houder);
   }
-  const bestaand = Array.from(houder.children).find(el => el.dataset.tekst === tekst);
-  if (bestaand) { clearTimeout(bestaand._timer); bestaand._timer = setTimeout(() => bestaand.remove(), duurMs); return; }
-
-  const melding = document.createElement('div');
-  melding.className = 'melding';
+  const melding = [...houder.children].find(el => el.dataset.tekst === tekst)
+    || houder.appendChild(maak('div', { className: 'melding', textContent: tekst, onclick() { this.remove(); } }));
   melding.dataset.tekst = tekst;
-  melding.textContent = tekst;
-  melding.addEventListener('click', () => melding.remove());
-  houder.appendChild(melding);
+  clearTimeout(melding._timer);
   melding._timer = setTimeout(() => melding.remove(), duurMs);
 };
 
+
 // ============================================================================
-// COOKIES — Voorkeuren van de gebruiker onthouden (favorieten, aangemaakte variabelen)
+// COOKIES — Voorkeuren onthouden (favorieten, zelfgemaakte variabelen, ondergrond)
 // ============================================================================
 
-// Keuze uit de cookiemelding ('geaccepteerd' of 'geweigerd'); zelf altijd toegestaan
-const COOKIE_KEUZE_NAAM = 'atlas_cookie_keuze';
-
-/** Zet een cookie met een houdbaarheid in dagen (standaard 365 dagen). Na weigeren wordt niets meer opgeslagen. */
+/** Zet een cookie; na "Weigeren" wordt niets meer opgeslagen. */
 window.zetCookie = function (naam, waarde, dagen = 365) {
-  if (naam !== COOKIE_KEUZE_NAAM && window.leesCookie(COOKIE_KEUZE_NAAM) === 'geweigerd') return;
-  const verloopt = new Date();
-  verloopt.setTime(verloopt.getTime() + dagen * 24 * 60 * 60 * 1000);
-  document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt.toUTCString()};path=/;SameSite=Lax`;
+  if (naam !== COOKIES.keuze && window.leesCookie(COOKIES.keuze) === 'geweigerd') return;
+  const verloopt = new Date(Date.now() + dagen * 864e5).toUTCString();
+  document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt};path=/;SameSite=Lax`;
 };
 
-/** Leest een cookie-waarde. Geeft null terug als de cookie niet bestaat. */
 window.leesCookie = function (naam) {
-  const veilig = naam.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1');
-  const match  = document.cookie.match(new RegExp('(?:^|; )' + veilig + '=([^;]*)'));
-  return match ? decodeURIComponent(match[1]) : null;
+  const waarde = document.cookie.split('; ').find(c => c.startsWith(naam + '='));
+  return waarde ? decodeURIComponent(waarde.slice(naam.length + 1)) : null;
 };
 
-/**
- * Cookiemelding onderin beeld. Wordt eenmalig getoond (na de introductie) zolang
- * er nog geen keuze is gemaakt; de keuze zelf wordt in een cookie onthouden.
- * Bij weigeren worden de al opgeslagen voorkeuren-cookies verwijderd.
- */
+/** Cookiemelding onderin beeld, eenmalig (na de introductie). Bij weigeren gaan bestaande voorkeuren weg. */
 window.toonCookieMelding = function () {
-  if (window.leesCookie(COOKIE_KEUZE_NAAM) || document.getElementById('cookie-melding')) return;
+  if (window.leesCookie(COOKIES.keuze) || document.getElementById('cookie-melding')) return;
 
-  const melding = document.createElement('section');
-  melding.id = 'cookie-melding';
-  melding.className = 'cookie-melding';
+  const melding = maak('section', { id: 'cookie-melding', className: 'cookie-melding' });
   melding.setAttribute('role', 'dialog');
   melding.setAttribute('aria-labelledby', 'cookie-melding-titel');
   melding.innerHTML = `
     <div class="cookie-melding-tekst">
       <h2 id="cookie-melding-titel">Cookies</h2>
-      <p>De atlas gebruikt alleen functionele cookies om je favoriete en zelfgemaakte variabelen te
-      onthouden. Er worden geen gegevens gedeeld of voor advertenties gebruikt.</p>
+      <p>De atlas gebruikt alleen functionele cookies om je favoriete en zelfgemaakte variabelen en je
+      kaartweergave te onthouden. Er worden geen gegevens gedeeld of voor advertenties gebruikt.</p>
     </div>
     <div class="cookie-melding-knoppen">
       <button type="button" data-keuze="geaccepteerd">Accepteren</button>
@@ -92,10 +145,10 @@ window.toonCookieMelding = function () {
   melding.addEventListener('click', (e) => {
     const keuze = e.target.closest('[data-keuze]')?.dataset.keuze;
     if (!keuze) return;
-    window.zetCookie(COOKIE_KEUZE_NAAM, keuze);
+    window.zetCookie(COOKIES.keuze, keuze);
     if (keuze === 'geweigerd') {
       document.cookie.split('; ').map(c => c.split('=')[0])
-        .filter(naam => naam.startsWith('atlas_') && naam !== COOKIE_KEUZE_NAAM)
+        .filter(naam => naam.startsWith('atlas_') && naam !== COOKIES.keuze)
         .forEach(naam => { document.cookie = `${naam}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`; });
     }
     melding.remove();
@@ -104,899 +157,622 @@ window.toonCookieMelding = function () {
   document.body.appendChild(melding);
 };
 
+
 // ============================================================================
-// FAVORIETEN — Variabelen die de gebruiker met een ster heeft gemarkeerd
+// FAVORIETEN — Variabelen met een ster
 // ============================================================================
 
-const FAVORIETEN_COOKIE_NAAM = 'atlas_favoriete_velden';
+window.favorieteVelden = new Set((window.leesCookie(COOKIES.favorieten) || '').split(',').filter(Boolean));
 
-window.favorieteVelden = new Set(
-  (window.leesCookie(FAVORIETEN_COOKIE_NAAM) || '').split(',').map(s => s.trim()).filter(Boolean)
-);
-
-/** Wisselt de favoriet-status van een veld om, onthoudt dit in een cookie en vernieuwt de UI. */
 window.toggleFavorietVeld = function (veld) {
-  if (!veld) return;
-  window.favorieteVelden.has(veld) ? window.favorieteVelden.delete(veld) : window.favorieteVelden.add(veld);
-  window.zetCookie(FAVORIETEN_COOKIE_NAAM, Array.from(window.favorieteVelden).join(','));
-  window.vernieuwVeldSelecties?.();
+  const favorieten = window.favorieteVelden;
+  favorieten.has(veld) ? favorieten.delete(veld) : favorieten.add(veld);
+  window.zetCookie(COOKIES.favorieten, [...favorieten].join(','));
+  window.vernieuwVeldSelecties();
 };
 
 
 // ============================================================================
-// CONFIGURATIE — Pas hier de projectinstellingen aan
+// KAART — Leaflet-kaart en gedeelde status
 // ============================================================================
 
-const APP_CONFIG = {
+const map = L.map('map', {
+  zoomSnap:        0.25,
+  zoomDelta:       APP_CONFIG.zoomStap,
+  scrollWheelZoom: false,  // vervangen door vloeiend zoomen hieronder
+}).setView(APP_CONFIG.kaartCentrum, APP_CONFIG.standaardZoom);
 
-  // --- Kaartweergave ---
-  kaartCentrum:        [50.8889, 5.9794],   // Startpositie kaart (lat, lon)
-  standaardZoom:       12,                  // Zoomniveau bij opstarten
-  maxZoom:             19,                  // Maximaal zoomniveau
-
-  // --- Basemap (OpenStreetMap) ---
-  basemapUrl:  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  basemapAttr: '© OpenStreetMap contributors',
-
-  // --- Visualisatie-standaarden ---
-  standaardMethode:     'quantile',         // Classificatiemethode: 'quantile' of 'equal'
-  standaardPalet:       'rdylgn',           // ColorBrewer palet (RdYlGn = rood-geel-groen)
-  standaardOpaciteit:   0.50,               // Vulling transparantie (0.0 = onzichtbaar, 1.0 = vol)
-  standaardAantalKlassen: 5,                // Aantal kleurklassen in de legenda
-
-  // --- PDOK API-endpoints (CBS wijken/buurten, gemeentecode GM0917 = Heerlen) ---
-  pdokBuurtenUrl: 'https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json',
-  pdokWijkenUrl:  'https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json',
-
-  // --- Standaardvelden bij opstarten ---
-  standaardVeld1: 'aantal_inwoners',        // Eerste variabele die standaard getoond wordt
-  standaardVeld2: 'aantal_huishoudens',     // Tweede variabele die standaard getoond wordt
-
-  // --- Kleurverloop-hints per palet (voor de kleur-indicator naast veldselector) ---
-  paletGradients: {
-    'viridis': 'linear-gradient(135deg, #440154 0%, #31688e 40%, #35b779 70%, #fde724 100%)',
-    'rdylgn':  'linear-gradient(135deg, #a50026 0%, #ffffbf 50%, #006837 100%)',
-    'blues':   'linear-gradient(135deg, #f7fbff 0%, #4292c6 70%, #08519c 100%)',
-    'oranges': 'linear-gradient(135deg, #fff5eb 0%, #fb9a6f 70%, #b30000 100%)',
+/**
+ * Vloeiend zoomen met het muiswiel: elk beeldje schuift de kaart een stukje richting het
+ * doel-zoomniveau, rond het punt onder de muis (zoals de plugin Leaflet.SmoothWheelZoom).
+ * Gebruikt de interne _move-functies van Leaflet 1.9, net als Leaflet's eigen animaties.
+ */
+const VloeiendZoomen = L.Handler.extend({
+  addHooks() {
+    L.DomEvent.on(this._map.getContainer(), 'wheel', this._opWiel, this);
+    this._map.on('mousemove', this._volgMuis, this);
   },
-};
+  removeHooks() {
+    L.DomEvent.off(this._map.getContainer(), 'wheel', this._opWiel, this);
+    this._map.off('mousemove', this._volgMuis, this);
+  },
 
+  // De muis blijft gevolgd, zodat je tijdens het zoomen ook kunt slepen
+  _volgMuis(e) { this._muis = e.containerPoint; },
 
-// ============================================================================
-// OPACITEIT-HULP — Leest opaciteit uit externe instellingen of config
-// ============================================================================
+  _opWiel(e) {
+    L.DomEvent.stop(e);
+    const kaart = this._map;
+    this._muis = kaart.mouseEventToContainerPoint(e);
+    if (!this._bezig) {
+      this._bezig = true;
+      this._doel = kaart.getZoom();
+      kaart._stop();
+      kaart._moveStart(true, false);
+      requestAnimationFrame(() => this._stap());
+    }
+    const doel = this._doel + L.DomEvent.getWheelDelta(e) * APP_CONFIG.scrollSnelheid;
+    this._doel = Math.max(kaart.getMinZoom(), Math.min(kaart.getMaxZoom(), doel));
+  },
 
-// Externe overrides kunnen via window.APP_SETTINGS worden meegegeven
-window.APP_SETTINGS = window.APP_SETTINGS || {};
+  _stap() {
+    const kaart = this._map;
+    const klaar = Math.abs(this._doel - kaart.getZoom()) < 0.005;
+    const zoom = klaar ? this._doel : kaart.getZoom() + (this._doel - kaart.getZoom()) * APP_CONFIG.scrollVolgen;
+    // Wat nu onder de muis ligt, blijft na deze stap onder de muis liggen
+    const anker = kaart.containerPointToLatLng(this._muis);
+    const verschuiving = this._muis.subtract(kaart.getSize().divideBy(2));
+    // De browser schaalt de bestaande tekening van de vlakken mee (licht en vloeiend);
+    // aan het eind (_moveEnd) tekent Leaflet ze één keer scherp opnieuw
+    kaart._move(kaart.unproject(kaart.project(anker, zoom).subtract(verschuiving), zoom), zoom);
 
-function getDefaultOpacity() {
-  return typeof window.APP_SETTINGS.defaultOpacity === 'number'
-    ? window.APP_SETTINGS.defaultOpacity
-    : APP_CONFIG.standaardOpaciteit;
-}
-
-// Synchroniseer de opaciteits-slider met de standaardwaarde
-window.syncOpacityDefaults = function () {
-  const slider = document.getElementById('opacity-range');
-  if (slider) slider.value = String(getDefaultOpacity());
-  updateOpacityDisplay();
-};
-
-// Dekking: "magnetisch" naar 0/25/50/75/100% als je er dichtbij komt, en het actieve punt markeren
-const DEKKING_SNAPPUNTEN = [0, 0.25, 0.5, 0.75, 1];
-const DEKKING_SNAP_MARGE = 0.03; // ±3% rond een snappunt
-
-function updateOpacityDisplay() {
-  const slider  = document.getElementById('opacity-range');
-  const display = document.getElementById('opacity-display');
-  if (!slider) return;
-  const waarde = parseFloat(slider.value);
-  if (display) display.textContent = `${Math.round(waarde * 100)}%`;
-  slider.style.setProperty('--v', String(waarde));
-  document.querySelectorAll('.dekking-ticks span').forEach(el =>
-    el.classList.toggle('is-actief', Math.abs(parseFloat(el.style.getPropertyValue('--f')) - waarde) < 0.001));
-}
-
-document.getElementById('opacity-range')?.addEventListener('input', (e) => {
-  const waarde = parseFloat(e.target.value);
-  const dichtstbij = DEKKING_SNAPPUNTEN.find(p => Math.abs(p - waarde) <= DEKKING_SNAP_MARGE);
-  if (dichtstbij !== undefined) e.target.value = String(dichtstbij);
-  updateOpacityDisplay();
+    if (!klaar) { requestAnimationFrame(() => this._stap()); return; }
+    this._bezig = false;
+    kaart._moveEnd(true);
+  },
 });
+map.addHandler('vloeiendZoomen', VloeiendZoomen);
+map.vloeiendZoomen.enable();
 
+// Vlakken ook een eind buiten beeld tekenen (standaard 10%), zodat er bij uitzoomen geen lege
+// randen zijn tot het opnieuw tekenen. Geldt voor alle lagen die hierna gemaakt worden.
+L.Renderer.prototype.options.padding = APP_CONFIG.tekenMarge;
 
-// ============================================================================
-// KAART-INITIALISATIE
-// ============================================================================
+window.appData = {
+  map,
+  dataLayer:       L.layerGroup().addTo(map),  // data-lagen los van de ondergrond
+  lastFC:          null,                       // FeatureCollection van het getoonde jaar
+  baseGeoLayer:    null,                       // grijze laag direct na het laden
+  choroplethLayer: null,                       // gekleurde laag
+  filter:          { min: 0.01 },
+};
 
-const map = L.map('map').setView(APP_CONFIG.kaartCentrum, APP_CONFIG.standaardZoom);
-
-L.tileLayer(APP_CONFIG.basemapUrl, {
-  maxZoom:     APP_CONFIG.maxZoom,
-  attribution: APP_CONFIG.basemapAttr,
-}).addTo(map);
-
-// Aparte layergroup zodat data-lagen onafhankelijk van de basemap beheerd worden
-const dataLayer = L.layerGroup().addTo(map);
-
-
-// ============================================================================
-// OPPERVLAKTE-BEREKENING — Nodig voor polygoonvolgorde op de kaart
-// ============================================================================
-
-/**
- * Berekent het oppervlak van één coördinatenring via de schoenveter-formule
- * (shoelace formula). Werkt op platte x/y coördinaten, niet geodetisch.
- */
-function polygonRingArea(ring) {
-  if (!Array.isArray(ring) || ring.length < 3) return 0;
-  let area = 0;
-  for (let i = 0; i < ring.length - 1; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[i + 1];
-    area += x1 * y2 - x2 * y1;
-  }
-  return Math.abs(area) / 2;
-}
-
-/**
- * Geeft het netto oppervlak van een GeoJSON-feature (Polygon of MultiPolygon).
- * Gaten (inner rings) worden afgetrokken van de buitenring.
- * Retourneert null als het geometrietype niet ondersteund wordt.
- */
-function featureArea(feature) {
+/** Netto oppervlak van een (Multi)Polygon in platte coördinaten (schoenveterformule, gaten eraf). */
+function featureOppervlak(feature) {
+  const ring = (r) => Math.abs(r.slice(0, -1).reduce((som, [x1, y1], i) => som + x1 * r[i + 1][1] - r[i + 1][0] * y1, 0)) / 2;
+  const polygoon = ([buiten, ...gaten]) => buiten ? Math.max(ring(buiten) - gaten.reduce((s, g) => s + ring(g), 0), 0) : 0;
   const geom = feature?.geometry;
-  if (!geom) return null;
-
-  const ringNettoOppervlak = (rings) => {
-    if (!rings.length) return 0;
-    const buiten = polygonRingArea(rings[0]);
-    const gaten  = rings.slice(1).reduce((som, r) => som + polygonRingArea(r), 0);
-    return Math.max(buiten - gaten, 0);
-  };
-
-  if (geom.type === 'Polygon')      return ringNettoOppervlak(geom.coordinates);
-  if (geom.type === 'MultiPolygon') return geom.coordinates.reduce((som, poly) => som + ringNettoOppervlak(poly), 0);
+  if (geom?.type === 'Polygon')      return polygoon(geom.coordinates);
+  if (geom?.type === 'MultiPolygon') return geom.coordinates.reduce((som, p) => som + polygoon(p), 0);
   return null;
 }
 
 /**
- * Brengt kleine polygonen naar de voorgrond zodat ze klikbaar blijven.
- * Sorteert alle lagen op oppervlak (groot → klein) en roept bringToFront aan.
- * Wordt twee keer uitgevoerd: direct en via requestAnimationFrame,
- * omdat Leaflet rendering asynchroon kan zijn.
+ * Leg kleine polygonen bovenop grote, zodat ze klikbaar blijven. Loopt nog een
+ * keer na de volgende frame, omdat Leaflet asynchroon tekent.
  */
-function applySmallPolygonsToFront(rootLayer) {
-  if (!rootLayer || typeof rootLayer.eachLayer !== 'function') return;
-
-  const lagen = [];
-
-  const verzamelLagen = (layer) => {
-    if (typeof layer.eachLayer === 'function' && !layer.feature) {
-      layer.eachLayer(verzamelLagen);
-    } else {
-      const opp = featureArea(layer.feature);
-      if (typeof opp === 'number' && typeof layer.bringToFront === 'function') {
-        lagen.push({ layer, opp });
-      }
-    }
+window.bringSmallPolygonsToFront = function (rootLayer) {
+  const sorteer = () => {
+    const lagen = [];
+    const verzamel = (laag) => laag.eachLayer && !laag.feature
+      ? laag.eachLayer(verzamel)
+      : lagen.push({ laag, opp: featureOppervlak(laag.feature) });
+    rootLayer?.eachLayer?.(verzamel);
+    lagen.filter(l => typeof l.opp === 'number' && l.laag.bringToFront)
+      .sort((a, b) => b.opp - a.opp)
+      .forEach(({ laag }) => laag.bringToFront());
   };
+  sorteer();
+  requestAnimationFrame(sorteer);
+};
 
-  rootLayer.eachLayer(verzamelLagen);
-  lagen.sort((a, b) => b.opp - a.opp).forEach(({ layer }) => layer.bringToFront());
+
+// ============================================================================
+// KAARTWEERGAVE — Kleurenpalet, dekking en ondergrond, getoond als voorbeelden
+// ============================================================================
+
+const paletSelect = document.getElementById('palette-select');
+const dekkingSlider = document.getElementById('opacity-range');
+let ondergrondLaag = null;
+let huidigeOndergrond = null;
+
+function kiesOndergrond(sleutel) {
+  huidigeOndergrond = sleutel in APP_CONFIG.ondergronden ? sleutel : APP_CONFIG.standaardOndergrond;
+  const { url, attributie } = APP_CONFIG.ondergronden[huidigeOndergrond];
+  if (ondergrondLaag) map.removeLayer(ondergrondLaag);
+  ondergrondLaag = L.tileLayer(url, { maxZoom: APP_CONFIG.maxZoom, attribution: attributie }).addTo(map);
+  map.getContainer().dataset.ondergrond = huidigeOndergrond;
 }
 
-window.bringSmallPolygonsToFront = function (rootLayer) {
-  applySmallPolygonsToFront(rootLayer);
-  const schedule = window.requestAnimationFrame?.bind(window) ?? ((fn) => setTimeout(fn, 0));
-  schedule(() => applySmallPolygonsToFront(rootLayer));
-};
+kiesOndergrond(window.leesCookie(COOKIES.ondergrond));
+
+/** Markeer de actieve kleurstaal en ondergrond (ook als een story het palet heeft veranderd). */
+function markeerActieveKeuzes() {
+  const markeer = (id, actief) => document.querySelectorAll(`#${id} .keuze-knop`)
+    .forEach(k => k.setAttribute('aria-checked', String(k.dataset.waarde === actief)));
+  markeer('palet-keuze', paletSelect.value);
+  markeer('ondergrond-keuze', huidigeOndergrond);
+}
+
+function maakKeuzeKnop(waarde, label, inhoud, kiezen) {
+  const knop = maak('button', { type: 'button', className: 'keuze-knop', title: label, innerHTML: inhoud });
+  knop.dataset.waarde = waarde;
+  knop.setAttribute('role', 'radio');
+  knop.setAttribute('aria-label', label);
+  knop.addEventListener('click', () => { kiezen(waarde); markeerActieveKeuzes(); });
+  return knop;
+}
+
+// Dekking "klikt vast" op 0/25/50/75/100% als je er dichtbij komt
+const DEKKING_SNAPPUNTEN = [0, 0.25, 0.5, 0.75, 1];
+const DEKKING_SNAP_MARGE = 0.03;
+
+function werkDekkingBij() {
+  const waarde = parseFloat(dekkingSlider.value);
+  document.getElementById('opacity-display').textContent = `${Math.round(waarde * 100)}%`;
+  dekkingSlider.style.setProperty('--v', String(waarde));
+  document.querySelectorAll('.dekking-ticks span').forEach(el =>
+    el.classList.toggle('is-actief', Math.abs(parseFloat(el.style.getPropertyValue('--f')) - waarde) < 0.001));
+}
+
+dekkingSlider.value = String(APP_CONFIG.standaardDekking);
+werkDekkingBij();
+dekkingSlider.addEventListener('input', () => {
+  const snappunt = DEKKING_SNAPPUNTEN.find(p => Math.abs(p - dekkingSlider.value) <= DEKKING_SNAP_MARGE);
+  if (snappunt !== undefined) dekkingSlider.value = String(snappunt);
+  werkDekkingBij();
+});
+dekkingSlider.addEventListener('change', () => window.herlaadVisualisatie());
+paletSelect.addEventListener('change', () => window.herlaadVisualisatie());
+
+// Kleurstalen en ondergrond-plaatjes pas opbouwen als map.js (kleurschema's) geladen is
+document.addEventListener('DOMContentLoaded', () => {
+  for (const { value, textContent } of paletSelect.options) {
+    const stalen = haalKleurSchema(value, 5).map(kleur => `<i style="background:${kleur}"></i>`).join('');
+    document.getElementById('palet-keuze').appendChild(maakKeuzeKnop(value, textContent, `<span class="palet-staal">${stalen}</span>`, () => {
+      paletSelect.value = value;
+      paletSelect.dispatchEvent(new Event('change'));
+    }));
+  }
+
+  const { z, x, y } = APP_CONFIG.voorbeeldTegel;
+  for (const [sleutel, { naam, url }] of Object.entries(APP_CONFIG.ondergronden)) {
+    const tegel = url.replace('{s}', 'a').replace('{z}', z).replace('{x}', x).replace('{y}', y);
+    document.getElementById('ondergrond-keuze').appendChild(maakKeuzeKnop(sleutel, naam,
+      `<img class="ondergrond-voorbeeld is-${sleutel}" src="${tegel}" alt="" loading="lazy"><span>${naam}</span>`, () => {
+        kiesOndergrond(sleutel);
+        window.zetCookie(COOKIES.ondergrond, sleutel);
+      }));
+  }
+
+  markeerActieveKeuzes();
+});
 
 
 // ============================================================================
-// GLOBALE APPLICATIESTATUS
+// KAARTKNOPPEN — Tandwiel (kaartweergave) en "i" (legenda) rechtsboven op de kaart
 // ============================================================================
 
-window.appData = {
-  map,
-  dataLayer,
-  lastFC:          null,    // Laatste geladen FeatureCollection
-  compareMode:     false,
-  compareFC:       null,
-  baseGeoLayer:    null,    // Grijze basislaag (ongestijld)
-  choroplethLayer: null,    // Gekleurde choropleth-laag
-  filter:          { min: 0.01 },
-};
+(function () {
+  const widget       = document.getElementById('legend-widget');
+  const legenda      = document.getElementById('legend');
+  const legendaKnop  = document.getElementById('legend-icon-toggle');
+  const weergave     = document.getElementById('kaartweergave');
+  const weergaveKnop = document.getElementById('kaartweergave-toggle');
 
-window.syncOpacityDefaults();
+  // Klikken en scrollen op knoppen en panelen mag de kaart niet bewegen
+  for (const el of [widget, document.getElementById('year-filter-area')]) {
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+  }
+
+  legendaKnop.addEventListener('click', () => {
+    const zichtbaar = legenda.classList.toggle('is-zichtbaar');
+    legendaKnop.setAttribute('aria-expanded', String(zichtbaar));
+    legenda.setAttribute('aria-hidden', String(!zichtbaar));
+  });
+
+  const toonWeergave = (open) => {
+    weergave.hidden = !open;
+    weergaveKnop.setAttribute('aria-expanded', String(open));
+    if (open) markeerActieveKeuzes();
+  };
+  weergaveKnop.addEventListener('click', () => toonWeergave(weergave.hidden));
+  document.addEventListener('click', (e) => { if (!widget.contains(e.target)) toonWeergave(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !weergave.hidden) toonWeergave(false); });
+})();
 
 
 // ============================================================================
-// SPLIT-SCREEN SYNCHRONISATIE
+// SPLIT-SCREEN — Twee kaarten (iframes) bewegen samen via split-screen.html
 // ============================================================================
 
-// Lees URL-parameters om te bepalen of dit venster onderdeel is van een split-screen
-const splitParams      = new URLSearchParams(window.location.search);
-const isSplitScreenPane = splitParams.get('split') === '1';
-const splitScreenPanelId = splitParams.get('panel') || splitParams.get('sidebar') || 'single';
+const splitParams = new URLSearchParams(window.location.search);
+window.isSplitScreenPane  = splitParams.get('split') === '1';
+window.splitScreenPanelId = splitParams.get('panel') || splitParams.get('sidebar') || 'single';
 
-window.isSplitScreenPane  = isSplitScreenPane;
-window.splitScreenPanelId = splitScreenPanelId;
-
-if (isSplitScreenPane) {
-  // Voorkom terugkoppel-loop: als wij zelf de kaart verplaatsen via een bericht,
-  // slaan we de volgende broadcast over.
+if (window.isSplitScreenPane) {
+  // Verplaatsen we de kaart zelf op verzoek van de andere kaart, dan sturen we dat niet terug
   let onderdrukVolgende = false;
 
-  const broadcastKaartView = () => {
+  map.on('move', () => {
     if (onderdrukVolgende) { onderdrukVolgende = false; return; }
-    window.parent?.postMessage({
-      type:     'heerlen-map-view',
-      panelId:  splitScreenPanelId,
-      center:   map.getCenter(),
-      zoom:     map.getZoom(),
+    window.parent.postMessage({
+      type: 'heerlen-map-view', panelId: window.splitScreenPanelId, center: map.getCenter(), zoom: map.getZoom(),
     }, '*');
-  };
+  });
 
-  map.on('move', broadcastKaartView);
-
-  window.addEventListener('message', (event) => {
-    const { type, panelId, center, zoom } = event.data || {};
-    if (type !== 'heerlen-set-map-view') return;
-    if (panelId !== splitScreenPanelId)  return;
-    if (!center || typeof zoom !== 'number') return;
-
+  window.addEventListener('message', ({ data }) => {
+    const { type, panelId, center, zoom } = data || {};
+    if (type !== 'heerlen-set-map-view' || panelId !== window.splitScreenPanelId || !center || typeof zoom !== 'number') return;
     onderdrukVolgende = true;
     map.setView(center, zoom, { animate: false });
   });
 }
 
-document.getElementById('open-split-screen')?.addEventListener('click', () => {
-  window.location.href = 'split-screen.html';
-});
-
-document.getElementById('open-3d')?.addEventListener('click', () => {
-  window.location.href = 'huisjes-3d.html';
-});
-
 
 // ============================================================================
-// VISUALISATIE — Herlaad met huidige instellingen
+// VISUALISATIE — Kaart opnieuw kleuren met de huidige instellingen
 // ============================================================================
 
-/**
- * Leest de huidige UI-instellingen en roept toonChoropleth aan.
- * Toont ook grafieken voor alle geselecteerde velden.
- */
-window.herllaadVisualisatie = function () {
-  // Werk eerst de veldselectoren bij: velden zonder (gefilterde) data worden
-  // uitgeschakeld zodat ze niet meer gekozen kunnen worden.
-  window.vernieuwVeldSelecties?.();
+window.herlaadVisualisatie = function () {
+  window.vernieuwVeldSelecties();  // velden zonder (gefilterde) data vallen af
 
-  const geselecteerde = window.getSelectedFields?.() || [];
-  const veld = geselecteerde[0] || document.getElementById('field-select')?.value;
-  const fc   = window.appData?.lastFC;
-  if (!veld || !fc || !window.toonChoropleth) return;
+  // Het kleurblokje in de kaartrij toont het palet dat nu op de kaart staat
+  const stappen = haalKleurSchema(paletSelect.value, 5).map((kleur, i) => `${kleur} ${i * 20}% ${(i + 1) * 20}%`);
+  document.querySelectorAll('.rij-kleuren').forEach(el => { el.style.background = `linear-gradient(to right, ${stappen.join(', ')})`; });
+
+  const veld = window.getSelectedFields()[0];
+  const fc   = window.appData.lastFC;
+  if (!veld || !fc) return;
 
   window.toonChoropleth(fc, veld, {
-    method:  document.getElementById('method-select')?.value  || APP_CONFIG.standaardMethode,
-    palette: document.getElementById('palette-select')?.value || APP_CONFIG.standaardPalet,
-    opacity: parseFloat(document.getElementById('opacity-range')?.value || getDefaultOpacity()),
-    classes: APP_CONFIG.standaardAantalKlassen,
+    method:    document.getElementById('method-select').value || APP_CONFIG.standaardMethode,
+    palette:   paletSelect.value || APP_CONFIG.standaardPalet,
+    opacity:   parseFloat(dekkingSlider.value),
+    classes:   APP_CONFIG.standaardAantalKlassen,
+    klassenFC: window.multiLoaderState?.originalData,
   });
-
-  // Render grafieken voor alle geselecteerde velden
-  const veldenVoorGrafiek = geselecteerde.length > 0 ? geselecteerde : [veld];
-  window.renderMultiVariableCharts?.(fc, veldenVoorGrafiek);
 };
 
-// Verwijder de oude vergelijkknop als die nog bestaat
-document.getElementById('start-compare')?.remove();
-
 
 // ============================================================================
-// VELDSELECTOREN — Dynamisch beheer van variabele-dropdowns
+// VELDSELECTOREN — "Verken de data": de eerste rij kleurt de kaart, de overige
+// rijen verschijnen in het info-venster bij een buurt
 // ============================================================================
 
-// ============================================================================
-// VELDSELECTOREN — Dynamisch beheer van variabele-dropdowns
-// ============================================================================
-
-window.availableFields = window.availableFields || [];
+window.availableFields  = window.availableFields  || [];
 window.customFieldNames = window.customFieldNames || [];
 
-function isCustomField(veld) {
-  return Boolean(veld) && (window.customFieldNames || []).includes(veld);
-}
+const isCustomField = (veld) => window.customFieldNames.includes(veld);
 
+/**
+ * Bruikbare velden (zonder verborgen velden): zelfgemaakte en de rest. Favorieten staan
+ * daarnaast ook nog apart, dus een favoriet blijft ook op zijn eigen plek staan.
+ */
 window.getFieldGroupsForUi = function () {
-  const fields = [...new Set((window.availableFields || []).filter(Boolean))];
-  const favorites = fields.filter(veld => window.favorieteVelden.has(veld));
-  const overig    = fields.filter(veld => !window.favorieteVelden.has(veld));
+  const velden = [...new Set(window.availableFields)].filter(v => v && !VARIABELEN_CONFIG.verborgenVelden.includes(v));
   return {
-    favorites,
-    custom: overig.filter(isCustomField),
-    standard: overig.filter(veld => !isCustomField(veld))
+    favorites: velden.filter(v => window.favorieteVelden.has(v)),
+    custom:    velden.filter(isCustomField),
+    standard:  velden.filter(v => !isCustomField(v)),
   };
 };
 
-function renderCustomFieldNotice() {
-  const container = document.getElementById('field-select');
-  if (!container) return;
-
-  const existing = container.querySelector('.custom-fields-section');
-  if (existing) existing.remove();
-
-  const { custom } = window.getFieldGroupsForUi();
-  if (!custom.length) return;
-
-  const section = document.createElement('div');
-  section.className = 'custom-fields-section';
-
-  const title = document.createElement('div');
-  title.className = 'custom-fields-section-title';
-  title.textContent = 'Zelfgemaakte variabelen';
-
-  const text = document.createElement('div');
-  text.className = 'custom-fields-section-text';
-  text.textContent = 'Deze berekende variabelen staan bovenaan voor snelle selectie.';
-
-  section.append(title, text);
-  const hint = container.querySelector('.hint');
-  if (hint) container.insertBefore(section, hint);
-  else container.prepend(section);
-}
-
-/** Geeft alle momenteel geselecteerde veldwaarden terug als array */
-window.getSelectedFields = function () {
-  return Array.from(document.querySelectorAll('#selectors-div select.field-select-item'))
-    .map(s => s.value)
-    .filter(Boolean);
+/** Numerieke velden uit de dataset worden de variabelen; daarna worden de rijen opgebouwd. */
+window.populateFieldSelect = function (fc) {
+  if (!fc?.features?.length) return;
+  const steekproef = fc.features.slice(0, 20).map(f => f.properties || {});
+  // Een veld telt als numeriek als de eerste ingevulde waarde in de steekproef een getal is
+  window.availableFields = Object.keys(steekproef[0]).filter(veld => {
+    const waarde = steekproef.map(p => p[veld]).find(v => v !== null && v !== undefined);
+    return waarde !== undefined && !isNaN(+waarde);
+  });
+  window.herstelAangemaakteVariabelen?.();  // zelfgemaakte variabelen uit de cookie terugzetten
+  window.initFieldSelectors(window.availableFields);
 };
 
+const categorieVanVeld = (veld) =>
+  VARIABELEN_CONFIG.categorieen.find(([, regel]) => regel.test(veld))?.[0] ?? VARIABELEN_CONFIG.overigeCategorie;
+
+/** Bruikbare velden per categorie: favorieten en zelfgemaakte eerst, daarna de thema's in vaste volgorde. */
+function veldCategorieen() {
+  const { favorites, custom, standard } = window.getFieldGroupsForUi();
+  const themas = new Map([...VARIABELEN_CONFIG.categorieen, [VARIABELEN_CONFIG.overigeCategorie]].map(([naam]) => [naam, []]));
+  standard.forEach(v => themas.get(categorieVanVeld(v)).push(v));
+  return [['Favorieten', favorites], ['Zelfgemaakt', custom], ...themas]
+    .map(([naam, velden]) => ({ naam, velden: velden.filter(veldHeeftBeschikbareData) }))
+    .filter(c => c.velden.length);
+}
+
+window.getSelectedFields = () =>
+  [...document.querySelectorAll('#selectors-div select.field-select-item')].map(s => s.value).filter(Boolean);
+
 /**
- * Bepaalt of een veld bruikbare data heeft in de momenteel geladen dataset.
- * Een veld is alleen "bruikbaar" (selecteerbaar) als er:
- *   1. minstens één niet-lege, numerieke waarde voor bestaat, EN
- *   2. — als er een actief filter is (min/max of percentiel) — minstens één
- *      van die waarden ook daadwerkelijk door dat filter heen komt.
- * Zo worden velden die volledig leeg zijn, of waarvan alle waarden door het
- * actieve filter worden uitgesloten, niet meer selecteerbaar in de dropdown.
+ * Een veld is selecteerbaar als het (over álle jaren) minstens één waarde heeft
+ * die door het actieve filter komt. Zo verdwijnt een veld niet tijdens het
+ * afspelen van de tijdlijn als het in één jaar ontbreekt.
  */
 function veldHeeftBeschikbareData(veld) {
-  // Beoordeel op de data van álle jaren: een veld dat in één jaar ontbreekt
-  // (bijv. 2025 heeft minder variabelen) mag tijdens het afspelen van de
-  // jaar-animatie niet uit de selectie verdwijnen.
-  const fc = window.multiLoaderState?.originalData || window.appData?.lastFC;
-  if (!fc || typeof window.haalNumeriekeWaarden !== 'function') return true;
-
-  const alleWaarden = window.haalNumeriekeWaarden(fc, veld);
-  if (!alleWaarden.length) return false;
-
-  const filter = window.appData?.filter || null;
-  if (!filter || typeof window.waardePasseertFilter !== 'function') return true;
-
-  return alleWaarden.some(w => window.waardePasseertFilter(w, alleWaarden, filter));
+  const fc = window.multiLoaderState?.originalData || window.appData.lastFC;
+  if (!fc || !window.haalNumeriekeWaarden) return true;
+  const waarden = window.haalNumeriekeWaarden(fc, veld);
+  const filter = window.appData.filter;
+  return filter ? waarden.some(w => window.waardePasseertFilter(w, waarden, filter)) : waarden.length > 0;
 }
 
 /**
- * (Her)vult een bestaand <select>-element met alle beschikbare velden.
- * Velden zonder bruikbare (gefilterde) data worden toegevoegd als uitgeschakelde
- * optie met de toevoeging "(geen data)", zodat ze zichtbaar maar niet
- * selecteerbaar zijn. Een eerder geselecteerde waarde die niet langer bruikbaar
- * is, wordt teruggezet naar "-- geen --".
- * @param {HTMLSelectElement} sel
- * @param {string} [forceerWaarde] - Optioneel: forceer deze waarde als selectie (bij eerste opbouw)
+ * (Her)vul de verborgen <select> van een rij. Een veld dat niet meer bruikbaar is, valt
+ * terug op leeg — behalve in de kaartrij: de kaart toont altijd iets.
  */
-function vulVeldSelect(sel, forceerWaarde) {
-  const huidigeWaarde = forceerWaarde !== undefined ? forceerWaarde : sel.value;
-  sel.innerHTML = '';
+function vulVeldSelect(sel, gewenst = sel.value, categorieen = veldCategorieen()) {
+  const velden = [...new Set(categorieen.flatMap(c => c.velden))];
+  const isKaartRij = sel.closest('.field-row') === document.querySelector('#selectors-div .field-row');
+  const terugval = isKaartRij ? (velden.includes(APP_CONFIG.standaardVeld1) ? APP_CONFIG.standaardVeld1 : velden[0] ?? '') : '';
+  sel.replaceChildren(new Option('', ''), ...velden.map(v => new Option(window.mooieVeldnaam(v), v)));
+  sel.value = velden.includes(gewenst) ? gewenst : terugval;
+  vernieuwVeldPickerInhoud(sel, categorieen);
+}
 
-  const legeOptie = document.createElement('option');
-  legeOptie.value = '';
-  legeOptie.textContent = '-- geen --';
-  sel.appendChild(legeOptie);
-
-  let huidigeNogBruikbaar = false;
-  const { favorites, custom, standard } = window.getFieldGroupsForUi();
-
-  const voegGroepToe = (groepsLabel, velden) => {
-    const bruikbareVelden = velden.filter(veld => veldHeeftBeschikbareData(veld));
-    if (!bruikbareVelden.length) return;
-
-    const group = document.createElement('optgroup');
-    group.label = groepsLabel;
-    bruikbareVelden.forEach(veld => {
-      const opt = document.createElement('option');
-      opt.value = veld;
-      opt.textContent = window.mooieVeldnaam(veld);
-
-      if (veld === huidigeWaarde) {
-        opt.selected = true;
-        huidigeNogBruikbaar = true;
-      }
-      group.appendChild(opt);
+/** De eerste rij is de kaartvariabele, de rest hoort bij het info-venster. */
+function werkRijRollenBij() {
+  document.querySelectorAll('#selectors-div .field-row').forEach((rij, i) => {
+    const rol = i === 0 ? 'kaart' : 'info';
+    if (rij.dataset.rol === rol) return;
+    rij.dataset.rol = rol;
+    Object.assign(rij.querySelector('.rij-icoon'), {
+      innerHTML: ICONEN[rol], title: rol === 'kaart' ? 'Kleurt de kaart' : 'Zichtbaar in het info-venster',
     });
-    sel.appendChild(group);
-  };
-
-  voegGroepToe('Favorieten', favorites);
-  voegGroepToe('Zelfgemaakte variabelen', custom);
-  voegGroepToe('Basisvariabelen', standard);
-
-  // Val terug op "-- geen --" als de gewenste waarde niet (meer) bruikbaar is
-  if (huidigeWaarde && !huidigeNogBruikbaar) sel.value = '';
-
-  // Custom veld-picker-UI (ster/prullenbak) in sync houden met deze select
-  vernieuwVeldPickerInhoud(sel);
+  });
 }
 
-/** Maakt een <select> element aan gevuld met alle beschikbare velden (verborgen; aangestuurd door de veld-picker-UI). */
-function maakSelectElement(standaardWaarde) {
-  const sel = document.createElement('select');
-  sel.className = 'field-select-item';
-  sel.style.display = 'none'; // visueel vervangen door de veld-picker
+window.addFieldSelector = function (standaardWaarde) {
+  const container = document.getElementById('field-select');
+  const rijen = document.getElementById('selectors-div') || container.appendChild(maak('div', { id: 'selectors-div' }));
 
+  const rij = maak('div', { className: 'field-row' });
+  const icoon = maak('span', { className: 'rij-icoon' });
+  icoon.setAttribute('aria-hidden', 'true');
+  const sel = maak('select', { className: 'field-select-item', hidden: true });
+  const verwijder = maak('button', { type: 'button', className: 'rij-verwijder', innerHTML: ICONEN.prullenbak, title: 'Verwijderen' });
+  verwijder.setAttribute('aria-label', 'Variabele verwijderen');
+  verwijder.addEventListener('click', () => { rij.remove(); werkRijRollenBij(); window.herlaadVisualisatie(); });
+
+  // Alleen zichtbaar in de kaartrij: de kleuren op de kaart; een klik opent de kaartweergave
+  const kleuren = maak('button', { type: 'button', className: 'rij-kleuren', title: 'Kleuren op de kaart aanpassen' });
+  kleuren.setAttribute('aria-label', 'Kleuren op de kaart aanpassen');
+  kleuren.addEventListener('click', (e) => { e.stopPropagation(); document.getElementById('kaartweergave-toggle').click(); });
+
+  rij.append(icoon, sel, maakVeldPicker(sel), verwijder, kleuren);
+  rijen.appendChild(rij);
   vulVeldSelect(sel, standaardWaarde);
-
-  sel.addEventListener('change', herllaadVisualisatie);
+  werkRijRollenBij();
   return sel;
-}
+};
+
+/** Werk alle rijen bij na een wijziging in data, filter of favorieten. */
+window.vernieuwVeldSelecties = function () {
+  const categorieen = veldCategorieen();
+  document.querySelectorAll('#selectors-div select.field-select-item').forEach(sel => vulVeldSelect(sel, sel.value, categorieen));
+};
+
+/** Bouw de rijen op na het laden van een dataset: één kaart- en één info-variabele. */
+window.initFieldSelectors = function (velden) {
+  window.availableFields = velden || [];
+  const container = document.getElementById('field-select');
+  const toevoegen = document.getElementById('add-variable');
+  toevoegen.disabled = !window.availableFields.length;
+
+  if (!window.availableFields.length) {
+    container.innerHTML = '<div class="hint">Laad eerst een dataset om variabelen te kunnen kiezen.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  const indienBruikbaar = (veld) => window.availableFields.includes(veld) && veldHeeftBeschikbareData(veld) ? veld : undefined;
+  window.addFieldSelector(indienBruikbaar(APP_CONFIG.standaardVeld1));
+  window.addFieldSelector(indienBruikbaar(APP_CONFIG.standaardVeld2));
+  window.refreshEquationFieldOptions?.();
+  window.herlaadVisualisatie();
+};
+
+document.getElementById('add-variable').addEventListener('click', () => {
+  window.addFieldSelector();
+  document.querySelector('#selectors-div .field-row:last-child .veld-picker-trigger').click();
+});
+
 
 // ============================================================================
-// VELD-PICKER — Custom dropdown met favoriet-ster en verwijder-knop voor
-// zelfgemaakte variabelen. Stuurt de bijbehorende (verborgen) <select> aan.
+// VELD-PICKER — Keuzemenu met zoekbalk en categorieën (één niveau diep).
+// Stuurt de verborgen <select> van de rij aan.
 // ============================================================================
 
-/**
- * Bouwt een custom dropdown-widget die de opgegeven (verborgen) <select>
- * aanstuurt. Elk veld krijgt een ster (favoriet toggelen); zelfgemaakte
- * variabelen krijgen daarnaast een prullenbak om ze te verwijderen.
- * @param {HTMLSelectElement} sel - De onderliggende, verborgen select
- * @return {HTMLElement} de picker-wrapper, klaar om in de DOM te plaatsen
- */
 function maakVeldPicker(sel) {
-  const wrap = document.createElement('div');
-  wrap.className = 'veld-picker';
-
-  const trigger = document.createElement('button');
-  trigger.type = 'button';
-  trigger.className = 'veld-picker-trigger';
-
-  const menu = document.createElement('div');
-  menu.className = 'veld-picker-menu';
-  menu.hidden = true;
-
-  wrap.append(trigger, menu);
+  const trigger = maak('button', { type: 'button', className: 'veld-picker-trigger' });
+  const zoek = maak('input', { type: 'search', className: 'veld-picker-zoek', placeholder: 'Zoek een variabele…' });
+  zoek.setAttribute('aria-label', 'Zoek een variabele');
+  const lijst = maak('div', { className: 'veld-picker-lijst' });
+  const menu = maak('div', { className: 'veld-picker-menu', hidden: true });
+  menu.append(zoek, lijst);
+  sel._picker = { trigger, zoek, lijst, categorie: null };
 
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
-    const wasHidden = menu.hidden;
-    document.querySelectorAll('.veld-picker-menu').forEach(m => { m.hidden = true; });
-    menu.hidden = !wasHidden;
+    const openen = menu.hidden;
+    sluitVeldPickers();
+    if (!openen) return;
+    sel._picker.categorie = null;
+    zoek.value = '';
+    vernieuwVeldPickerInhoud(sel);
+    menu.hidden = false;
+    zoek.focus();
   });
+  zoek.addEventListener('input', () => vernieuwVeldPickerInhoud(sel));
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { sluitVeldPickers(); trigger.focus(); } });
 
-  sel._picker = { trigger, menu };
-  vernieuwVeldPickerInhoud(sel);
-
+  const wrap = maak('div', { className: 'veld-picker' });
+  wrap.append(trigger, menu);
   return wrap;
 }
 
-// Eén gedelegeerde listener: klik buiten een veld-picker sluit het open menu.
-if (!window._veldPickerBuitenklikGebonden) {
-  window._veldPickerBuitenklikGebonden = true;
-  document.addEventListener('click', (e) => {
-    document.querySelectorAll('.veld-picker').forEach(wrap => {
-      if (!wrap.contains(e.target)) {
-        const menu = wrap.querySelector('.veld-picker-menu');
-        if (menu) menu.hidden = true;
-      }
-    });
-  });
+function sluitVeldPickers() {
+  document.querySelectorAll('.veld-picker-menu').forEach(m => { m.hidden = true; });
 }
 
-/**
- * (Her)bouwt de trigger-tekst en menu-items van de veld-picker die bij `sel` hoort.
- * Wordt aangeroepen vanuit vulVeldSelect, dus telkens wanneer de beschikbare
- * velden, favorieten of het actieve filter wijzigen.
- * @param {HTMLSelectElement} sel
- */
-function vernieuwVeldPickerInhoud(sel) {
+document.addEventListener('click', (e) => { if (!e.target.closest('.veld-picker')) sluitVeldPickers(); });
+
+/** Trigger-tekst en lijst: zoekresultaten, één categorie, of het overzicht van categorieën. */
+function vernieuwVeldPickerInhoud(sel, categorieen = veldCategorieen()) {
   const picker = sel._picker;
-  if (!picker) return; // picker bestaat pas nadat maakVeldPicker is aangeroepen
-  const { trigger, menu } = picker;
+  if (!picker) return;
+  const { trigger, zoek, lijst } = picker;
+  trigger.textContent = sel.value ? window.mooieVeldnaam(sel.value) : 'Kies een variabele';
+  trigger.classList.toggle('is-leeg', !sel.value);
 
-  trigger.textContent = sel.value ? window.mooieVeldnaam(sel.value) : '-- geen --';
-  menu.innerHTML = '';
+  const term = zoek.value.trim().toLowerCase();
+  const leeg = (tekst) => maak('div', { className: 'veld-picker-leeg', textContent: tekst });
+  const naarCategorie = (naam) => (e) => { e.stopPropagation(); picker.categorie = naam; vernieuwVeldPickerInhoud(sel); };
 
-  const { favorites, custom, standard } = window.getFieldGroupsForUi();
-  const bruikbaar = (lijst) => lijst.filter(veld => veldHeeftBeschikbareData(veld));
-
-  const voegGroepToe = (label, velden) => {
-    const bruikbareVelden = bruikbaar(velden);
-    if (!bruikbareVelden.length) return;
-
-    const kop = document.createElement('div');
-    kop.className = 'veld-picker-group-label';
-    kop.textContent = label;
-    menu.appendChild(kop);
-
-    bruikbareVelden.forEach(veld => {
-      const item = document.createElement('div');
-      item.className = 'veld-picker-item';
-      if (veld === sel.value) item.classList.add('is-geselecteerd');
-
-      const isFavoriet = window.favorieteVelden.has(veld);
-      const ster = document.createElement('button');
-      ster.type = 'button';
-      ster.className = 'veld-ster';
-      ster.classList.toggle('is-actief', isFavoriet);
-      ster.textContent = isFavoriet ? '★' : '☆';
-      ster.title = isFavoriet ? 'Verwijderen uit favorieten' : 'Toevoegen aan favorieten';
-      ster.addEventListener('click', (e) => {
-        e.stopPropagation();
-        window.toggleFavorietVeld(veld);
-      });
-
-      const naam = document.createElement('span');
-      naam.className = 'veld-picker-naam';
-      naam.textContent = window.mooieVeldnaam(veld);
-      naam.title = window.mooieVeldnaam(veld);
-      naam.addEventListener('click', () => {
-        sel.value = veld;
-        herllaadVisualisatie();
-        trigger.textContent = window.mooieVeldnaam(veld);
-        menu.hidden = true;
-      });
-
-      item.append(ster, naam);
-
-      if (isCustomField(veld)) {
-        const prullenbak = document.createElement('button');
-        prullenbak.type = 'button';
-        prullenbak.className = 'veld-verwijder';
-        prullenbak.textContent = '🗑';
-        prullenbak.title = 'Deze zelfgemaakte variabele verwijderen';
-        prullenbak.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (confirm(`Weet je zeker dat je de variabele "${window.mooieVeldnaam(veld)}" wilt verwijderen?`)) {
-            window.verwijderAangemaakteVariabele?.(veld);
-          }
-        });
-        item.appendChild(prullenbak);
-      }
-
-      menu.appendChild(item);
-    });
-  };
-
-  voegGroepToe('Favorieten', favorites);
-  voegGroepToe('Zelfgemaakte variabelen', custom);
-  voegGroepToe('Basisvariabelen', standard);
-
-  if (!menu.children.length) {
-    const leeg = document.createElement('div');
-    leeg.className = 'veld-picker-leeg';
-    leeg.textContent = 'Geen variabelen beschikbaar.';
-    menu.appendChild(leeg);
+  if (term) {
+    const treffers = [...new Set(categorieen.flatMap(c => c.velden))].filter(v => window.mooieVeldnaam(v).toLowerCase().includes(term));
+    lijst.replaceChildren(...treffers.map(v => maakVeldItem(sel, v, categorieVanVeld(v))));
+    if (!treffers.length) lijst.append(leeg('Geen variabelen gevonden.'));
+    return;
   }
+
+  const open = categorieen.find(c => c.naam === picker.categorie);
+  if (open) {
+    const terug = maak('button', { type: 'button', className: 'veld-picker-terug', innerHTML: '<span aria-hidden="true">‹</span> ' });
+    terug.append(open.naam);
+    terug.addEventListener('click', naarCategorie(null));
+    lijst.replaceChildren(terug, ...open.velden.map(v => maakVeldItem(sel, v)));
+    return;
+  }
+
+  lijst.replaceChildren(...categorieen.map(({ naam, velden }) => {
+    const knop = maak('button', {
+      type: 'button', className: 'veld-picker-categorie',
+      innerHTML: `<span class="veld-picker-naam">${naam}</span><span class="veld-picker-aantal">${velden.length}</span><span aria-hidden="true">›</span>`,
+    });
+    knop.addEventListener('click', naarCategorie(naam));
+    return knop;
+  }));
+  if (!categorieen.length) lijst.append(leeg('Geen variabelen beschikbaar.'));
 }
 
 window.vernieuwVeldPickerInhoud = vernieuwVeldPickerInhoud;
 
-/**
- * Werkt alle bestaande veldselectoren in de sidebar bij op basis van de actuele
- * data en het actieve filter. Wordt aangeroepen vanuit herllaadVisualisatie,
- * dus telkens wanneer het jaar, het waardefilter of de dataset wijzigt.
- */
-window.vernieuwVeldSelecties = function () {
-  document.querySelectorAll('#selectors-div select.field-select-item').forEach(sel => {
-    vulVeldSelect(sel);
+/** Eén variabele in het menu: ster (favoriet), naam en — bij zelfgemaakte — een prullenbak. */
+function maakVeldItem(sel, veld, categorieLabel) {
+  const naam = window.mooieVeldnaam(veld);
+  const isFavoriet = window.favorieteVelden.has(veld);
+  const item = maak('div', { className: 'veld-picker-item' });
+
+  const ster = maak('button', {
+    type: 'button', className: 'veld-ster', textContent: isFavoriet ? '★' : '☆',
+    title: isFavoriet ? 'Verwijderen uit favorieten' : 'Toevoegen aan favorieten',
   });
-};
+  ster.classList.toggle('is-actief', isFavoriet);
+  ster.addEventListener('click', (e) => { e.stopPropagation(); window.toggleFavorietVeld(veld); });
 
-/**
- * Voegt een nieuwe veldselector-rij toe aan de sidebar.
- * @param {string} [standaardWaarde] - Optioneel vooraf geselecteerde veldnaam
- */
-window.addFieldSelector = function (standaardWaarde) {
-  const container = document.getElementById('field-select');
-  if (!container) { console.error('field-select container niet gevonden'); return; }
+  const kies = maak('button', { type: 'button', className: 'veld-picker-naam', textContent: naam, title: naam });
+  if (categorieLabel) kies.append(maak('small', { textContent: categorieLabel }));
+  kies.addEventListener('click', () => { sel.value = veld; sluitVeldPickers(); window.herlaadVisualisatie(); });
 
-  let selectorsDiv = document.getElementById('selectors-div');
-  if (!selectorsDiv) {
-    selectorsDiv = document.createElement('div');
-    selectorsDiv.id = 'selectors-div';
-    container.appendChild(selectorsDiv);
+  item.append(ster, kies);
+
+  if (isCustomField(veld)) {
+    const prullenbak = maak('button', {
+      type: 'button', className: 'veld-verwijder', innerHTML: ICONEN.prullenbak, title: 'Deze zelfgemaakte variabele verwijderen',
+    });
+    prullenbak.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm(`Weet je zeker dat je de variabele "${naam}" wilt verwijderen?`)) window.verwijderAangemaakteVariabele?.(veld);
+    });
+    item.append(prullenbak);
   }
-
-  const rij = document.createElement('div');
-  rij.className = 'field-row';
-  Object.assign(rij.style, { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' });
-
-  const sel = maakSelectElement(standaardWaarde);
-  rij.appendChild(sel);
-
-  const picker = maakVeldPicker(sel);
-  rij.appendChild(picker);
-
-  const verwijderBtn = document.createElement('button');
-  verwijderBtn.type = 'button';
-  verwijderBtn.textContent = 'Verwijder';
-  verwijderBtn.addEventListener('click', () => { rij.remove(); herllaadVisualisatie(); });
-  rij.appendChild(verwijderBtn);
-
-  selectorsDiv.appendChild(rij);
-  return sel;
-};
-
-/**
- * Initialiseert alle veldselectoren op basis van de geladen dataset.
- * Voegt standaard twee selectoren toe (aantal_inwoners + aantal_huishoudens).
- * Voegt ook een kleur-indicatortje toe bij de eerste selector.
- * @param {string[]} velden - Lijst van beschikbare veldnamen
- */
-window.initFieldSelectors = function (velden) {
-  window.availableFields = velden || [];
-  const container = document.getElementById('field-select');
-  if (!container) { console.error('field-select container niet gevonden'); return; }
-
-  if (!window.availableFields.length) {
-    container.innerHTML = '<div class="hint">Laad eerst een dataset om variabelen te kunnen kiezen.</div>';
-    const addBtn = document.getElementById('add-variable');
-    if (addBtn) addBtn.disabled = true;
-    return;
-  }
-
-  // Verwijder alle kinderen behalve de hint
-  const hint = container.querySelector('.hint');
-  Array.from(container.children).forEach(kind => { if (kind !== hint) kind.remove(); });
-
-  renderCustomFieldNotice();
-
-  let selectorsDiv = document.getElementById('selectors-div');
-  if (!selectorsDiv) {
-    selectorsDiv = document.createElement('div');
-    selectorsDiv.id = 'selectors-div';
-    container.appendChild(selectorsDiv);
-  }
-
-  // Voeg twee standaard selectoren toe — alleen als die velden ook daadwerkelijk
-  // bruikbare data hebben; anders start de selector leeg ("-- geen --")
-  const heeftVeld1 = window.availableFields.includes(APP_CONFIG.standaardVeld1) && veldHeeftBeschikbareData(APP_CONFIG.standaardVeld1);
-  const heeftVeld2 = window.availableFields.includes(APP_CONFIG.standaardVeld2) && veldHeeftBeschikbareData(APP_CONFIG.standaardVeld2);
-  window.addFieldSelector(heeftVeld1 ? APP_CONFIG.standaardVeld1 : undefined);
-  window.addFieldSelector(heeftVeld2 ? APP_CONFIG.standaardVeld2 : undefined);
-
-  // Voeg kleur-indicator toe bij de eerste selector (laat zien welk veld de kaartkleur bepaalt)
-  setTimeout(() => {
-    const eersteRij = document.getElementById('selectors-div')?.querySelector('.field-row');
-    if (!eersteRij || eersteRij.querySelector('.color-hint')) return;
-
-    const wrapper = document.createElement('div');
-    Object.assign(wrapper.style, { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px', marginRight: '6px' });
-
-    const kleurBlok = document.createElement('div');
-    kleurBlok.className = 'color-hint';
-    kleurBlok.title = 'Kleur: bepaalt welke variabele de kleur van de kaart beïnvloedt.';
-    Object.assign(kleurBlok.style, { display: 'inline-block', width: '20px', height: '20px', border: '1.5px solid #333', borderRadius: '4px', cursor: 'default', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' });
-
-    const label = document.createElement('span');
-    Object.assign(label.style, { fontSize: '9px', fontWeight: 'bold', color: '#555' });
-    label.textContent = 'kleur';
-
-    const updateKleurHint = () => {
-      const palet = document.getElementById('palette-select')?.value || 'viridis';
-      kleurBlok.style.background = APP_CONFIG.paletGradients[palet] || APP_CONFIG.paletGradients['viridis'];
-    };
-
-    updateKleurHint();
-    document.getElementById('palette-select')?.addEventListener('change', updateKleurHint);
-
-    wrapper.append(kleurBlok, label);
-    const eersteSelect = eersteRij.querySelector('select');
-    eersteRij.insertBefore(wrapper, eersteSelect ?? eersteRij.firstChild);
-  }, 120);
-
-  document.getElementById('add-variable').disabled = false;
-  refreshEquationFieldOptions();
-
-  // Trigger visualisatie nadat de DOM klaar is
-  setTimeout(() => window.herllaadVisualisatie?.(), 100);
-};
-
-document.getElementById('add-variable')?.addEventListener('click', (e) => {
-  e.preventDefault();
-  window.addFieldSelector();
-});
-
-// ============================================================================
-// FILTER — Toepassen en wissen
-// ============================================================================
-
-/** Leest filterwaarden uit de UI en vernieuwt de visualisatie */
-function pasFilterToe() {
-  const lees = (id) => { const v = document.getElementById(id)?.value; return v ? parseFloat(v) : null; };
-  window.appData.filter = {
-    min:     lees('filter-min'),
-    max:     lees('filter-max'),
-    lowPct:  lees('filter-lowpct'),
-    highPct: lees('filter-highpct'),
-  };
-  herllaadVisualisatie();
+  return item;
 }
 
-/** Wist alle filterwaarden en vernieuwt de visualisatie */
-function wisFilter() {
+
+// ============================================================================
+// FILTER — Min/max en percentielen (paneel staat standaard verborgen)
+// ============================================================================
+
+const FILTER_VELDEN = { min: 'filter-min', max: 'filter-max', lowPct: 'filter-lowpct', highPct: 'filter-highpct' };
+
+document.getElementById('apply-filter').addEventListener('click', () => {
+  window.appData.filter = Object.fromEntries(Object.entries(FILTER_VELDEN).map(([sleutel, id]) => {
+    const waarde = document.getElementById(id).value;
+    return [sleutel, waarde ? parseFloat(waarde) : null];
+  }));
+  window.herlaadVisualisatie();
+});
+
+document.getElementById('clear-filter').addEventListener('click', () => {
   window.appData.filter = null;
-  ['filter-min', 'filter-max', 'filter-lowpct', 'filter-highpct']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  herllaadVisualisatie();
-}
+  Object.values(FILTER_VELDEN).forEach(id => { document.getElementById(id).value = ''; });
+  window.herlaadVisualisatie();
+});
+
+// Snelknop: minimum op 1 verbergt negatieve en nulwaarden
+document.getElementById('filter-negative').addEventListener('click', () => {
+  document.getElementById('filter-min').value = '1';
+  window.appData.filter = { ...window.appData.filter, min: 1 };
+  window.herlaadVisualisatie();
+});
 
 
 // ============================================================================
-// DATA LADEN — Via PDOK API
+// BESTANDIMPORT — Eén bestand via importer.js (paneel staat standaard verborgen)
 // ============================================================================
 
-/**
- * Haalt GeoJSON op van een PDOK API-endpoint en toont de data op de kaart.
- * Zet OGC-itemsformaat (items-array) om naar standaard GeoJSON FeatureCollection.
- * @param {string} url   - API-endpoint URL
- * @param {string} label - Naam voor foutmeldingen (niet zichtbaar bij succes)
- */
-async function laadVanApi(url, label) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Netwerkfout: ' + res.status);
-    let fc = await res.json();
-
-    // OGC-API geeft soms { items: [...] } in plaats van { features: [...] }
-    if (fc && !fc.features && Array.isArray(fc.items)) {
-      fc = { type: 'FeatureCollection', features: fc.items };
-    }
-
-    if (!fc?.features) return;
-
-    window.appData.lastFC = fc;
-    if (window.multiLoaderState) window.multiLoaderState.originalData = fc;
-
-    // Verwijder eventuele vorige lagen
-    if (window.appData.choroplethLayer) {
-      window.appData.dataLayer.removeLayer(window.appData.choroplethLayer);
-      window.appData.choroplethLayer = null;
-    }
-    if (window.appData.baseGeoLayer) {
-      window.appData.dataLayer.removeLayer(window.appData.baseGeoLayer);
-      window.appData.baseGeoLayer = null;
-    }
-
-    // Toon features als neutrale grijze laag
-    const laag = L.geoJSON(fc, { style: { color: '#888', weight: 1, fillOpacity: 0.3 } })
-      .addTo(window.appData.dataLayer);
-
-    window.bringSmallPolygonsToFront?.(window.appData.dataLayer);
-    window.appData.baseGeoLayer = laag;
-
-    try { map.fitBounds(laag.getBounds(), { maxZoom: 14 }); } catch (_) {}
-
-    window.updateYearSlider?.(fc);
-    window.populateFieldSelect?.(fc);
-
-  } catch (err) {
-    console.error(err);
-    alert('Fout bij laden: ' + err.message);
-  }
-}
-
-
-// ============================================================================
-// BESTANDIMPORT — Wrapper voor importer.js
-// ============================================================================
-
-/**
- * Delegeert het importeren naar handleImportFile in importer.js.
- * @param {File} bestand
- */
-async function handleFileImport(bestand) {
-  if (window.handleImportFile) {
-    await window.handleImportFile(bestand, { map, dataLayer });
-  } else {
-    alert('Importer module niet geladen.');
-  }
-}
-
-document.getElementById('file-input')?.addEventListener('change', async (e) => {
+document.getElementById('file-input').addEventListener('change', (e) => {
   const bestand = e.target.files[0];
-  if (!bestand) return;
-  try {
-    await handleFileImport(bestand);
-  } catch (err) {
-    console.error('Fout bij import:', err);
-    alert('Fout bij bestandimport: ' + err.message);
-  }
+  if (bestand) window.handleImportFile(bestand, window.appData);
 });
 
 
 // ============================================================================
-// EVENT-LISTENERS — Visualisatie-instellingen
+// ZIJBALK — In-/uitklappen, inklapbare vakken en knoppen
 // ============================================================================
 
-document.getElementById('field-select')?.addEventListener('change',   herllaadVisualisatie);
-document.getElementById('method-select')?.addEventListener('change',  herllaadVisualisatie);
-document.getElementById('palette-select')?.addEventListener('change', herllaadVisualisatie);
-document.getElementById('opacity-range')?.addEventListener('change',  herllaadVisualisatie);
+(function () {
+  const app  = document.getElementById('app');
+  const knop = document.getElementById('sidebar-toggle');
+  knop.innerHTML = document.documentElement.classList.contains('sidebar-left') ? '&#8249;' : '&#8250;';
 
-document.getElementById('apply-filter')?.addEventListener('click', pasFilterToe);
-document.getElementById('clear-filter')?.addEventListener('click', wisFilter);
+  knop.addEventListener('click', () => {
+    knop.innerHTML = app.classList.toggle('sidebar-collapsed') ? '&#8250;' : '&#8249;';
+    setTimeout(() => map.invalidateSize(), 310);  // na de CSS-overgang
+  });
+})();
 
-// Snelknop: zet minimum op 1 om negatieve/nul-waarden te verbergen
-document.getElementById('filter-negative')?.addEventListener('click', () => {
-  const el = document.getElementById('filter-min');
-  if (el) el.value = '1';
-  window.appData.filter = { ...(window.appData.filter || {}), min: 1 };
-  herllaadVisualisatie();
+// Klik op de kop van een vak (Stories, Meer, Databronnen, …) klapt het in of uit
+document.getElementById('sidebar').addEventListener('click', (e) => {
+  const kop = e.target.closest('.kaart-paneel > h3');
+  if (kop && !e.target.closest('button, input, select, a')) kop.parentElement.classList.toggle('is-ingeklapt');
 });
 
+document.getElementById('verken-info-toggle').addEventListener('click', (e) => {
+  const info = document.getElementById('verken-info');
+  info.hidden = !info.hidden;
+  e.currentTarget.setAttribute('aria-expanded', String(!info.hidden));
+});
 
-// ============================================================================
-// SIDEBAR TOGGLE — Inklappen en uitklappen van het zijpaneel
-// ============================================================================
-
-(function () {
-  const app = document.getElementById('app');
-  const btn = document.getElementById('sidebar-toggle');
-  if (!app || !btn) return;
-
-  // Bepaal pijlrichting op basis van sidebar-positie (links of rechts)
-  const sidebarLinks = document.documentElement.classList.contains('sidebar-left');
-  btn.innerHTML = sidebarLinks ? '&#8249;' : '&#8250;';
-
-  btn.addEventListener('click', () => {
-    const ingeklapt = app.classList.toggle('sidebar-collapsed');
-
-    // Pijl wisselt richting afhankelijk van in-/uitgeklapt en sidebar-positie
-    btn.innerHTML = ingeklapt ? '&#8250;' : '&#8249;';
-
-    // Geef Leaflet even tijd om de nieuwe grootte te registreren na CSS-transitie
-    setTimeout(() => window.appData?.map?.invalidateSize(), 310);
-  });
-})();
-
-
-// ============================================================================
-// HOOFDPANELEN IN-/UITKLAPBAAR — Klik op de kop van een sidebar-vak (Visualisatie,
-// Variabele, Nieuwe berekende variabele, Stories, Legenda, API's laden, enz.)
-// om de inhoud van dat vak te verbergen/tonen.
-// ============================================================================
-
-(function () {
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar) return;
-
-  // Eén gedelegeerde listener: werkt ook voor dynamisch toegevoegde secties.
-  sidebar.addEventListener('click', (e) => {
-    const kop = e.target.closest('.kaart-paneel > h3');
-    if (!kop) return;
-    if (e.target.closest('button, input, select, a')) return; // knoppen in de kop klappen het paneel niet in
-    const paneel = kop.parentElement;
-    paneel.classList.toggle('is-ingeklapt');
-  });
-})();
-
-
-// ============================================================================
-// LEGENDA-WIDGET — "i"-icoon rechtsboven op de kaart, klik om legenda te tonen/verbergen
-// ============================================================================
-
-(function () {
-  const icon   = document.getElementById('legend-icon-toggle');
-  const paneel = document.getElementById('legend');
-  if (!icon || !paneel) return;
-
-  icon.addEventListener('click', () => {
-    const zichtbaar = paneel.classList.toggle('is-zichtbaar');
-    icon.setAttribute('aria-expanded', String(zichtbaar));
-    paneel.setAttribute('aria-hidden', String(!zichtbaar));
-  });
-})();
+// Naar splitscherm of 3D; wie daarna terugkomt (ook met de terugknop) krijgt geen introductie
+[['open-split-screen', 'split-screen.html'], ['open-3d', 'huisjes-3d.html']].forEach(([id, pagina]) =>
+  document.getElementById(id).addEventListener('click', () => {
+    history.replaceState(null, '', '?intro=uit');
+    window.location.href = pagina;
+  }));

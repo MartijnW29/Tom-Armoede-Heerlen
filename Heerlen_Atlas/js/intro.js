@@ -63,6 +63,9 @@
     legendaWaarden: [0, 20, 40, 60, 80],
     geenDataKleur:  '#d9e2ec',
 
+    // Stap 4: de armoedegrens-schuif loopt vanzelf door de definities tot je hem aanraakt
+    autoDraaiMs:     4000,
+
     // --- Kaart ---
     startBounds:     [[50.855, 5.885], [50.935, 6.045]],
     tegelUrl:        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -82,11 +85,10 @@
   // HULPFUNCTIES — Opmaak en kleuren
   // ==========================================================================
 
-  function escapeHtml(waarde) {
-    return String(waarde ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  const escapeHtml = (waarde) => String(waarde ?? '').replace(/[&<>"']/g, t => `&#${t.charCodeAt(0)};`);
+
+  // Lengtegraden liggen op deze breedte dichter bij elkaar: afstanden in graden hiermee corrigeren
+  const COS_BREEDTE = Math.cos(50.89 * Math.PI / 180);
 
   const pct = (v, decimaal = false) => v == null ? 'geen cijfers' : `${(decimaal ? NF_DECIMAL : NF_HEEL).format(v)}%`;
 
@@ -241,6 +243,8 @@
     stap: 0,
     definitie: 0,
     bekekenDefinities: new Set([0]),
+    autoDraaiTimer: null,
+    autoDraaiGestopt: false,   // na de eerste aanraking blijft de schuif voorgoed stil
     model: null,
     laadFout: null,
     laadBelofte: null,
@@ -264,12 +268,7 @@
   // DATA — Laden en klaarzetten
   // ==========================================================================
 
-  async function haalJson(url) {
-    if (window.fetchJsonMetRetry) return window.fetchJsonMetRetry(url);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} bij ${url}`);
-    return res.json();
-  }
+  const haalJson = (url) => window.fetchJsonMetRetry(url);  // met opnieuw proberen (multi-loader.js)
 
   const getal = (v) => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
 
@@ -331,11 +330,6 @@
     return gewicht ? som / gewicht : null;
   }
 
-  function ringen(geom) {
-    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-    return polys.flat();
-  }
-
   function polygonen(geom) {
     return geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
   }
@@ -355,60 +349,6 @@
     return { punt: [cx / (6 * a), cy / (6 * a)], oppervlak: Math.abs(a) };
   }
 
-  /**
-   * Alle randsegmenten met de buurten waar ze bij horen. Aangrenzende buurten
-   * delen in PDOK exact dezelfde punten, dus een gedeelde rand komt twee keer voor.
-   */
-  function randSegmenten(buurten) {
-    const segmenten = new Map();
-    for (const b of buurten) {
-      for (const ring of ringen(b.feature.geometry)) {
-        for (let i = 0; i < ring.length - 1; i++) {
-          const p = ring[i], q = ring[i + 1];
-          const kp = p.join(','), kq = q.join(',');
-          if (kp === kq) continue;
-          const sleutel = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
-          const seg = segmenten.get(sleutel) || { a: p, b: q, buurten: [] };
-          seg.buurten.push(b);
-          segmenten.set(sleutel, seg);
-        }
-      }
-    }
-    return [...segmenten.values()];
-  }
-
-  /** Rijg losse segmenten aaneen tot zo lang mogelijke lijnen ([lat, lng]-arrays). */
-  function maakKetens(segmenten) {
-    const sleutel = p => p.join(',');
-    const perPunt = new Map();
-    segmenten.forEach((s, i) => [s.a, s.b].forEach(p => {
-      const k = sleutel(p);
-      if (!perPunt.has(k)) perPunt.set(k, []);
-      perPunt.get(k).push(i);
-    }));
-
-    const gebruikt = new Array(segmenten.length).fill(false);
-    const volg = (startIndex, startPunt) => {
-      const keten = [startPunt];
-      let punt = startPunt, index = startIndex;
-      while (index !== undefined) {
-        gebruikt[index] = true;
-        const s = segmenten[index];
-        punt = sleutel(s.a) === sleutel(punt) ? s.b : s.a;
-        keten.push(punt);
-        index = perPunt.get(sleutel(punt)).find(j => !gebruikt[j]);
-      }
-      return keten;
-    };
-
-    const ketens = [];
-    // Eerst open lijnen vanaf hun eindpunt, daarna gesloten ringen
-    for (const [k, lijst] of perPunt) {
-      if (lijst.length === 1 && !gebruikt[lijst[0]]) ketens.push(volg(lijst[0], k.split(',').map(Number)));
-    }
-    segmenten.forEach((s, i) => { if (!gebruikt[i]) ketens.push(volg(i, s.a)); });
-    return ketens.map(k => k.map(([lon, lat]) => [lat, lon]));
-  }
 
   function bouwModel(features, cijfers) {
     const noordSet = new Set(INTRO_CONFIG.noordBuurten);
@@ -463,18 +403,18 @@
     buurten.forEach(b => { b.helft = b.noord ? noord : zuid; });
 
     // Grenzen uit de gedeelde randen: 1× = gemeentegrens, Noord↔Zuid = de spoorgrens
-    const segmenten = randSegmenten(buurten);
+    // randSegmenten en maakKetens staan in map.js (ook gebruikt voor de gemeentegrens op de kaart)
+    const segmenten = randSegmenten(buurten, b => b.feature.geometry);
     const gemeentegrens = maakKetens(segmenten.filter(s => s.buurten.length === 1));
     const spoorgrens = maakKetens(segmenten.filter(s => s.buurten.length === 2 && s.buurten[0].noord !== s.buurten[1].noord))
       .map(k => (k[0][1] > k.at(-1)[1] ? k.reverse() : k))   // van west naar oost tekenen
       .sort((a, b) => a[0][1] - b[0][1]);
 
     // Afstand van elke buurt tot het spoor (0–1): de buurtkaart "valt uiteen" vanaf de lijn
-    const coslat = Math.cos(50.89 * Math.PI / 180);
     const spoorPunten = spoorgrens.flat();
     buurten.forEach(b => {
       const [lon, lat] = b.zwaartepunt;
-      b.afstandTotSpoor = Math.min(...spoorPunten.map(([la, lo]) => Math.hypot((lo - lon) * coslat, la - lat)));
+      b.afstandTotSpoor = Math.min(...spoorPunten.map(([la, lo]) => Math.hypot((lo - lon) * COS_BREEDTE, la - lat)));
     });
     const maxAfstand = Math.max(...buurten.map(b => b.afstandTotSpoor)) || 1;
     buurten.forEach(b => { b.afstandTotSpoor /= maxAfstand; });
@@ -564,10 +504,9 @@
 
   /** Cumulatieve lengtes langs een lijn (graden, lengtegraad gecorrigeerd). */
   function cumulatief(lijn) {
-    const coslat = Math.cos(50.89 * Math.PI / 180);
     const cum = [0];
     for (let i = 1; i < lijn.length; i++) {
-      cum.push(cum[i - 1] + Math.hypot((lijn[i][1] - lijn[i - 1][1]) * coslat, lijn[i][0] - lijn[i - 1][0]));
+      cum.push(cum[i - 1] + Math.hypot((lijn[i][1] - lijn[i - 1][1]) * COS_BREEDTE, lijn[i][0] - lijn[i - 1][0]));
     }
     return cum;
   }
@@ -622,7 +561,7 @@
       zoomSnap: 0.25,
     });
     L.control.zoom({ position: 'topright' }).addTo(kaart);
-    L.control.attribution({ position: 'topright', prefix: false }).addTo(kaart);
+    L.control.attribution({ position: 'bottomright', prefix: false }).addTo(kaart);
     L.tileLayer(INTRO_CONFIG.tegelUrl, { maxZoom: 19, attribution: INTRO_CONFIG.tegelAttributie }).addTo(kaart);
     kaart.fitBounds(INTRO_CONFIG.startBounds);
 
@@ -899,11 +838,6 @@
     blok.querySelector('.intro-drempel-stad').innerHTML =
       `<strong>${pct(def.stad(staat.model), true)}</strong> van de inwoners van Heerlen telt zo als arm`;
     blok.querySelector('.intro-drempel-boodschap').classList.toggle('is-zichtbaar', staat.bekekenDefinities.size > 1);
-
-    const volgende = staat.inhoud.querySelector('[data-actie="volgende"]');
-    const genoegBekeken = staat.bekekenDefinities.size >= 2;
-    if (volgende) volgende.disabled = !genoegBekeken;
-    staat.inhoud.querySelector('.intro-hint')?.toggleAttribute('hidden', genoegBekeken);
   }
 
   function kiesDefinitie(index) {
@@ -915,6 +849,20 @@
     kleurDefinitie(index, 750);
   }
 
+  /** Laat de schuif vanzelf door de definities lopen zolang stap 4 open is en niemand hem heeft aangeraakt. */
+  function regelAutoDraai() {
+    clearInterval(staat.autoDraaiTimer);
+    staat.autoDraaiTimer = null;
+    if (!staat.open || staat.stap !== 3 || !staat.model || staat.autoDraaiGestopt) return;
+    staat.autoDraaiTimer = setInterval(
+      () => kiesDefinitie((staat.definitie + 1) % DEFINITIES.length), INTRO_CONFIG.autoDraaiMs);
+  }
+
+  function stopAutoDraai() {
+    staat.autoDraaiGestopt = true;
+    regelAutoDraai();
+  }
+
   /** Drie kleine kaarten naast elkaar (stap 5), zonder achtergrond en niet zoombaar. */
   function vergelijkingHtml(m) {
     if (!m) return ladenHtml();
@@ -922,8 +870,7 @@
 
     if (!staat.miniKaartPaden) {
       // Vlakke projectie: lengtegraad schalen met cos(breedtegraad), dan in het vak passen
-      const k = Math.cos(50.89 * Math.PI / 180);
-      const schaal = (c) => (typeof c[0] === 'number' ? [c[0] * k, c[1]] : c.map(schaal));
+      const schaal = (c) => (typeof c[0] === 'number' ? [c[0] * COS_BREEDTE, c[1]] : c.map(schaal));
       const vlak = m.buurten.map(b => ({ type: 'Feature', geometry: { type: b.feature.geometry.type, coordinates: schaal(b.feature.geometry.coordinates) } }));
       const projectie = d3.geoIdentity().reflectY(true).fitSize([breedte, hoogte], { type: 'FeatureCollection', features: vlak });
       const pad = d3.geoPath(projectie);
@@ -967,7 +914,6 @@
       <h2 class="intro-titel" id="intro-titel">${s.titel}</h2>
       <div class="intro-tekst">${s.tekst}</div>
       ${s.extra ? `<div class="intro-extra">${s.extra(staat.model)}</div>` : ''}
-      ${index === 3 ? '<p class="intro-hint">Bekijk minstens twee armoedegrenzen om de kaarten te vergelijken.</p>' : ''}
       <div class="intro-navigatie">
         <button type="button" class="intro-vorige" data-actie="vorige" ${index === 0 ? 'disabled' : ''}>
           <span aria-hidden="true">←</span> Vorige
@@ -981,6 +927,7 @@
       staat.inhoud.innerHTML = paneelHtml(staat.stap);
       staat.paneel.scrollTop = 0;
       if (staat.stap === 3) werkDrempelBij();
+      regelAutoDraai();
 
       staat.vergelijking.hidden = staat.stap !== 4;
       if (staat.stap === 4) staat.vergelijking.innerHTML = vergelijkingHtml(staat.model);
@@ -1048,6 +995,9 @@
         case 'opnieuw-laden': startLaden(); renderPaneel(false); break;
       }
     });
+    ['pointerdown', 'keydown'].forEach(type => staat.paneel.addEventListener(type, (e) => {
+      if (e.target.closest('.intro-drempel')) stopAutoDraai();
+    }));
     staat.paneel.addEventListener('input', (e) => {
       if (e.target.matches('.intro-drempel-invoer')) kiesDefinitie(Number(e.target.value));
     });
@@ -1114,6 +1064,7 @@
     if (!staat.open) return;
     staat.open = false;
     animatieToken++;
+    regelAutoDraai();
 
     staat.overlay.classList.remove('is-zichtbaar');
     document.body.classList.remove('intro-open');
@@ -1135,8 +1086,11 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-intro')?.addEventListener('click', openIntro);
 
+    // Geen introductie in het splitscherm of bij terugkomst uit splitscherm/3D
+    const overslaan = document.documentElement.classList.contains('split-pane')
+      || new URLSearchParams(location.search).get('intro') === 'uit';
     const alGezien = window.leesCookie?.(INTRO_CONFIG.gezienCookie) === '1';
-    if (INTRO_CONFIG.altijdTonen || !alGezien) openIntro();
+    if (!overslaan && (INTRO_CONFIG.altijdTonen || !alGezien)) openIntro();
     else window.toonCookieMelding?.();
   });
 

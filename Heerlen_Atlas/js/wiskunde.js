@@ -1,475 +1,202 @@
 // ============================================================================
-// WISKUNDE.JS — Formulebuilder voor berekende variabelen
-// ============================================================================
-// Ondersteunde operatoren: + − × ÷ %
-//
-// De % operator berekent welk percentage veld A uitmaakt van veld B:
-//   (A / B) × 100
+// WISKUNDE.JS — Heerlen Opportunity Atlas
+// Zelf een variabele berekenen uit twee bestaande: + − × ÷ en % (A als percentage van B).
+// Formules worden in een cookie onthouden en bij een volgend bezoek opnieuw berekend.
 // ============================================================================
 
 (function () {
 
-  // ============================================================================
-  // GLOBALE STATE
-  // ============================================================================
+  // ==========================================================================
+  // CONFIGURATIE
+  // ==========================================================================
 
-  window.equationState       = window.equationState       || { operator: '+' };
-  window.derivedFieldCounter = window.derivedFieldCounter || 0;
+  const OPERATOREN = {
+    '+': { label: '+', woord: 'plus',         reken: (a, b) => a + b },
+    '-': { label: '−', woord: 'min',          reken: (a, b) => a - b },
+    '*': { label: '×', woord: 'maal',         reken: (a, b) => a * b },
+    '/': { label: '÷', woord: 'gedeeld_door', reken: (a, b) => b !== 0 ? a / b : null },
+    '%': { label: '% van', woord: 'pct_van',  reken: (a, b) => b !== 0 ? (a / b) * 100 : null },
+  };
 
-  // ============================================================================
-  // HULPFUNCTIES — Operator en naamgeving
-  // ============================================================================
+  const COOKIE_NAAM = 'atlas_aangemaakte_variabelen';
+  const $ = (id) => document.getElementById(id);
+  let operator = '+';
 
-  /**
-   * Geeft de visuele operator-label terug die in de UI wordt getoond.
-   * @param {string} op - Interne operator (+, -, *, /, %)
-   * @return {string} Zichtbaar symbool
-   */
-  function getEquationOperatorLabel(op) {
-    const labels = { '+': '+', '-': '−', '*': '×', '/': '÷', '%': '%' };
-    return labels[op] ?? op;
+
+  // ==========================================================================
+  // REKENEN EN NAAMGEVING
+  // ==========================================================================
+
+  const alsGetal = (waarde) => (waarde === null || waarde === undefined || waarde === '' || !Number.isFinite(Number(waarde))) ? null : Number(waarde);
+
+  function bereken(a, b, op) {
+    a = alsGetal(a);
+    b = alsGetal(b);
+    return a === null || b === null ? null : OPERATOREN[op]?.reken(a, b) ?? null;
   }
 
-  /**
-   * Normaliseert een string naar een veilige variabelenaam (lowercase, underscores).
-   * @param {string} base
-   * @return {string}
-   */
-  function sanitizeDerivedFieldName(base) {
-    const safe = String(base || 'berekend')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .replace(/_+/g, '_');
-    return safe || 'berekend';
+  /** Veilige veldnaam (kleine letters en underscores), uniek gemaakt met _2, _3, … */
+  function nieuweVeldnaam(veldA, veldB, op, gewenst) {
+    const basis = String(gewenst || '').trim() || `${veldA}_${OPERATOREN[op].woord}_${veldB}`;
+    const naam = basis.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'berekend';
+    const bestaand = new Set(window.availableFields);
+    let uniek = naam;
+    for (let i = 2; bestaand.has(uniek); i++) uniek = `${naam}_${i}`;
+    return uniek;
   }
 
-  /**
-   * Bepaalt een duidelijke standaardnaam voor een nieuwe berekende variabele.
-   * Geeft de opgegeven naam prioriteit als die niet leeg is.
-   * @param {string} fieldA
-   * @param {string} fieldB
-   * @param {string} op
-   * @param {string} requestedName - Optionele naam van de gebruiker
-   * @return {string}
-   */
-  function buildDerivedFieldName(fieldA, fieldB, op, requestedName) {
-    const cleaned = String(requestedName || '').trim();
-    if (cleaned) return sanitizeDerivedFieldName(cleaned);
 
-    const opWord = { '+': 'plus', '-': 'min', '*': 'maal', '/': 'gedeeld_door', '%': 'pct_van' };
-    return sanitizeDerivedFieldName(`${fieldA}_${opWord[op] ?? op}_${fieldB}`);
-  }
+  // ==========================================================================
+  // OPSLAG — Formules in een cookie: [{ veld, a, b, op }]
+  // ==========================================================================
 
-  /**
-   * Zorgt ervoor dat de variabelenaam uniek blijft door een oplopend suffix toe
-   * te voegen als de naam al bestaat (bijv. _2, _3, …).
-   * @param {string} candidate
-   * @param {string[]} existingFields
-   * @return {string}
-   */
-  function ensureUniqueFieldName(candidate, existingFields) {
-    const fields = new Set((existingFields || []).filter(Boolean));
-    if (!fields.has(candidate)) return candidate;
-
-    let index = 2;
-    let next = `${candidate}_${index}`;
-    while (fields.has(next)) {
-      index += 1;
-      next = `${candidate}_${index}`;
-    }
-    return next;
-  }
-
-  // ============================================================================
-  // BEREKENING — Per feature de nieuwe waarde uitrekenen
-  // ============================================================================
-
-  /**
-   * Voert de gekozen berekening uit op twee numerieke waarden.
-   * Geeft null terug als een van de waarden ongeldig is of als er gedeeld
-   * wordt door nul.
-   * @param {number|null} a
-   * @param {number|null} b
-   * @param {string} op
-   * @return {number|null}
-   */
-  function calculateValue(a, b, op) {
-    if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return null;
-
-    switch (op) {
-      case '+': return a + b;
-      case '-': return a - b;
-      case '*': return a * b;
-      case '/': return b !== 0 ? a / b : null;
-      case '%': return b !== 0 ? (a / b) * 100 : null;
-      default:  return null;
-    }
-  }
-
-  /**
-   * Converteert een ruwe property-waarde naar een getal of null.
-   * @param {*} value
-   * @return {number|null}
-   */
-  function toNumericOrNull(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  // ============================================================================
-  // UI — Formulevoorbeeld en dropdowns
-  // ============================================================================
-
-  /**
-   * Werkt de voorbeeldtekst bij zodra de gebruiker een veld of operator kiest.
-   */
-  function updateFormulaPreview() {
-    const rawFieldA = document.getElementById('formula-field-a')?.value;
-    const rawFieldB = document.getElementById('formula-field-b')?.value;
-    const fieldA  = rawFieldA ? (window.mooieVeldnaam ? window.mooieVeldnaam(rawFieldA) : rawFieldA) : 'Variabele 1';
-    const fieldB  = rawFieldB ? (window.mooieVeldnaam ? window.mooieVeldnaam(rawFieldB) : rawFieldB) : 'Variabele 2';
-    const op      = window.equationState?.operator || '+';
-    const preview = document.getElementById('formula-preview');
-
-    if (!preview) return;
-
-    if (op === '%') {
-      preview.textContent = `Voorbeeld: (${fieldA} ÷ ${fieldB}) × 100`;
-    } else {
-      preview.textContent = `Voorbeeld: ${fieldA} ${getEquationOperatorLabel(op)} ${fieldB}`;
-    }
-  }
-
-  /**
-   * Bouwt de opties van één dropdown opnieuw op en behoudt de huidige selectie.
-   * @param {HTMLSelectElement} select
-   * @param {string} currentValue - Eerder geselecteerde waarde
-   * @param {{ custom: string[], standard: string[] }} groups
-   */
-  function buildSelectOptions(select, currentValue, groups) {
-    select.innerHTML = '';
-
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = '-- kies variabele --';
-    select.appendChild(placeholder);
-
-    const addGroup = (label, fields) => {
-      if (!fields || fields.length === 0) return;
-      const group = document.createElement('optgroup');
-      group.label = label;
-      fields.forEach(veld => {
-        const opt = document.createElement('option');
-        opt.value = veld;
-        opt.textContent = window.mooieVeldnaam ? window.mooieVeldnaam(veld) : veld;
-        if (veld === currentValue) opt.selected = true;
-        group.appendChild(opt);
-      });
-      select.appendChild(group);
-    };
-
-    addGroup('Zelfgemaakte variabelen', groups.custom   || []);
-    addGroup('Basisvariabelen',         groups.standard || []);
-
-    // Herstel de selectie als die niet via opt.selected werd ingesteld
-    if (!select.value && currentValue) select.value = currentValue;
-  }
-
-  /**
-   * Vult beide dropdowns opnieuw met de huidige beschikbare velden.
-   * Behoudt de huidige selectie in beide dropdowns.
-   */
-  function refreshEquationFieldOptions() {
-    const selectA = document.getElementById('formula-field-a');
-    const selectB = document.getElementById('formula-field-b');
-    if (!selectA || !selectB) return;
-
-    const currentA = selectA.value;
-    const currentB = selectB.value;
-
-    const groups = typeof window.getFieldGroupsForUi === 'function'
-      ? window.getFieldGroupsForUi()
-      : {
-          custom:   [],
-          standard: [...new Set((window.availableFields || []).filter(Boolean))]
-        };
-
-    buildSelectOptions(selectA, currentA, groups);
-    buildSelectOptions(selectB, currentB, groups);
-    updateFormulaPreview();
-  }
-
-  /**
-   * Toont een status- of foutmelding onder de formulebuilder.
-   * @param {string} message
-   * @param {'success'|'error'|''} type
-   */
-  function setFormulaStatus(message, type) {
-    const status = document.getElementById('formula-status');
-    if (!status) return;
-    status.textContent = message;
-    status.className = 'formula-status';
-    if (type === 'success') status.classList.add('is-success');
-    if (type === 'error')   status.classList.add('is-error');
-  }
-
-  // ============================================================================
-  // OPSLAG — Zelfgemaakte variabelen onthouden met een cookie
-  // ============================================================================
-
-  const AANGEMAAKTE_VARIABELEN_COOKIE = 'atlas_aangemaakte_variabelen';
-
-  /** Leest de lijst met opgeslagen formules (zelfgemaakte variabelen) uit de cookie. */
-  function leesOpgeslagenVariabelen() {
+  function leesFormules() {
     try {
-      const raw   = window.leesCookie?.(AANGEMAAKTE_VARIABELEN_COOKIE);
-      const lijst = raw ? JSON.parse(raw) : [];
+      const lijst = JSON.parse(window.leesCookie(COOKIE_NAAM) || '[]');
       return Array.isArray(lijst) ? lijst : [];
-    } catch (e) {
+    } catch (_) {
       return [];
     }
   }
 
-  /** Schrijft de lijst met formules terug naar de cookie. */
-  function schrijfOpgeslagenVariabelen(lijst) {
-    window.zetCookie?.(AANGEMAAKTE_VARIABELEN_COOKIE, JSON.stringify(lijst));
-  }
+  const schrijfFormules = (lijst) => window.zetCookie(COOKIE_NAAM, JSON.stringify(lijst));
+  const zonderFormule = (veld) => leesFormules().filter(f => f.veld !== veld);
 
-  /** Voegt een formule toe aan de opslag (werkt 'm bij als de naam al bestaat). */
-  function slaFormuleOp(outputField, fieldA, fieldB, op) {
-    const lijst = leesOpgeslagenVariabelen().filter(item => item.veld !== outputField);
-    lijst.push({ veld: outputField, a: fieldA, b: fieldB, op });
-    schrijfOpgeslagenVariabelen(lijst);
-  }
 
-  /** Verwijdert een formule uit de opslag. */
-  function verwijderFormuleUitOpslag(outputField) {
-    schrijfOpgeslagenVariabelen(leesOpgeslagenVariabelen().filter(item => item.veld !== outputField));
-  }
-
-  // ============================================================================
-  // HOOFDFUNCTIE — Nieuwe berekende variabele aanmaken
-  // ============================================================================
+  // ==========================================================================
+  // VARIABELE AANMAKEN
+  // ==========================================================================
 
   /**
-   * Berekent per feature de nieuwe waarde voor een formule en registreert het
-   * resultaat als beschikbaar veld. Kern-logica, herbruikt door zowel de
-   * "Maak nieuwe variabele"-knop als het automatisch herstellen vanuit een cookie.
-   * @return {{ outputField: string, nullCount: number }|null}
+   * Bereken het nieuwe veld voor alle jaren (originalData, niet alleen het getoonde jaar)
+   * en registreer het als zelfgemaakte variabele. Geeft het aantal ongeldige uitkomsten terug.
    */
-  function berekenEnRegistreerVariabele(fieldA, fieldB, op, outputFieldGewenst) {
-    // Reken op de data van ALLE jaren, niet op de (op jaar gefilterde) kaartdata:
-    // anders zou de complete dataset vervangen worden door alleen het gekozen jaar.
+  function berekenEnRegistreer(veldA, veldB, op, veld) {
     const state = window.multiLoaderState;
-    const bron  = state?.originalData?.features?.length ? state.originalData : window.appData?.lastFC;
+    const bron  = state.originalData?.features?.length ? state.originalData : window.appData.lastFC;
     if (!bron?.features?.length) return null;
 
-    const outputField = outputFieldGewenst || ensureUniqueFieldName(
-      buildDerivedFieldName(fieldA, fieldB, op),
-      window.availableFields || []
-    );
-
-    // Bereken de nieuwe waarden. Eigenschappen worden gekopieerd zodat de originele
-    // data intact blijft; geometrie wordt gedeeld (dat is snel en veilig, want ongewijzigd).
-    let nullCount = 0;
-    const derivedFC = {
+    let ongeldig = 0;
+    // Properties kopiëren zodat de bron intact blijft; de geometrie wordt gedeeld
+    const nieuw = {
       ...bron,
       features: bron.features.map(feature => {
-        const props  = { ...(feature.properties || {}) };
-        const result = calculateValue(toNumericOrNull(props[fieldA]), toNumericOrNull(props[fieldB]), op);
-        if (result === null) nullCount += 1;
-        props[outputField] = result;
-        return { ...feature, properties: props };
+        const waarde = bereken(feature.properties?.[veldA], feature.properties?.[veldB], op);
+        if (waarde === null) ongeldig++;
+        return { ...feature, properties: { ...feature.properties, [veld]: waarde } };
       }),
     };
 
-    // Sla op in de globale state; de kaart houdt het huidige jaarfilter aan
-    const jaar = state?.yearFilter;
-    window.appData.lastFC = (jaar && window.filterFeaturesByYear) ? window.filterFeaturesByYear(derivedFC, jaar) : derivedFC;
-    if (state) state.originalData = derivedFC;
-
-    // Registreer het nieuwe veld
-    window.customFieldNames = Array.from(new Set([...(window.customFieldNames || []), outputField]));
-    window.availableFields  = Array.from(new Set([...(window.availableFields  || []), outputField]));
-
-    return { outputField, nullCount };
+    state.originalData = nieuw;
+    window.appData.lastFC = state.yearFilter ? window.filterFeaturesByYear(nieuw, state.yearFilter) : nieuw;
+    window.customFieldNames = [...new Set([...window.customFieldNames, veld])];
+    window.availableFields  = [...new Set([...window.availableFields, veld])];
+    return ongeldig;
   }
 
-  /**
-   * Leest de UI-waarden uit, berekent per feature de nieuwe waarde,
-   * voegt het resultaat toe aan de dataset en herlaadt de visualisatie.
-   * Onthoudt de formule ook in een cookie zodat de variabele terugkomt
-   * bij een volgend bezoek.
-   */
-  function createDerivedVariable() {
-    const fieldA = document.getElementById('formula-field-a')?.value;
-    const fieldB = document.getElementById('formula-field-b')?.value;
-    const op     = window.equationState?.operator || '+';
+  function maakVariabele() {
+    const veldA = $('formula-field-a').value;
+    const veldB = $('formula-field-b').value;
+    if (!veldA || !veldB) return zetStatus('Kies eerst twee variabelen voor de berekening.', 'error');
 
-    // Validatie
-    if (!fieldA || !fieldB) {
-      setFormulaStatus('Kies eerst twee variabelen voor de berekening.', 'error');
-      return;
-    }
-    if (!window.appData?.lastFC?.features?.length) {
-      setFormulaStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
-      return;
-    }
+    const veld = nieuweVeldnaam(veldA, veldB, operator, $('formula-name').value);
+    const ongeldig = berekenEnRegistreer(veldA, veldB, operator, veld);
+    if (ongeldig === null) return zetStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
 
-    // Naam bepalen
-    const requestedName      = document.getElementById('formula-name')?.value;
-    const outputFieldGewenst = ensureUniqueFieldName(
-      buildDerivedFieldName(fieldA, fieldB, op, requestedName),
-      window.availableFields || []
-    );
-    window.derivedFieldCounter += 1;
+    schrijfFormules([...zonderFormule(veld), { veld, a: veldA, b: veldB, op: operator }]);
 
-    const resultaat = berekenEnRegistreerVariabele(fieldA, fieldB, op, outputFieldGewenst);
-    if (!resultaat) {
-      setFormulaStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
-      return;
-    }
-    const { outputField, nullCount } = resultaat;
+    // De nieuwe variabele meteen op de kaart
+    window.initFieldSelectors(window.availableFields);
+    const kaartRij = document.querySelector('#selectors-div select.field-select-item');
+    kaartRij.value = veld;
+    window.vernieuwVeldPickerInhoud(kaartRij);
+    vernieuwFormuleVelden();
+    window.herlaadVisualisatie();
 
-    // Onthoud de formule zodat de variabele terugkomt bij een volgend bezoek
-    slaFormuleOp(outputField, fieldA, fieldB, op);
-
-    // Vernieuw UI
-    window.initFieldSelectors?.(window.availableFields);
-    refreshEquationFieldOptions();
-
-    // Selecteer het nieuwe veld in de eerste variabele-dropdown
-    const firstSelector = document.querySelector('#selectors-div select.field-select-item');
-    if (firstSelector) {
-      firstSelector.value = outputField;
-      window.vernieuwVeldPickerInhoud?.(firstSelector);
-    }
-
-    // Statusbericht
-    const mooi     = window.mooieVeldnaam || (v => v);
-    const opLabel  = op === '%' ? `% van` : getEquationOperatorLabel(op);
-    const nullNote = nullCount > 0 ? ` (${nullCount} feature(s) hebben geen geldige waarde)` : '';
-    setFormulaStatus(
-      `Nieuwe variabele aangemaakt: "${mooi(outputField)}" (${mooi(fieldA)} ${opLabel} ${mooi(fieldB)})${nullNote}.`,
-      'success'
-    );
-
-    window.herllaadVisualisatie?.();
+    const mooi = window.mooieVeldnaam;
+    zetStatus(`Nieuwe variabele aangemaakt: "${mooi(veld)}" (${mooi(veldA)} ${OPERATOREN[operator].label} ${mooi(veldB)})`
+      + (ongeldig ? ` (${ongeldig} feature(s) hebben geen geldige waarde)` : '') + '.', 'success');
   }
 
-  /**
-   * Vult zelfgemaakte variabelen aan voor features die het veld nog niet hebben
-   * (bijvoorbeeld jaren die pas later, uit CBS StatLine, zijn toegevoegd).
-   */
+  /** Vul zelfgemaakte variabelen aan voor features die het veld nog missen (bijv. later geladen CBS-jaren). */
   window.vulAangemaakteVariabelenAan = function (fc) {
-    if (!fc?.features?.length) return;
-    leesOpgeslagenVariabelen().forEach(({ veld, a, b, op }) => {
-      if (!veld || !a || !b || !(window.customFieldNames || []).includes(veld)) return;
-      fc.features.forEach(f => {
-        const props = f.properties || (f.properties = {});
-        if (veld in props) return;
-        props[veld] = calculateValue(toNumericOrNull(props[a]), toNumericOrNull(props[b]), op);
-      });
-    });
+    leesFormules()
+      .filter(({ veld }) => window.customFieldNames.includes(veld))
+      .forEach(({ veld, a, b, op }) => fc.features.forEach(f => {
+        f.properties ??= {};
+        if (!(veld in f.properties)) f.properties[veld] = bereken(f.properties[a], f.properties[b], op);
+      }));
   };
 
-  /**
-   * Herstelt eerder aangemaakte (via cookie onthouden) berekende variabelen
-   * voor de zojuist geladen dataset. Formules waarvan de brongegevens niet
-   * (meer) beschikbaar zijn, of die al bestaan, worden overgeslagen.
-   * Wordt aangeroepen nadat een nieuwe dataset is geladen.
-   */
+  /** Bereken opgeslagen formules opnieuw na het laden van een dataset (als de bronvelden er zijn). */
   window.herstelAangemaakteVariabelen = function () {
-    const opgeslagen = leesOpgeslagenVariabelen();
-    if (!opgeslagen.length) return;
-
-    opgeslagen.forEach(({ veld, a, b, op }) => {
-      if (!veld || !a || !b) return;
-      if ((window.availableFields || []).includes(veld)) return; // al aanwezig
-      if (!(window.availableFields || []).includes(a)) return;   // brondata niet beschikbaar
-      if (!(window.availableFields || []).includes(b)) return;
-      berekenEnRegistreerVariabele(a, b, op, veld);
-    });
+    const velden = window.availableFields;
+    leesFormules()
+      .filter(({ veld, a, b }) => veld && !velden.includes(veld) && velden.includes(a) && velden.includes(b))
+      .forEach(({ veld, a, b, op }) => berekenEnRegistreer(a, b, op, veld));
   };
 
-  /**
-   * Verwijdert een zelfgemaakte variabele: haalt 'm uit de beschikbare velden,
-   * favorieten en de cookie-opslag, en reset selectoren die er nog naar wijzen.
-   * @param {string} veld
-   */
   window.verwijderAangemaakteVariabele = function (veld) {
-    if (!veld) return;
+    window.customFieldNames = window.customFieldNames.filter(v => v !== veld);
+    window.availableFields  = window.availableFields.filter(v => v !== veld);
+    if (window.favorieteVelden.delete(veld)) window.zetCookie(COOKIES.favorieten, [...window.favorieteVelden].join(','));
+    schrijfFormules(zonderFormule(veld));
 
-    window.customFieldNames = (window.customFieldNames || []).filter(v => v !== veld);
-    window.availableFields  = (window.availableFields  || []).filter(v => v !== veld);
+    window.vernieuwVeldSelecties();  // rijen met dit veld vallen terug (de kaartrij op de standaardvariabele)
+    vernieuwFormuleVelden();
+    window.herlaadVisualisatie();
+  };
 
-    if (window.favorieteVelden?.has(veld)) {
-      window.favorieteVelden.delete(veld);
-      window.zetCookie?.('atlas_favoriete_velden', Array.from(window.favorieteVelden).join(','));
+
+  // ==========================================================================
+  // FORMULEBOUWER — Keuzelijsten, voorbeeldtekst en status
+  // ==========================================================================
+
+  function werkVoorbeeldBij() {
+    const naam = (id, standaard) => $(id).value ? window.mooieVeldnaam($(id).value) : standaard;
+    const a = naam('formula-field-a', 'Variabele 1');
+    const b = naam('formula-field-b', 'Variabele 2');
+    $('formula-preview').textContent = operator === '%'
+      ? `Voorbeeld: (${a} ÷ ${b}) × 100`
+      : `Voorbeeld: ${a} ${OPERATOREN[operator].label} ${b}`;
+  }
+
+  /** Vul beide keuzelijsten opnieuw en behoud de gekozen velden (als die nog bestaan). */
+  function vernieuwFormuleVelden() {
+    const { custom, standard } = window.getFieldGroupsForUi();
+    const alle = [...custom, ...standard];
+    const isZelfgemaakt = (v) => custom.includes(v);
+    const groep = (label, velden) => {
+      const optgroup = Object.assign(document.createElement('optgroup'), { label });
+      optgroup.append(...velden.map(v => new Option(window.mooieVeldnaam(v), v)));
+      return velden.length ? [optgroup] : [];
+    };
+    for (const select of [$('formula-field-a'), $('formula-field-b')]) {
+      const gekozen = select.value;
+      select.replaceChildren(new Option('-- kies variabele --', ''),
+        ...groep('Zelfgemaakte variabelen', alle.filter(isZelfgemaakt)), ...groep('Basisvariabelen', alle.filter(v => !isZelfgemaakt(v))));
+      select.value = gekozen;  // bestaat het veld niet meer, dan blijft de keuze leeg
     }
-
-    verwijderFormuleUitOpslag(veld);
-
-    // Selectoren die dit veld tonen terugzetten naar "-- geen --"
-    document.querySelectorAll('#selectors-div select.field-select-item').forEach(sel => {
-      if (sel.value === veld) sel.value = '';
-    });
-    [document.getElementById('formula-field-a'), document.getElementById('formula-field-b')].forEach(sel => {
-      if (sel && sel.value === veld) sel.value = '';
-    });
-
-    window.vernieuwVeldSelecties?.();
-    refreshEquationFieldOptions();
-    updateFormulaPreview();
-    window.herllaadVisualisatie?.();
-  };
-
-  // ============================================================================
-  // EVENT-LISTENERS
-  // ============================================================================
-
-  function bindFormulaBuilderEvents() {
-    // Operator-knoppen
-    document.querySelectorAll('.formula-op')?.forEach(button => {
-      button.addEventListener('click', () => {
-        window.equationState.operator = button.dataset.op || '+';
-        document.querySelectorAll('.formula-op').forEach(btn => {
-          btn.classList.toggle('is-active', btn === button);
-        });
-        updateFormulaPreview();
-      });
-    });
-
-    // Veld-dropdowns
-    document.getElementById('formula-field-a')?.addEventListener('change', updateFormulaPreview);
-    document.getElementById('formula-field-b')?.addEventListener('change', updateFormulaPreview);
-
-    // Aanmaken-knop
-    document.getElementById('create-formula-variable')?.addEventListener('click', createDerivedVariable);
+    werkVoorbeeldBij();
   }
 
-  // ============================================================================
-  // PUBLIEKE API
-  // ============================================================================
-
-  window.refreshEquationFieldOptions = refreshEquationFieldOptions;
-  window.createDerivedVariable       = createDerivedVariable;
-
-  window.initFormulaBuilder = function () {
-    bindFormulaBuilderEvents();
-    refreshEquationFieldOptions();
-  };
-
-  // ============================================================================
-  // INITIALISATIE
-  // ============================================================================
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', window.initFormulaBuilder);
-  } else {
-    window.initFormulaBuilder();
+  function zetStatus(tekst, soort) {
+    $('formula-status').textContent = tekst;
+    $('formula-status').className = `formula-status is-${soort}`;
   }
+
+  window.refreshEquationFieldOptions = vernieuwFormuleVelden;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.formula-op').forEach(knop => knop.addEventListener('click', () => {
+      operator = knop.dataset.op;
+      document.querySelectorAll('.formula-op').forEach(k => k.classList.toggle('is-active', k === knop));
+      werkVoorbeeldBij();
+    }));
+    $('formula-field-a').addEventListener('change', werkVoorbeeldBij);
+    $('formula-field-b').addEventListener('change', werkVoorbeeldBij);
+    $('create-formula-variable').addEventListener('click', maakVariabele);
+    vernieuwFormuleVelden();
+  });
 
 })();

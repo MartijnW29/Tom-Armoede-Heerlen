@@ -1,13 +1,7 @@
-Plaats hier voorbeeld-GeoJSON- of CSV-bestanden die als demo geladen kunnen worden.
+De buurtcijfers zelf komen live van PDOK (2022–2025) en CBS StatLine (2013–2021); daarvoor hoeft hier niets te staan.
 
-Voorbeeld:
-- buurten_heerlen.geojson
-- wijken_heerlen.geojson
+- `gebouwen_heerlen.bin` — alle gebouwen van Heerlen voor `huisjes-3d.html`, gemaakt met `tools/bake-gebouwen.html`
+- `heerlen_buurten.geojson`, `economic_indicators.csv`, `test-data-jaren.csv` — voorbeeldbestanden om de import te testen
 
-Opmerking: PDOK API's kunnen direct worden gebruikt via de knoppen in de sidebar, dus het is niet noodzakelijk om bestanden hier te zetten.
-
-
-
-https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json
-
+PDOK-bron per jaar, bijvoorbeeld:
 https://api.pdok.nl/cbs/wijken-en-buurten-2025/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json

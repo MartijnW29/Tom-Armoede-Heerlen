@@ -22,7 +22,7 @@
 
   <!-- Externe stijlen -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/intro.js/minified/introjs.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/intro.js@8.6.0/minified/introjs.min.css" />
 
   <!-- Projectstijlen -->
   <link rel="stylesheet" href="css/app.css" />
@@ -34,12 +34,64 @@
 
     <!-- ── KAART ─────────────────────────────────────────────────────────── -->
     <main id="map" aria-label="Kaartweergave">
-      <!-- Legenda als in-/uitklapbaar "i"-icoon rechtsboven op de kaart -->
+      <!-- Rechtsboven: kaartweergave (tandwiel) en legenda (i) -->
       <div id="legend-widget" class="legend-widget">
-        <button id="legend-icon-toggle" type="button" class="legend-icon-toggle"
-                aria-label="Legenda tonen of verbergen" aria-expanded="true" title="Legenda">i</button>
-        <section id="legend" class="legend-floating-panel is-zichtbaar" aria-hidden="false"></section>
+        <div class="kaart-knoppen">
+          <button id="kaartweergave-toggle" type="button" class="kaart-icoonknop"
+                  aria-label="Kaartweergave aanpassen" aria-expanded="false" title="Kaartweergave">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7 7 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+          </button>
+          <button id="legend-icon-toggle" type="button" class="kaart-icoonknop"
+                  aria-label="Legenda tonen of verbergen" aria-expanded="true" title="Legenda">i</button>
+        </div>
+
+        <!-- Kaartweergave: kleuren, dekking en ondergrond (opgebouwd door app.js) -->
+        <section id="kaartweergave" class="kaart-popover" aria-label="Kaartweergave" hidden>
+          <h3>Kleuren</h3>
+          <!-- Bron van waarheid voor het palet; de kleurstalen sturen deze aan -->
+          <select id="palette-select" hidden>
+            <option value="viridis">Viridis</option>
+            <option value="rdylgn" selected>Rood-geel-groen</option>
+            <option value="blues">Blauw</option>
+            <option value="oranges">Oranje</option>
+          </select>
+          <div id="palet-keuze" class="keuze-raster" role="radiogroup" aria-label="Kleurenpalet"></div>
+
+          <div class="slider-kop">
+            <h3>Dekking</h3>
+            <span id="opacity-display" class="waarde-badge">65%</span>
+          </div>
+          <div class="dekking-control">
+            <input id="opacity-range" type="range" min="0" max="1" step="0.01" aria-label="Dekking van de kleuren" />
+            <div class="dekking-ticks" aria-hidden="true">
+              <span style="--f:0">0%</span>
+              <span style="--f:0.25">25%</span>
+              <span style="--f:0.5">50%</span>
+              <span style="--f:0.75">75%</span>
+              <span style="--f:1">100%</span>
+            </div>
+          </div>
+
+          <h3>Ondergrond</h3>
+          <div id="ondergrond-keuze" class="keuze-raster is-drie" role="radiogroup" aria-label="Kaartondergrond"></div>
+        </section>
+
+        <section id="legend" class="legend-floating-panel kaart-popover is-zichtbaar" aria-hidden="false"></section>
       </div>
+
+      <!-- Tijdlijn onderin: de ▼-schuifjes kiezen de periode, het bolletje is het getoonde jaar -->
+      <section id="year-filter-area" class="tijdlijn" aria-label="Tijdlijn">
+        <span id="year-display" class="tijdlijn-jaar" aria-live="polite">2024</span>
+        <div id="tijdlijn-baan" class="tijdlijn-baan">
+          <div class="tijdlijn-lijn" aria-hidden="true"><span class="tijdlijn-bereik"></span></div>
+          <div id="year-ticks" class="year-ticks" aria-hidden="true"></div>
+          <input id="year-start" class="tijdlijn-grens" type="range" step="1" aria-label="Begin van de periode" />
+          <input id="year-end" class="tijdlijn-grens" type="range" step="1" aria-label="Eind van de periode" />
+          <input id="year-slider" class="tijdlijn-huidig" type="range" min="2013" max="2025" step="1" value="2024" aria-label="Getoond jaar" />
+        </div>
+        <button id="year-play-toggle" type="button" class="year-play-button" aria-label="Afspelen door de gekozen periode"
+                aria-pressed="false" title="Afspelen door de gekozen periode">&#9654;</button>
+      </section>
     </main>
 
     <!-- Knop om sidebar in/uit te klappen -->
@@ -48,129 +100,109 @@
     <!-- ── SIDEBAR ───────────────────────────────────────────────────────── -->
     <aside id="sidebar" aria-label="Bedieningspaneel">
 
-      <header class="paneel-kop">
-        <h2>Instellingen</h2>
-      </header>
-
-      <!-- Jaarfilter — slider met streepjesweergave -->
-      <section id="year-filter-area" class="kaart-paneel">
-        <h3>
-          <span class="paneel-titel">Filter op jaar</span>
-          <!-- Afspeelknop en jaarweergave staan in de kop (i.p.v. naast de slider), zodat
-               de slider en de streepjes de volledige breedte krijgen -->
-          <span class="jaar-acties">
-            <button id="year-play-toggle" type="button" class="year-play-button" aria-label="Automatisch afspelen door de jaren" aria-pressed="false" title="Automatisch afspelen door de jaren">&#9654;</button>
-            <span id="year-display">2024</span>
-          </span>
-        </h3>
-        <div class="slider-container">
-          <div class="year-slider-control">
-            <input id="year-slider" type="range" min="1000" max="3000" step="1" value="2024" />
-            <div id="year-ticks" class="year-ticks" aria-hidden="true"></div>
-          </div>
-        </div>
-        <!-- Wis-knop wordt zichtbaar zodra een jaar geselecteerd is (via multi-loader.js) -->
-        <!-- <button id="year-filter-clear" hidden aria-hidden="true">Wis jaarfilter</button> -->
-      </section>
-
-      <!-- Visualisatie-instellingen -->
-      <section id="visual-options" class="kaart-paneel">
-        <h3>Visualisatie</h3>
-
-        <!-- Classificatiemethode: verborgen — staat standaard op 'quantile' -->
-        <label for="method-select" class="sr-only">Classificatie:</label>
-        <select id="method-select" hidden>
-          <option value="quantile">Kwantiel</option>
-          <option value="equal">Equal interval</option>
-        </select>
-
-        <label for="palette-select">Palet:</label>
-        <select id="palette-select">
-          <option value="viridis">Viridis</option>
-          <option value="rdylgn" selected>RdYlGn</option>
-          <option value="blues">Blues</option>
-          <option value="oranges">Oranges</option>
-        </select>
-
-        <div class="slider-kop">
-          <label for="opacity-range">Dekking:</label>
-          <span id="opacity-display" class="waarde-badge">65%</span>
-        </div>
-        <div class="dekking-control">
-          <input id="opacity-range" type="range" min="0" max="1" step="0.01" />
-          <!-- Streepjes en labels bij de snappunten (--f = positie 0..1) -->
-          <div class="dekking-ticks" aria-hidden="true">
-            <span style="--f:0"><i></i>0%</span>
-            <span style="--f:0.25"><i></i>25%</span>
-            <span style="--f:0.5"><i></i>50%</span>
-            <span style="--f:0.75"><i></i>75%</span>
-            <span style="--f:1"><i></i>100%</span>
-          </div>
-        </div>
-
-        <div class="actie-rij">
-          <button id="start-intro" type="button">Introductie bekijken</button>
-          <button id="start-tour" type="button">Rondleiding starten</button>
-          <button id="open-split-screen" type="button">Splitscherm</button>
-          <button id="open-3d" type="button">3D versie bekijken</button>
-        </div>
-      </section>
-
-      <!-- Variabele-selectie — selectoren worden dynamisch aangemaakt door app.js -->
-      <section id="controls" class="kaart-paneel">
-        <h3>Variabele</h3>
-        <label for="field-select">Selecteer variabele(s):</label>
-        <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
-          <div class="hint">Klik op "Variabele toevoegen" om een variabele aan de kaart toe te voegen.</div>
-        </div>
-        <div class="actie-rij">
-          <button id="add-variable">Variabele toevoegen</button>
-        </div>
-      </section>
-
-      <!-- Wiskundige berekening met variabelen — formulebuilder voor nieuwe variabelen -->
-      <section id="formula-area" class="kaart-paneel">
-        <h3>Nieuwe berekende variabele</h3>
-        <p class="uitleg-compact">
-          Combineer twee bestaande variabelen tot één nieuwe variabele met een simpele berekening.
+      <!-- Verken de data — rijen worden opgebouwd door app.js -->
+      <section id="controls" class="verken-blok">
+        <header class="verken-kop">
+          <h2>Verken de data</h2>
+          <button id="verken-info-toggle" type="button" class="kaart-icoonknop is-klein"
+                  aria-label="Uitleg tonen" aria-expanded="false" aria-controls="verken-info">i</button>
+        </header>
+        <p id="verken-info" class="verken-info" hidden>
+          De variabele bij het <strong>kaart-icoon</strong> kleurt de kaart. Variabelen bij de
+          <strong>tekstballon</strong> zie je als je met de muis over een buurt gaat.
         </p>
-
-        <div class="formula-builder">
-          <label for="formula-field-a">Variabele 1</label>
-          <select id="formula-field-a"></select>
-
-          <div class="formula-operators" role="group" aria-label="Rekenoperatoren">
-            <button type="button" class="formula-op is-active" data-op="+">+</button>
-            <button type="button" class="formula-op" data-op="-">−</button>
-            <button type="button" class="formula-op" data-op="*">×</button>
-            <button type="button" class="formula-op" data-op="/">÷</button>
-            <button type="button" class="formula-op" data-op="%">%</button>
-          </div>
-
-          <label for="formula-field-b">Variabele 2</label>
-          <select id="formula-field-b"></select>
-
-          <label for="formula-name">Naam nieuwe variabele</label>
-          <input id="formula-name" type="text" placeholder="bijv. inwoners_per_huishouden" />
-
-          <div id="formula-preview" class="formula-preview">Voorbeeld: Variabele 1 + Variabele 2</div>
-
-          <div class="actie-rij">
-            <button id="create-formula-variable" type="button">Maak nieuwe variabele</button>
-          </div>
-
-          <div id="formula-status" class="formula-status" aria-live="polite"></div>
+        <div id="field-select" class="field-list" role="group" aria-label="Variabele selectie">
+          <div class="hint">Data wordt geladen…</div>
         </div>
+        <button id="add-variable" type="button" class="verken-toevoegen"
+                aria-label="Variabele toevoegen aan het info-venster" title="Variabele toevoegen" disabled>+</button>
       </section>
 
       <!-- Stories — menu wordt gevuld door stories.js -->
       <section id="stories-area" class="kaart-paneel stories-paneel">
         <h3>Stories</h3>
-        <p class="uitleg-compact">
-          Kies een verhaal om een fullscreen beeld, kaartfocus en statistieken
-          in een vaste volgorde te tonen.
-        </p>
         <div id="stories-menu" class="stories-menu" aria-label="Stories menu"></div>
+      </section>
+
+      <!-- Meer — uitleg, andere weergaven en geavanceerde opties -->
+      <section id="meer-area" class="kaart-paneel is-ingeklapt">
+        <h3>Meer</h3>
+        <div class="meer-knoppen">
+          <button id="start-intro" type="button">Introductie</button>
+          <button id="start-tour" type="button">Rondleiding</button>
+          <button id="open-split-screen" type="button">Splitscherm</button>
+          <button id="open-3d" type="button">3D-kaart</button>
+        </div>
+
+        <!-- Classificatiemethode: verborgen — staat standaard op 'quantile' -->
+        <select id="method-select" hidden>
+          <option value="quantile">Kwantiel</option>
+          <option value="equal">Equal interval</option>
+        </select>
+
+        <!-- Formulebouwer voor nieuwe variabelen -->
+        <section id="formula-area" class="kaart-paneel is-ingeklapt">
+          <h3>Zelf een variabele berekenen</h3>
+          <p class="uitleg-compact">Combineer twee variabelen tot één nieuwe variabele.</p>
+
+          <div class="formula-builder">
+            <label for="formula-field-a">Variabele 1</label>
+            <select id="formula-field-a"></select>
+
+            <div class="formula-operators" role="group" aria-label="Rekenoperatoren">
+              <button type="button" class="formula-op is-active" data-op="+">+</button>
+              <button type="button" class="formula-op" data-op="-">−</button>
+              <button type="button" class="formula-op" data-op="*">×</button>
+              <button type="button" class="formula-op" data-op="/">÷</button>
+              <button type="button" class="formula-op" data-op="%">%</button>
+            </div>
+
+            <label for="formula-field-b">Variabele 2</label>
+            <select id="formula-field-b"></select>
+
+            <label for="formula-name">Naam nieuwe variabele</label>
+            <input id="formula-name" type="text" placeholder="bijv. inwoners_per_huishouden" />
+
+            <div id="formula-preview" class="formula-preview">Voorbeeld: Variabele 1 + Variabele 2</div>
+
+            <div class="actie-rij">
+              <button id="create-formula-variable" type="button">Maak nieuwe variabele</button>
+            </div>
+
+            <div id="formula-status" class="formula-status" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <!-- API-laden — PDOK-URLs zijn vooringevuld, extra URLs kunnen toegevoegd worden -->
+        <section id="api-area" class="kaart-paneel is-ingeklapt">
+          <h3>Databronnen</h3>
+          <div class="multi-api-controls">
+            <div id="api-urls-list" class="api-urls-list">
+
+              <!-- Vooringevulde PDOK-buurten URL (Heerlen) -->
+              <div class="api-url-item" data-api="pdok-buurten">
+                <input type="text" class="api-url-input" readonly
+                  value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" />
+                <label class="api-url-label">PDOK Buurten (Heerlen)</label>
+              </div>
+
+              <!-- Vooringevulde PDOK-wijken URL (Heerlen) -->
+              <div class="api-url-item" data-api="pdok-wijken">
+                <input type="text" class="api-url-input" readonly
+                  value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" />
+                <label class="api-url-label">PDOK Wijken (Heerlen)</label>
+              </div>
+
+            </div>
+
+            <div class="actie-rij">
+              <button id="add-api-url">Voeg API URL toe</button>
+              <button id="load-all-apis">Laad alle API's</button>
+              <!-- Vult de jaren 2013-2021 aan met CBS StatLine-kerncijfers -->
+              <button id="load-cbs-data">CBS kerncijfers laden</button>
+            </div>
+          </div>
+        </section>
       </section>
 
       <!-- Filter op waarde / uitschieters — standaard verborgen -->
@@ -201,37 +233,6 @@
         </div>
       </section>
 
-      <!-- API-laden — PDOK-URLs zijn vooringevuld, extra URLs kunnen toegevoegd worden -->
-      <section id="api-area" class="kaart-paneel">
-        <h3>API's laden</h3>
-        <div class="multi-api-controls">
-          <div id="api-urls-list" class="api-urls-list">
-
-            <!-- Vooringevulde PDOK-buurten URL (Heerlen) -->
-            <div class="api-url-item" data-api="pdok-buurten">
-              <input type="text" class="api-url-input" readonly
-                value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json" />
-              <label class="api-url-label">PDOK Buurten (Heerlen)</label>
-            </div>
-
-            <!-- Vooringevulde PDOK-wijken URL (Heerlen) -->
-            <div class="api-url-item" data-api="pdok-wijken">
-              <input type="text" class="api-url-input" readonly
-                value="https://api.pdok.nl/cbs/wijken-en-buurten-2024/ogc/v1/collections/wijken/items?gemeentecode=GM0917&limit=1000&f=json" />
-              <label class="api-url-label">PDOK Wijken (Heerlen)</label>
-            </div>
-
-          </div>
-
-          <div class="actie-rij">
-            <button id="add-api-url">Voeg API URL toe</button>
-            <button id="load-all-apis">Laad alle API's</button>
-            <!-- Vult de jaren 2013-2021 aan met CBS StatLine-kerncijfers -->
-            <button id="load-cbs-data">CBS kerncijfers laden</button>
-          </div>
-        </div>
-      </section>
-
       <!-- Bestandimport — standaard verborgen -->
       <section id="import-area" class="kaart-paneel" hidden>
         <h3>Bestand importeren</h3>
@@ -251,51 +252,21 @@
 
 
   <!-- ── SCRIPTS ───────────────────────────────────────────────────────────
-    Volgorde is belangrijk:
-    1. Leaflet + D3 + Proj4  — externe bibliotheken
-    2. app.js                — kaart-initialisatie en globale state (eerst)
-    3. tour-introjs.js       — rondleiding (na intro.js)
-    4. map.js / kaart.js     — choropleth-visualisatie
-    5. importer.js           — bestandimport
-    6. multi-loader.js       — API-laden en jaarfilter
-    7. d3_charts.js          — vergelijkgrafieken
-    8. stories.js            — verhalen/stories
-    9. intro.js              — introductieverhaal "De armoedegrens trekken"
-                               (start direct; cookiemelding volgt na de intro)
+    Volgorde is belangrijk: app.js eerst (kaart en gedeelde status), intro.js
+    als laatste (start direct; de cookiemelding volgt na de intro).
   ─────────────────────────────────────────────────────────────────────── -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/vendor/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-  <script src="js/app.js"></script>
-  <script src="js/wiskunde.js"></script>
-  <script src="https://unpkg.com/intro.js/minified/intro.min.js"></script>
-  <script src="js/tour-introjs.js"></script>
-  <script src="js/map.js"></script>
-  <script src="js/importer.js"></script>
-  <script src="js/cbs-historie.js"></script>
-  <script src="js/multi-loader.js"></script>
-  <script src="js/d3_charts.js"></script>
-  <script src="js/stories.js"></script>
-  <script src="js/intro.js"></script>
-
-
-  <!-- ── TOUR MODAL ────────────────────────────────────────────────────────
-    Wordt getoond bij eerste bezoek. Zichtbaarheid wordt beheerd door tour-introjs.js.
-  ─────────────────────────────────────────────────────────────────────── -->
-  <div id="tour-modal" class="tour-modal" hidden aria-hidden="true">
-    <div class="tour-modal-overlay"></div>
-    <div class="tour-modal-panel" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-      <h2 id="tour-title">Rondleiding</h2>
-      <p id="tour-message">
-        Wil je een korte rondleiding door de interface?
-        De rondleiding legt uit wat elke knop doet en is makkelijk te sluiten.
-      </p>
-      <div class="tour-modal-actions">
-        <button id="tour-yes">Ja, start rondleiding</button>
-        <button id="tour-no">Nee, bedankt</button>
-      </div>
-    </div>
-  </div>
-
+  <script src="https://unpkg.com/intro.js@8.6.0/minified/intro.min.js"></script>
+  <script src="js/app.js"></script>           <!-- kaart, kaartweergave, Verken de data, zijbalk -->
+  <script src="js/wiskunde.js"></script>      <!-- zelf een variabele berekenen -->
+  <script src="js/tour-introjs.js"></script>  <!-- rondleiding -->
+  <script src="js/map.js"></script>           <!-- kleuren, legenda, info-venster -->
+  <script src="js/importer.js"></script>      <!-- eigen bestanden inlezen -->
+  <script src="js/cbs-historie.js"></script>  <!-- jaren 2013–2021 uit CBS StatLine -->
+  <script src="js/multi-loader.js"></script>  <!-- data laden en tijdlijn -->
+  <script src="js/stories.js"></script>       <!-- verhalen -->
+  <script src="js/intro.js"></script>         <!-- introductie "De armoedegrens trekken" -->
 </body>
 </html>

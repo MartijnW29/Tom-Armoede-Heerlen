@@ -1,24 +1,16 @@
 #!/bin/bash
-# Quick Start Script for Opportunity Atlas Heerlen
+# Start een lokale webserver voor de Opportunity Atlas op http://localhost:8080
+# (nodig omdat de browser bestanden als data/gebouwen_heerlen.bin niet via file:// laadt)
 
-echo "🚀 Opportunity Atlas — Heerlen"
-echo "================================="
-echo ""
-echo "Starting local server..."
-echo ""
+cd "$(dirname "$0")"
 
-# Try http-server first
 if command -v npx &> /dev/null; then
-    echo "Using npx http-server (Node.js)..."
-    npx http-server . --port 8080 --corsUncached --cors -o
+    npx http-server . --port 8080 -c-1 -o
 elif command -v python3 &> /dev/null; then
-    echo "Using Python 3 http.server..."
     python3 -m http.server 8080
 elif command -v python &> /dev/null; then
-    echo "Using Python http.server..."
-    python -m http.server 8000
+    python -m http.server 8080
 else
-    echo "Error: Neither Node.js nor Python found!"
-    echo "Please install Node.js or Python to start the server."
+    echo "Node.js of Python is nodig om de server te starten."
     exit 1
 fi

@@ -1,1082 +1,538 @@
 // ============================================================================
-// KAART.JS — Heerlen Opportunity Atlas
-// Choropleth visualisatie, filtering, legenda's en popups
+// MAP.JS — Heerlen Opportunity Atlas
+// Kaart kleuren (choropleth), legenda, info-venster en trendgrafiek per buurt
 // ============================================================================
 
+
 // ============================================================================
-// CONFIGURATIE — Pas hier alle instellingen aan
+// CONFIGURATIE
 // ============================================================================
 
 const KAART_CONFIG = {
-  // --- Visualisatie ---
-  standaardKleurPalet:    'viridis',   // viridis | rdylgn | blues | oranges
-  standaardTransparantie: 0.5,         // 0.0–1.0
-  standaardAantalKlassen: 5,
-  standaardClassificatie: 'quantile',  // quantile | equal
+  // Randen (dezelfde rustige look als de introductie)
+  randKleur:       '#ffffff',
+  randBreedte:     1,
+  // Gemeentegrens: witte gloed met een donkere lijn erin (zoals in de introductie)
+  grensGloed: { color: '#ffffff', weight: 6, opacity: 0.7, lineJoin: 'round' },
+  grensLijn:  { color: '#061826', weight: 2.2, opacity: 0.85, lineJoin: 'round' },
 
-  // --- Randstijl polygonen ---
-  randKleur:              '#333',
-  randBreedte:            0.6,
-  wijkRandBreedte:        2.5,         // Dikkere rand voor wijkgrenzen
-  gefilterdRandKleur:     '#999',
-  gefilterdVulKleur:      '#e8e8e8',
-  gefilterdTransparantie: 0.15,
+  // Buurten buiten het filter of zonder waarde
+  buitenFilterStijl: { color: '#999', weight: 0.6, fillOpacity: 0.45, fillColor: '#bdbdbd' },
+  geenDataStijl:     { color: '#999', weight: 0.6, fillOpacity: 0.3,  fillColor: '#ccc' },
 
-  // --- Popup: velden die als eerste worden getoond ---
-  voorkeurvelden: ['naam', 'name', 'buurtnaam', 'wijknaam', 'id', 'code'],
-
-  // --- Kaartweergave ---
-  maxZoomNaDataLoad: 14,
+  // Info-venster: deze velden staan bovenaan (als ze bestaan)
+  voorkeurvelden: ['naam', 'name', 'buurtnaam', 'id', 'code'],
 };
 
-// Synchroniseer standaard-transparantie met globale APP_SETTINGS
-window.APP_SETTINGS = window.APP_SETTINGS || {};
-window.APP_SETTINGS.defaultOpacity = KAART_CONFIG.standaardTransparantie;
-if (typeof window.syncOpacityDefaults === 'function') window.syncOpacityDefaults();
-
-// Hover-grafiek configuratie (panelafmetingen, vertraging, id-velden)
-const HOVER_CHART_CONFIG = {
-  panelWidth:    340,
-  panelHeight:   190,
-  marginTop:     16,
-  marginRight:   14,
-  marginBottom:  36,
-  marginLeft:    42,
-  hideDelayMs:   650, // ms vertraging voordat paneel verdwijnt na muisverlaten
-
-  // Velden die worden gebruikt om een feature uniek te identificeren
-  identityFields: ['code', 'id', 'buurtcode', 'wijkcode', 'buurtnaam', 'wijknaam', 'naam', 'name'],
+const TRENDGRAFIEK_CONFIG = {
+  breedte: 340, hoogte: 190,
+  marge: { boven: 16, rechts: 14, onder: 36, links: 42 },
+  verbergNaMs: 650,  // wachttijd voordat het paneel verdwijnt na het verlaten van een buurt
+  // Velden die een buurt over de jaren heen herkenbaar maken (eerste gevulde wint)
+  identiteitsvelden: ['code', 'id', 'buurtcode', 'wijkcode', 'buurtnaam', 'wijknaam', 'naam', 'name'],
 };
 
-// Zorg dat appData object altijd bestaat
-window.appData = window.appData || {};
+// Lagen boven elkaar: ondergrond (200) < kleuren < gemeentegrens < info-venster (700).
+// De grens laat de muis door naar de buurten eronder.
+[['choroplethPane', 460, true], ['grensPane', 475, false]].forEach(([naam, z, muis]) => {
+  Object.assign(map.createPane(naam).style, { zIndex: z, pointerEvents: muis ? '' : 'none' });
+});
+
 
 // ============================================================================
-// HULPFUNCTIES — Basis operaties
+// WAARDEN EN FILTER
 // ============================================================================
 
-/**
- * Herken of een veldnaam een percentage/aandeel representeert (CBS-achtige data).
- * Wordt gebruikt om de waarde in popups en legenda met een %-teken te tonen.
- */
-function isPercentageVeld(veldnaam) {
-  if (!veldnaam) return false;
-  const naam = veldnaam.toLowerCase();
-  return /(percentage|perc\b|_pct|pct_|aandeel|%)/.test(naam);
+const isPercentageVeld = (veld) => /(percentage|perc\b|_pct|pct_|aandeel|%)/i.test(veld || '');
+
+/** Nederlandse notatie met hoogstens `decimalen` cijfers achter de komma; percentages krijgen een %-teken. */
+function formatteerGetal(getal, veld, decimalen = 2) {
+  const tekst = Number(getal).toLocaleString('nl-NL', { maximumFractionDigits: decimalen });
+  return isPercentageVeld(veld) ? `${tekst}%` : tekst;
 }
 
-/**
- * Formatteer een numerieke waarde volgens Nederlandse notatie (komma als decimaalteken).
- * Percentage-achtige velden krijgen 2 decimalen + %-teken (bv. "25,00%"),
- * overige numerieke velden 2 decimalen zonder teken (bv. "1.234,56").
- */
-function formatteerWaarde(waarde, veldnaam) {
-  if (waarde === null || waarde === undefined || waarde === '' || isNaN(+waarde)) return waarde;
-  const getal = +waarde;
-  if (isPercentageVeld(veldnaam)) {
-    return `${getal.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-  }
-  return getal.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-/** Haal alle numerieke waarden op voor een veld uit een FeatureCollection. */
 function haalNumeriekeWaarden(fc, veld) {
   return fc.features
-    .map(f => {
-      const v = f.properties?.[veld];
-      return (v === null || v === undefined || v === '') ? null : +v;
-    })
-    .filter(v => v !== null && !isNaN(v));
+    .map(f => f.properties?.[veld])
+    .filter(v => v !== null && v !== undefined && v !== '' && !isNaN(+v))
+    .map(Number);
 }
 
-/**
- * Controleer of een waarde door het actieve filter heen komt.
- * Ondersteunt min/max én percentiel-grenzen (lowPct / highPct).
- */
+/** Komt een waarde door het filter? Ondersteunt min/max en percentielgrenzen (lowPct/highPct). */
 function waardePasseertFilter(waarde, alleWaarden, filter) {
-  if (filter == null) return true;
+  if (!filter) return true;
   if (waarde === null || waarde === undefined || isNaN(+waarde)) return false;
+  const getal = +waarde;
+  if (typeof filter.min === 'number' && getal < filter.min) return false;
+  if (typeof filter.max === 'number' && getal > filter.max) return false;
 
-  const num = +waarde;
-  if (typeof filter.min === 'number' && num < filter.min) return false;
-  if (typeof filter.max === 'number' && num > filter.max) return false;
-
-  // Percentiel-check: bereken drempelwaarden op basis van gesorteerde array
   if (typeof filter.lowPct === 'number' || typeof filter.highPct === 'number') {
-    const gesorteerd = (alleWaarden || []).slice().sort((a, b) => a - b);
-    if (gesorteerd.length === 0) return true;
-
-    const onderIdx  = Math.floor((filter.lowPct  || 0)   / 100 * (gesorteerd.length - 1));
-    const bovenIdx  = Math.floor((filter.highPct || 100) / 100 * (gesorteerd.length - 1));
-    const onderWaarde = gesorteerd[Math.max(0, onderIdx)];
-    const bovenWaarde = gesorteerd[Math.min(gesorteerd.length - 1, bovenIdx)];
-
-    if (typeof filter.lowPct  === 'number' && num < onderWaarde) return false;
-    if (typeof filter.highPct === 'number' && num > bovenWaarde) return false;
+    const gesorteerd = [...alleWaarden].sort((a, b) => a - b);
+    const opPercentiel = (pct) => gesorteerd[Math.floor(pct / 100 * (gesorteerd.length - 1))];
+    if (typeof filter.lowPct  === 'number' && getal < opPercentiel(filter.lowPct))  return false;
+    if (typeof filter.highPct === 'number' && getal > opPercentiel(filter.highPct)) return false;
   }
   return true;
 }
 
-/** Geef alle features terug die door het filter komen. */
-function filtreerdFeatures(fc, veld, filter) {
+function gefilterdeFeatures(fc, veld, filter) {
   if (!filter) return fc.features;
   const alleWaarden = haalNumeriekeWaarden(fc, veld);
   return fc.features.filter(f => waardePasseertFilter(f.properties?.[veld], alleWaarden, filter));
 }
 
+
 // ============================================================================
-// POPUP — HTML opbouwen voor een aangeklikte feature
+// KLEUREN, KLASSEN EN LEGENDA
 // ============================================================================
 
-/**
- * Normaliseer een naam-string: witruimte en koppeltekenspaties opschonen.
- */
-function normalizeName(s) {
-  if (!s && s !== 0) return s;
-  return String(s).trim().replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ');
+const KLEURSCHEMAS = {
+  viridis: d3.interpolateViridis,
+  rdylgn:  d3.interpolateRdYlGn,
+  blues:   d3.interpolateBlues,
+  oranges: d3.interpolateOranges,
+};
+
+function haalKleurSchema(naam, aantal) {
+  return d3.quantize(KLEURSCHEMAS[naam] || KLEURSCHEMAS.viridis, aantal);
 }
 
-/**
- * Bepaal de weer te geven wijknaam voor een feature.
- * Prioriteit: overlapping_wijken[0] → props.wijknaam → afgeleid van buurtnaam/buurt.
- */
-function bepaalDisplayWijk(props) {
-  const overlaps = Array.isArray(props.overlapping_wijken) ? props.overlapping_wijken : null;
-  if (overlaps?.length) return normalizeName(overlaps[0]);
-  if (props.wijknaam?.trim()) return normalizeName(props.wijknaam);
-
-  // Leid wijknaam af van buurtnaam: "Heerlen Centrum" → "Centrum"
-  const bron = props.buurtnaam || props.buurt || '';
-  if (!bron) return null;
-  const delen = bron.trim().split(/\s+/);
-  return normalizeName(delen.length > 1 ? delen.slice(1).join(' ') : bron);
+/** Klassengrenzen (aantal + 1 stuks): kwantielen (even veel buurten per klasse) of gelijke stappen. */
+function berekenBreuken(waarden, aantal, methode) {
+  const gesorteerd = [...waarden].sort((a, b) => a - b);
+  const min = gesorteerd[0], max = gesorteerd.at(-1);
+  return Array.from({ length: aantal + 1 }, (_, i) => {
+    if (i === 0) return min;
+    if (i === aantal) return max;
+    return methode === 'equal' ? min + (max - min) * i / aantal : gesorteerd[Math.floor(i / aantal * (gesorteerd.length - 1))];
+  });
 }
 
-/**
- * Bouw HTML-inhoud voor de Leaflet popup.
- * Toont identificerende velden + waarden van alle geselecteerde variabelen.
- */
-function bouwFeaturePopup(feature, veld, activeFilter, alleWaarden) {
+function tekenLegenda(breuken, kleuren, veld) {
+  const titel = `Legenda: ${window.mooieVeldnaam(veld)}`;
+  const rij = (kleur, tekst, extraKlasse = '') =>
+    `<div class="legenda-rij ${extraKlasse}"><i style="background:${kleur}"></i><span>${tekst}</span></div>`;
+
+  document.getElementById('legend').innerHTML = `<h3 title="${titel}">${titel}</h3>`
+    + rij('#ccc', 'Geen data', 'is-geen-data')
+    + kleuren.map((kleur, i) => rij(kleur, `${formatteerGetal(breuken[i], veld, 1)} – ${formatteerGetal(breuken[i + 1], veld, 1)}`)).join('');
+}
+
+
+// ============================================================================
+// INFO-VENSTER — Gegevens van een buurt bij aanwijzen of klikken
+// ============================================================================
+
+const netteNaam = (naam) => String(naam).trim().replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ');
+
+/** Wijknaam: uit de wijkkoppeling, uit de data, of afgeleid uit de buurtnaam ("Heerlen Centrum" → "Centrum"). */
+function bepaalWijknaam(props) {
+  if (props.overlapping_wijken?.length) return netteNaam(props.overlapping_wijken[0]);
+  if (props.wijknaam?.trim()) return netteNaam(props.wijknaam);
+  const buurt = (props.buurtnaam || props.buurt || '').trim();
+  if (!buurt) return null;
+  const delen = buurt.split(/\s+/);
+  return netteNaam(delen.length > 1 ? delen.slice(1).join(' ') : buurt);
+}
+
+function bouwFeaturePopup(feature, veld, filter, alleWaarden) {
   const props = feature.properties || {};
+  const velden = window.getSelectedFields().length ? window.getSelectedFields() : [veld];
+  const regel = (naam, waarde) => `<b>${naam}</b>: ${waarde}`;
+  const toon = (waarde, v) => typeof waarde === 'number' ? formatteerGetal(waarde, v) : waarde;
 
-  // Lees actieve velden uit de UI-selectors; val terug op het doorgegeven veld
-  const geselecteerde = Array.from(
-    document.querySelectorAll('#selectors-div select.field-select-item')
-  ).map(s => s.value).filter(Boolean);
-  const veldenToShow = geselecteerde.length > 0 ? geselecteerde : (veld ? [veld] : []);
-
-  const rijen = ['<b>Geselecteerd gebied</b>'];
-
-  // Wijknaam eenmalig bovenaan
-  const displayWijk = bepaalDisplayWijk(props);
-  if (displayWijk) rijen.push(`<b>wijknaam</b>: ${displayWijk}`);
-
-  // Overige voorkeursvelden (wijknaam overgeslagen om duplicaat te vermijden)
-  KAART_CONFIG.voorkeurvelden.forEach(k => {
-    if (k === 'wijknaam' || props[k] === undefined) return;
-    const txt = typeof props[k] === 'number' ? formatteerWaarde(props[k], k) : props[k];
-    rijen.push(`<b>${mooieVeldnaam(k)}</b>: ${txt}`);
-  });
-
-  if (veldenToShow.length === 0) {
-    rijen.push('<i>Geen variabele geselecteerd.</i>');
-    return rijen.join('<br/>');
-  }
-
-  // Waarden van alle geselecteerde variabelen
-  for (const v of veldenToShow) {
-    const val = props[v];
-    const tekst = (val === null || val === undefined || val === '')
-      ? '<i>geen waarde</i>'
-      : (typeof val === 'number' ? formatteerWaarde(val, v) : val);
-    const buiten = !waardePasseertFilter(val, alleWaarden, activeFilter) ? ' <i>(buiten filter)</i>' : '';
-    rijen.push(`<b>${mooieVeldnaam(v)}</b>: ${tekst}${buiten}`);
-  }
-
-  return rijen.join('<br/>');
+  const wijk = bepaalWijknaam(props);
+  return [
+    '<b>Geselecteerd gebied</b>',
+    wijk && regel('Wijknaam', wijk),
+    ...KAART_CONFIG.voorkeurvelden.filter(k => props[k] !== undefined).map(k => regel(window.mooieVeldnaam(k), toon(props[k], k))),
+    ...velden.map(v => {
+      const waarde = props[v];
+      const leeg = waarde === null || waarde === undefined || waarde === '';
+      const buiten = waardePasseertFilter(waarde, alleWaarden, filter) ? '' : ' <i>(buiten filter)</i>';
+      return regel(window.mooieVeldnaam(v), (leeg ? '<i>geen waarde</i>' : toon(waarde, v)) + buiten);
+    }),
+  ].filter(Boolean).join('<br/>');
 }
+
 
 // ============================================================================
-// HOVER TIJDREEKS GRAFIEK — Trendpaneel bij muisover feature
+// TRENDGRAFIEK — Paneel met de waarden van een buurt over de jaren
 // ============================================================================
 
-// Hover-status bijhouden: paneel mag alleen verdwijnen als muis nergens meer is
-let hoverChartHideTimer  = null;
-let mouseIsOverPanel     = false;
-let mouseIsOverFeature   = false;
-let mouseIsOverPopup     = false;
+const trend = { verbergTimer: null, bovenFeature: false, bovenPaneel: false };
 
-function shouldHideHoverChart() {
-  return !mouseIsOverFeature && !mouseIsOverPopup && !mouseIsOverPanel;
+function planVerbergTrend() {
+  clearTimeout(trend.verbergTimer);
+  trend.verbergTimer = setTimeout(() => {
+    if (trend.bovenFeature || trend.bovenPaneel) return;
+    document.getElementById('hover-timeseries-panel')?.classList.remove('is-visible');
+    map.closePopup();
+  }, TRENDGRAFIEK_CONFIG.verbergNaMs);
 }
 
-function cancelHideHoverChartPanel() {
-  if (!hoverChartHideTimer) return;
-  clearTimeout(hoverChartHideTimer);
-  hoverChartHideTimer = null;
-}
+function trendPaneel() {
+  let paneel = document.getElementById('hover-timeseries-panel');
+  if (paneel) return paneel;
 
-function scheduleHideHoverChartPanel() {
-  cancelHideHoverChartPanel();
-  hoverChartHideTimer = setTimeout(() => {
-    if (shouldHideHoverChart()) hideHoverChartPanelNow();
-  }, HOVER_CHART_CONFIG.hideDelayMs);
-}
+  paneel = Object.assign(document.createElement('section'), { id: 'hover-timeseries-panel', className: 'hover-timeseries-panel' });
+  paneel.innerHTML = `
+    <div class="hover-timeseries-header">
+      <div class="hover-timeseries-title"></div>
+      <span class="hover-timeseries-chevron">Inklappen ▼</span>
+    </div>
+    <div class="hover-timeseries-body"></div>`;
 
-function hideHoverChartPanelNow() {
-  const panel = document.getElementById('hover-timeseries-panel');
-  if (!panel || !shouldHideHoverChart()) return;
-  panel.classList.remove('is-visible');
-  try { if (map?.closePopup) map.closePopup(); } catch (e) { /* ignore */ }
-}
-
-/** Maak het hover-paneel aan als het nog niet bestaat en geef het terug. */
-function getHoverChartPanel() {
-  let panel = document.getElementById('hover-timeseries-panel');
-  if (panel) return panel;
-
-  const mapContainer = document.getElementById('map');
-  if (!mapContainer) return null;
-
-  panel = document.createElement('section');
-  panel.id        = 'hover-timeseries-panel';
-  panel.className = 'hover-timeseries-panel';
-  panel.innerHTML = [
-    '<div class="hover-timeseries-header">',
-    '  <div class="hover-timeseries-title"></div>',
-    '  <span class="hover-timeseries-chevron">Inklappen ▼</span>',
-    '</div>',
-    '<div class="hover-timeseries-body"></div>',
-  ].join('');
-
-  // In-/uitklappen via klik op de header
-  panel.querySelector('.hover-timeseries-header').addEventListener('click', () => {
-    const ingeklapt = panel.classList.toggle('is-collapsed');
-    panel.querySelector('.hover-timeseries-chevron').textContent =
-      ingeklapt ? 'Uitklappen ▲' : 'Inklappen ▼';
-    pasHoverPaneelPositieAan();
+  paneel.querySelector('.hover-timeseries-header').addEventListener('click', () => {
+    const ingeklapt = paneel.classList.toggle('is-collapsed');
+    paneel.querySelector('.hover-timeseries-chevron').textContent = ingeklapt ? 'Uitklappen ▲' : 'Inklappen ▼';
+    pasTrendPositieAan();
   });
+  paneel.addEventListener('mouseenter', () => { trend.bovenPaneel = true; clearTimeout(trend.verbergTimer); });
+  paneel.addEventListener('mouseleave', () => { trend.bovenPaneel = false; planVerbergTrend(); });
 
-  panel.addEventListener('mouseenter', () => { mouseIsOverPanel = true;  cancelHideHoverChartPanel(); });
-  panel.addEventListener('mouseleave', () => {
-    mouseIsOverPanel = false;
-    if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
-  });
-
-  mapContainer.appendChild(panel);
-  return panel;
+  document.getElementById('map').appendChild(paneel);
+  return paneel;
 }
 
-/** Lees de geselecteerde velden uit de UI, met fallback op het doorgegeven veld. */
-function getSelectedFieldsForHover(defaultField) {
-  const fromSelectors = Array.from(
-    document.querySelectorAll('#selectors-div select.field-select-item')
-  ).map(s => s.value).filter(Boolean);
-  return fromSelectors.length > 0 ? fromSelectors : (defaultField ? [defaultField] : []);
-}
-
-/** Lees het momenteel geselecteerde jaar uit de jaarslider of multiLoaderState. */
-function getCurrentSelectedYear() {
-  if (typeof window.multiLoaderState?.yearFilter === 'number') return window.multiLoaderState.yearFilter;
-  const slider = document.getElementById('year-slider');
-  if (!slider) return null;
-  const jaar = parseInt(slider.value, 10);
-  return Number.isFinite(jaar) ? jaar : null;
-}
-
-/** Lees het jaar uit de properties van een feature (meerdere veldnamen geprobeerd). */
-function detectYearFromFeature(feature) {
-  if (typeof window.getYearFromFeature === 'function') return window.getYearFromFeature(feature);
-  for (const key of ['jaar', 'year', 'Jaar', 'Year', 'JAAR']) {
-    const jaar = parseInt(feature?.properties?.[key], 10);
-    if (Number.isFinite(jaar)) return jaar;
-  }
-  return null;
-}
-
-/** Geef het eerste gevonden identiteitsveld + waarde terug voor een feature. */
+/** Eerste gevulde identiteitsveld van een buurt, bv. { key: 'buurtcode', value: 'BU09170000' }. */
 function getFeatureIdentity(feature) {
   const props = feature?.properties || {};
-  for (const key of HOVER_CHART_CONFIG.identityFields) {
-    const value = props[key];
-    if (value !== undefined && value !== null && String(value).trim() !== '') {
-      return { key, value: String(value) };
-    }
-  }
-  return null;
+  const key = TRENDGRAFIEK_CONFIG.identiteitsvelden.find(k => props[k] !== undefined && props[k] !== null && String(props[k]).trim() !== '');
+  return key ? { key, value: String(props[key]) } : null;
 }
 
-/** Controleer of een candidaat-feature dezelfde identiteit heeft. */
-function matchesFeatureIdentity(candidate, identity) {
-  if (!identity || !candidate?.properties) return false;
-  const value = candidate.properties[identity.key];
-  return value !== undefined && value !== null && String(value) === identity.value;
-}
+const heeftIdentiteit = (feature, identiteit) => identiteit && String(feature?.properties?.[identiteit.key]) === identiteit.value;
 
-/**
- * Verzamel tijdreeksdata voor een feature over alle jaren.
- * Groepeert waarden per jaar en berekent het gemiddelde per veld.
- * Waarden die buiten het actieve filter vallen worden overgeslagen.
- */
-function collectHoverSeries(baseFeature, fields) {
-  const source = window.multiLoaderState?.originalData || window.appData?.lastFC;
-  if (!source?.features?.length) return null;
+/** Gemiddelde waarde per jaar en per veld voor dezelfde buurt in de gekozen periode; waarden buiten het filter tellen niet mee. */
+function verzamelTrend(buurt, velden) {
+  const bron = window.multiLoaderState.originalData || window.appData.lastFC;
+  if (!bron?.features?.length) return null;
 
-  const identity   = getFeatureIdentity(baseFeature);
-  let candidates   = source.features;
-  if (identity) {
-    const matched = candidates.filter(f => matchesFeatureIdentity(f, identity));
-    if (matched.length) candidates = matched;
-  }
+  const identiteit = getFeatureIdentity(buurt);
+  const zelfde = bron.features.filter(f => heeftIdentiteit(f, identiteit));
+  const kandidaten = zelfde.length ? zelfde : bron.features;
+  const filter = window.appData.filter;
+  const alleWaarden = Object.fromEntries(velden.map(v => [v, haalNumeriekeWaarden(bron, v)]));
+  const { start, eind } = haalPeriode();  // alleen de jaren van de gekozen periode op de tijdlijn
 
-  // Alle waarden per veld (voor filter-checks)
-  const allePerField = {};
-  for (const field of fields) {
-    allePerField[field] = source.features
-      .map(f => { const v = f.properties?.[field]; return (v == null || v === '') ? null : +v; })
-      .filter(v => Number.isFinite(v));
-  }
-
-  const activeFilter = window.appData?.filter || null;
-  const byYear = new Map();
-
-  for (const candidate of candidates) {
-    const jaar = detectYearFromFeature(candidate);
-    if (!Number.isFinite(jaar)) continue;
-    if (!byYear.has(jaar)) {
-      const buckets = {};
-      for (const field of fields) buckets[field] = [];
-      byYear.set(jaar, buckets);
-    }
-    const bucket = byYear.get(jaar);
-    for (const field of fields) {
-      const raw = candidate.properties?.[field];
-      if (raw == null || raw === '') continue;
-      const num = +raw;
-      if (!Number.isFinite(num)) continue;
-      if (!waardePasseertFilter(num, allePerField[field] || [], activeFilter)) continue;
-      bucket[field].push(num);
+  const perJaar = new Map();
+  for (const f of kandidaten) {
+    const jaar = getYearFromFeature(f);
+    if (!Number.isFinite(jaar) || jaar < start || jaar > eind) continue;
+    if (!perJaar.has(jaar)) perJaar.set(jaar, Object.fromEntries(velden.map(v => [v, []])));
+    for (const v of velden) {
+      const waarde = f.properties?.[v];
+      if (waarde === null || waarde === '' || !Number.isFinite(+waarde) || !waardePasseertFilter(+waarde, alleWaarden[v], filter)) continue;
+      perJaar.get(jaar)[v].push(+waarde);
     }
   }
 
-  const jaren = Array.from(byYear.keys()).sort((a, b) => a - b);
-  if (!jaren.length) return null;
-
-  const series    = {};
-  const allValues = [];
-
-  for (const field of fields) {
-    const points = jaren.map(jaar => {
-      const values = byYear.get(jaar)?.[field] || [];
-      if (!values.length) return null;
-      return { year: jaar, value: values.reduce((s, v) => s + v, 0) / values.length };
-    }).filter(Boolean);
-    series[field] = points;
-    points.forEach(p => allValues.push(p.value));
-  }
-
-  return allValues.length ? { years: jaren, series, allValues, identity } : null;
+  const jaren = [...perJaar.keys()].sort((a, b) => a - b);
+  const reeksen = Object.fromEntries(velden.map(v => [v, jaren
+    .map(jaar => ({ year: jaar, waarden: perJaar.get(jaar)[v] }))
+    .filter(p => p.waarden.length)
+    .map(p => ({ year: p.year, value: d3.mean(p.waarden) }))]));
+  const alleWaardenInReeks = Object.values(reeksen).flat().map(p => p.value);
+  return alleWaardenInReeks.length ? { jaren, reeksen, alleWaarden: alleWaardenInReeks, identiteit } : null;
 }
 
 /**
- * Schuift het hover-tijdreekspaneel net naast het story-infokaartje (in
- * plaats van linksonder) als het er anders onder terecht zou komen. De
- * kaart is niet op elke slide even breed, dus de nieuwe positie wordt
- * steeds uit de werkelijk gerenderde kaartbreedte berekend — niet uit een
- * vaste waarde. Wordt na elke (her)weergave van het paneel aangeroepen, en
- * bij resize.
+ * Staat er een story-kaartje over het paneel heen, dan schuift het paneel ernaast
+ * (maar nooit onder de zijbalk). Wordt bij elke weergave en bij resize opnieuw bepaald.
  */
-function pasHoverPaneelPositieAan() {
-  const panel = document.getElementById('hover-timeseries-panel');
-  if (!panel || !panel.classList.contains('is-visible')) return;
+function pasTrendPositieAan() {
+  const paneel = document.getElementById('hover-timeseries-panel');
+  if (!paneel?.classList.contains('is-visible')) return;
+  paneel.style.left = '';
 
-  // Eerst terug naar de standaardpositie (zonder inline `left`), pas daarna
-  // beslissen — anders vergelijken we de al-verschoven positie met zichzelf.
-  panel.classList.remove('is-shifted');
-  panel.style.left = '';
+  const kaartje = document.querySelector('.story-overlay:not([hidden]) .story-card');
+  if (!kaartje) return;
+  const p = paneel.getBoundingClientRect(), k = kaartje.getBoundingClientRect();
+  if (!(p.left < k.right && p.right > k.left && p.top < k.bottom && p.bottom > k.top)) return;
 
-  const kaart = document.querySelector('.story-overlay:not([hidden]) .story-card');
-  if (!kaart) return;
-
-  const panelRect = panel.getBoundingClientRect();
-  const kaartRect = kaart.getBoundingClientRect();
-  const overlapt = panelRect.left < kaartRect.right && panelRect.right > kaartRect.left
-                && panelRect.top < kaartRect.bottom && panelRect.bottom > kaartRect.top;
-  if (!overlapt) return;
-
-  // Grens waar de zijbalk begint (als die rechts staat) — het paneel mag
-  // daar niet onder komen, ook niet als de story-kaart heel breed is.
-  const sidebar = document.getElementById('sidebar');
-  const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
-  const grensRechts = (sidebarRect && sidebarRect.width > 0 && sidebarRect.left >= kaartRect.right)
-    ? sidebarRect.left - 14
-    : window.innerWidth - 14;
-
-  const gewenst = kaartRect.right + 14;
-  panel.classList.add('is-shifted');
-  panel.style.left = `${Math.round(Math.min(gewenst, grensRechts - panelRect.width))}px`;
+  const zijbalk = document.getElementById('sidebar').getBoundingClientRect();
+  const grensRechts = zijbalk.width > 0 && zijbalk.left >= k.right ? zijbalk.left - 14 : window.innerWidth - 14;
+  paneel.style.left = `${Math.round(Math.min(k.right + 14, grensRechts - p.width))}px`;
 }
-window.addEventListener('resize', () => pasHoverPaneelPositieAan());
+window.addEventListener('resize', pasTrendPositieAan);
 
-/** Toon een tekstbericht in het hover-paneel (bijv. bij ontbrekende data). */
-function renderHoverChartMessage(panel, titel, bericht) {
-  const titleEl = panel.querySelector('.hover-timeseries-title');
-  const bodyEl  = panel.querySelector('.hover-timeseries-body');
-  if (!titleEl || !bodyEl) return;
-  titleEl.textContent = titel;
-  bodyEl.innerHTML    = `<div class="hover-timeseries-empty">${bericht}</div>`;
-  panel.classList.add('is-visible');
-  pasHoverPaneelPositieAan();
-}
+/** Teken voor een buurt één lijn per gekozen variabele, met een markering op het getoonde jaar. */
+function toonTrendgrafiek(buurt, standaardVeld) {
+  clearTimeout(trend.verbergTimer);
+  const paneel = trendPaneel();
+  const titelEl = paneel.querySelector('.hover-timeseries-title');
+  const body = paneel.querySelector('.hover-timeseries-body');
+  const toon = () => { paneel.classList.add('is-visible'); pasTrendPositieAan(); };
 
-/**
- * Teken de D3-trendgrafiek in het hover-paneel voor de aangegeven feature.
- * Toont één lijn per geselecteerd veld + een verticale markering voor het huidige jaar.
- */
-function toonHoverJarenGrafiek(feature, defaultField) {
-  cancelHideHoverChartPanel();
-  const panel = getHoverChartPanel();
-  if (!panel) return;
-
-  if (typeof d3 === 'undefined') {
-    renderHoverChartMessage(panel, 'Trend over jaren', 'D3 is niet beschikbaar.');
-    return;
-  }
-
-  const fields = getSelectedFieldsForHover(defaultField);
-  if (!fields.length) {
-    renderHoverChartMessage(panel, 'Trend over jaren', 'Selecteer eerst een variabele.');
-    return;
-  }
-
-  const data          = collectHoverSeries(feature, fields);
-  const naamVoorkeur  = feature?.properties?.buurtnaam || feature?.properties?.wijknaam
-                     || feature?.properties?.naam      || feature?.properties?.name;
-  const titel         = `Trend over jaren - ${naamVoorkeur || data?.identity?.value || 'Gebied'}`;
+  const velden = window.getSelectedFields().length ? window.getSelectedFields() : [standaardVeld].filter(Boolean);
+  const data = velden.length ? verzamelTrend(buurt, velden) : null;
+  const p = buurt?.properties || {};
+  titelEl.textContent = `Trend over jaren - ${p.buurtnaam || p.wijknaam || p.naam || p.name || data?.identiteit?.value || 'Gebied'}`;
 
   if (!data) {
-    renderHoverChartMessage(panel, titel, 'Geen jaarreeks beschikbaar voor dit gebied.');
-    return;
+    body.innerHTML = `<div class="hover-timeseries-empty">${velden.length ? 'Geen jaarreeks beschikbaar voor dit gebied.' : 'Selecteer eerst een variabele.'}</div>`;
+    return toon();
   }
+  body.innerHTML = '';
 
-  const titleEl = panel.querySelector('.hover-timeseries-title');
-  const bodyEl  = panel.querySelector('.hover-timeseries-body');
-  if (!titleEl || !bodyEl) return;
-  titleEl.textContent = titel;
-  bodyEl.innerHTML    = '';
-
-  const { panelWidth: W, panelHeight: H, marginTop: mT, marginRight: mR, marginBottom: mB, marginLeft: mL } = HOVER_CHART_CONFIG;
-
-  // SVG aanmaken
-  const svg = d3.select(bodyEl).append('svg')
-    .attr('width', W).attr('height', H)
-    .attr('viewBox', `0 0 ${W} ${H}`)
+  const { breedte: W, hoogte: H, marge: m } = TRENDGRAFIEK_CONFIG;
+  const svg = d3.select(body).append('svg')
+    .attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
     .attr('role', 'img').attr('aria-label', 'Trendgrafiek per geselecteerde variabele');
 
-  // Schalen: X op jaren, Y op waarden
-  let [xMin, xMax] = d3.extent(data.years);
+  let [xMin, xMax] = d3.extent(data.jaren);
   if (xMin === xMax) { xMin -= 1; xMax += 1; }
+  let [yMin, yMax] = d3.extent(data.alleWaarden);
+  if (yMin === yMax) { const marge = Math.abs(yMin || 1) * 0.05; yMin -= marge; yMax += marge; }
 
-  let yMin = d3.min(data.allValues);
-  let yMax = d3.max(data.allValues);
-  if (yMin === yMax) { const pad = Math.abs(yMin || 1) * 0.05; yMin -= pad; yMax += pad; }
+  const x = d3.scaleLinear().domain([xMin, xMax]).range([m.links, W - m.rechts]);
+  const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([H - m.onder, m.boven]);
+  const kleur = d3.scaleOrdinal(d3.schemeTableau10).domain(velden);
+  const verschijn = (sel, vertraging, duur, easing) => sel.transition().delay(vertraging).duration(duur).ease(easing);
 
-  const xSchaal = d3.scaleLinear().domain([xMin, xMax]).range([mL, W - mR]);
-  const ySchaal = d3.scaleLinear().domain([yMin, yMax]).nice().range([H - mB, mT]);
+  svg.append('g').attr('transform', `translate(0,${H - m.onder})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format('d')));
+  svg.append('g').attr('transform', `translate(${m.links},0)`).call(d3.axisLeft(y).ticks(4));
 
-  svg.append('g').attr('transform', `translate(0,${H - mB})`).call(d3.axisBottom(xSchaal).ticks(5).tickFormat(d3.format('d')));
-  svg.append('g').attr('transform', `translate(${mL},0)`).call(d3.axisLeft(ySchaal).ticks(4));
-
-  const lijnGenerator = d3.line().x(d => xSchaal(d.year)).y(d => ySchaal(d.value));
-  const kleuren       = d3.scaleOrdinal(d3.schemeTableau10).domain(fields);
-
-  // Teken een lijn per veld met inloop-animatie
-  for (const field of fields) {
-    const punten = data.series[field] || [];
+  for (const veld of velden) {
+    const punten = data.reeksen[veld];
     if (!punten.length) continue;
-
-    const pathLength = 1000; // vaste waarde voor dash-animatie
-
-    svg.append('path').datum(punten)
-      .attr('fill', 'none').attr('stroke', kleuren(field)).attr('stroke-width', 2)
-      .attr('d', lijnGenerator)
-      .attr('stroke-dasharray', pathLength).attr('stroke-dashoffset', pathLength).attr('opacity', 0.85)
-      .transition().duration(600).ease(d3.easeCubicInOut).attr('stroke-dashoffset', 0);
-
-    // Cirkel op het laatste datapunt
-    svg.append('circle')
-      .attr('cx', xSchaal(punten.at(-1).year)).attr('cy', ySchaal(punten.at(-1).value))
-      .attr('r', 2.5).attr('fill', kleuren(field)).attr('opacity', 0)
-      .transition().delay(350).duration(300).ease(d3.easeQuadOut).attr('opacity', 1);
+    // Lijn "tekent zichzelf" via een streepjespatroon dat wegschuift
+    verschijn(svg.append('path').datum(punten)
+      .attr('fill', 'none').attr('stroke', kleur(veld)).attr('stroke-width', 2).attr('opacity', 0.85)
+      .attr('d', d3.line().x(d => x(d.year)).y(d => y(d.value)))
+      .attr('stroke-dasharray', 1000).attr('stroke-dashoffset', 1000), 0, 600, d3.easeCubicInOut).attr('stroke-dashoffset', 0);
+    verschijn(svg.append('circle')
+      .attr('cx', x(punten.at(-1).year)).attr('cy', y(punten.at(-1).value)).attr('r', 2.5).attr('fill', kleur(veld)).attr('opacity', 0),
+      350, 300, d3.easeQuadOut).attr('opacity', 1);
   }
 
-  // Verticale lijn voor het momenteel geselecteerde jaar
-  const geselecteerdJaar = getCurrentSelectedYear();
-  if (Number.isFinite(geselecteerdJaar) && geselecteerdJaar >= xMin && geselecteerdJaar <= xMax) {
-    svg.append('line')
-      .attr('x1', xSchaal(geselecteerdJaar)).attr('x2', xSchaal(geselecteerdJaar))
-      .attr('y1', mT).attr('y2', H - mB)
-      .attr('class', 'hover-chart-year-marker').attr('opacity', 0)
-      .transition().delay(500).duration(300).ease(d3.easeQuadOut).attr('opacity', 0.9);
-
-    // Highlight-cirkel op het geselecteerde jaar per veld
-    for (const field of fields) {
-      const match = (data.series[field] || []).find(p => p.year === geselecteerdJaar);
-      if (!match) continue;
-      svg.append('circle')
-        .attr('cx', xSchaal(match.year)).attr('cy', ySchaal(match.value))
-        .attr('r', 0).attr('fill', kleuren(field)).attr('stroke', '#111').attr('stroke-width', 1.4).attr('opacity', 0)
-        .transition().delay(550).duration(350).ease(d3.easeBackOut).attr('r', 5).attr('opacity', 1);
+  const jaar = window.multiLoaderState.yearFilter;
+  if (Number.isFinite(jaar) && jaar >= xMin && jaar <= xMax) {
+    verschijn(svg.append('line').attr('class', 'hover-chart-year-marker').attr('opacity', 0)
+      .attr('x1', x(jaar)).attr('x2', x(jaar)).attr('y1', m.boven).attr('y2', H - m.onder), 500, 300, d3.easeQuadOut).attr('opacity', 0.9);
+    for (const veld of velden) {
+      const punt = data.reeksen[veld].find(p => p.year === jaar);
+      if (!punt) continue;
+      verschijn(svg.append('circle').attr('cx', x(punt.year)).attr('cy', y(punt.value)).attr('r', 0)
+        .attr('fill', kleur(veld)).attr('stroke', '#111').attr('stroke-width', 1.4).attr('opacity', 0),
+        550, 350, d3.easeBackOut).attr('r', 5).attr('opacity', 1);
     }
   }
 
-  // Legenda onder de grafiek
-  const legenda = d3.select(bodyEl).append('div').attr('class', 'hover-timeseries-legend').style('opacity', 0);
-  fields.forEach(field => {
-    const heeftData = (data.series[field] || []).length > 0;
+  const legenda = d3.select(body).append('div').attr('class', 'hover-timeseries-legend').style('opacity', 0);
+  for (const veld of velden) {
     const item = legenda.append('span').attr('class', 'legend-item');
-    item.append('i').style('background', kleuren(field)).style('opacity', heeftData ? 1 : 0.35);
-    item.append('b').text(mooieVeldnaam(field));
-  });
-  legenda.transition().delay(700).duration(300).ease(d3.easeQuadOut).style('opacity', 1);
-
-  panel.classList.add('is-visible');
-  pasHoverPaneelPositieAan();
-}
-
-// Exporteer hide-functie voor gebruik vanuit andere modules
-window.hideHoverTimeSeries = scheduleHideHoverChartPanel;
-
-// ============================================================================
-// KLEURSCHEMA'S — D3 interpolaties
-// ============================================================================
-
-/** Geef een array van `aantal` kleuren terug voor het gekozen palet. */
-function haalKleurSchema(naam, aantal) {
-  switch ((naam || '').toLowerCase()) {
-    case 'rdylgn':  return d3.quantize(d3.interpolateRdYlGn, aantal);
-    case 'blues':   return d3.quantize(d3.interpolateBlues,  aantal);
-    case 'oranges': return d3.quantize(d3.interpolateOranges, aantal);
-    default:        return d3.quantize(d3.interpolateViridis, aantal);
+    item.append('i').style('background', kleur(veld)).style('opacity', data.reeksen[veld].length ? 1 : 0.35);
+    item.append('b').text(window.mooieVeldnaam(veld));
   }
+  verschijn(legenda, 700, 300, d3.easeQuadOut).style('opacity', 1);
+  toon();
 }
 
-// ============================================================================
-// CLASSIFICATIE — Bereken breekpunten voor choropleth-kleuring
-// ============================================================================
-
-/** Quantile: verdeel waarden in groepen met gelijk aantal elementen. */
-function berekenBreaksQuantile(waarden, aantalKlassen) {
-  const gesorteerd = waarden.slice().sort((a, b) => a - b);
-  const breuken = [gesorteerd[0]];
-  for (let i = 1; i < aantalKlassen; i++) {
-    const idx = Math.floor((i / aantalKlassen) * (gesorteerd.length - 1));
-    breuken.push(gesorteerd[Math.min(idx, gesorteerd.length - 1)]);
-  }
-  breuken.push(gesorteerd[gesorteerd.length - 1]);
-  return breuken;
-}
-
-/** Equal interval: verdeel het waardebereik in gelijke stappen. */
-function berekenBreaksEqualInterval(waarden, aantalKlassen) {
-  const gesorteerd = waarden.slice().sort((a, b) => a - b);
-  const min = gesorteerd[0];
-  const max = gesorteerd[gesorteerd.length - 1];
-  const breuken = [min];
-  for (let i = 1; i < aantalKlassen; i++) breuken.push(min + (max - min) * i / aantalKlassen);
-  breuken.push(max);
-  return breuken;
-}
 
 // ============================================================================
-// LEGENDA
-// ============================================================================
-
-/** Formatteer een klassegrens in de legenda: Nederlandse notatie, met %-teken indien van toepassing. */
-function formatteerGrensWaarde(getal, percentage) {
-  const tekst = getal.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  return percentage ? `${tekst}%` : tekst;
-}
-
-/** Teken de kleurlegenda in het #legend element. */
-function tekenLegenda(breuken, kleuren, veldnaam) {
-  const legendDiv = document.getElementById('legend');
-  if (!legendDiv) return;
-  legendDiv.innerHTML = '';
-
-  const titel = document.createElement('h3');
-  titel.textContent = `Legenda: ${mooieVeldnaam(veldnaam)}`;
-  titel.title = `Legenda: ${mooieVeldnaam(veldnaam)}`; // volledige naam als tooltip wanneer afgebroken
-  titel.style.margin = '0 0 8px 0';
-  titel.style.overflowWrap = 'break-word';
-  titel.style.wordBreak = 'break-word';
-  legendDiv.appendChild(titel);
-
-  // "Geen data" rij bovenaan
-  function maakRij(kleur, labelTekst, cursief = false) {
-    const rij    = Object.assign(document.createElement('div'), { style: 'display:flex;align-items:center;margin-bottom:4px;font-size:12px' });
-    const kastje = Object.assign(document.createElement('div'), { style: `width:20px;height:14px;background:${kleur};margin-right:8px;border:1px solid #666` });
-    const label  = document.createElement('span');
-    label.textContent  = labelTekst;
-    if (cursief) label.style.fontStyle = 'italic';
-    rij.appendChild(kastje);
-    rij.appendChild(label);
-    return rij;
-  }
-
-  legendDiv.appendChild(maakRij('#ccc', 'Geen data', true));
-
-  const scheider = document.createElement('div');
-  scheider.style.cssText = 'border-top:1px solid #ddd;margin:4px 0';
-  legendDiv.appendChild(scheider);
-
-  // Kleurklassen
-  const percentage = isPercentageVeld(veldnaam);
-  for (let i = 0; i < kleuren.length; i++) {
-    const van = breuken[i]     != null ? formatteerGrensWaarde(breuken[i], percentage)     : '';
-    const tot = breuken[i + 1] != null ? formatteerGrensWaarde(breuken[i + 1], percentage) : '∞';
-    legendDiv.appendChild(maakRij(kleuren[i], `${van} – ${tot}`));
-  }
-}
-
-// ============================================================================
-// HOOFD-FUNCTIE: Toon choropleth
+// CHOROPLETH — De buurten kleuren naar één variabele
 // ============================================================================
 
 /**
- * Teken een choropleth-kaart op basis van een numeriek veld.
- * Verwijdert de vorige laag, berekent breuken, kent kleuren toe en voegt toe aan de kaart.
- *
- * @param {GeoJSON} fc    - FeatureCollection met alle features
- * @param {string}  veld  - Naam van het numerieke eigenschapsveld
- * @param {Object}  opties - { method, palette, opacity, classes }
+ * @param {Object} opties - { method, palette, opacity, classes, klassenFC }
+ *   klassenFC: dataset voor de klassengrenzen (alle jaren), zodat dezelfde kleur
+ *   elk jaar dezelfde waarde betekent.
  */
-window.toonChoropleth = function(fc, veld, opties = {}) {
+window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rdylgn', opacity = 0.65, classes = 5, klassenFC } = {}) {
   if (!fc?.features?.length) return;
+  const { appData } = window;
 
-  // Instellingen samenvoegen met config-standaarden
-  const methode       = opties.method  || KAART_CONFIG.standaardClassificatie;
-  const palet         = opties.palette || KAART_CONFIG.standaardKleurPalet;
-  const transparantie = typeof opties.opacity === 'number' ? opties.opacity : KAART_CONFIG.standaardTransparantie;
-  const aantalKlassen = Math.min(opties.classes || KAART_CONFIG.standaardAantalKlassen, fc.features.length);
-
-  // Verwijder vorige lagen
-  ['baseGeoLayer', 'choroplethLayer'].forEach(key => {
-    if (window.appData[key]) {
-      window.appData.dataLayer.removeLayer(window.appData[key]);
-      window.appData[key] = null;
-    }
+  ['baseGeoLayer', 'choroplethLayer'].forEach(sleutel => {
+    if (appData[sleutel]) appData.dataLayer.removeLayer(appData[sleutel]);
+    appData[sleutel] = null;
   });
 
   const alleWaarden = haalNumeriekeWaarden(fc, veld);
   if (!alleWaarden.length) {
-    window.toonMelding?.(`Geen data voor "${window.mooieVeldnaam?.(veld) || veld}" in dit jaar.`);
+    window.toonMelding(`Geen data voor "${window.mooieVeldnaam(veld)}" in dit jaar.`);
     return;
   }
 
-  // Filter toepassen: gebruik alleen gefilterde waarden voor breekpunten
-  const activeFilter     = window.appData?.filter || null;
-  const gefilterd        = filtreerdFeatures(fc, veld, activeFilter);
-  const gefilterdWaarden = gefilterd.map(f => +f.properties[veld]).filter(v => !isNaN(v));
-  const teGebruiken      = gefilterdWaarden.length ? gefilterdWaarden : alleWaarden;
+  const filter = appData.filter;
+  const klassenWaarden = haalNumeriekeWaarden({ features: gefilterdeFeatures(klassenFC?.features?.length ? klassenFC : fc, veld, filter) }, veld);
+  const aantal  = Math.min(classes, fc.features.length);
+  const breuken = berekenBreuken(klassenWaarden.length ? klassenWaarden : alleWaarden, aantal, method);
+  const kleuren = haalKleurSchema(palette, aantal);
 
-  const breuken = methode === 'equal'
-    ? berekenBreaksEqualInterval(teGebruiken, aantalKlassen)
-    : berekenBreaksQuantile(teGebruiken, aantalKlassen);
-  const kleuren = haalKleurSchema(palet, aantalKlassen);
+  const wijkenFC = window.multiLoaderState.wijkenFC;
+  if (wijkenFC && !fc.features.some(f => f.properties?.overlapping_wijken?.length)) addWijkenToBuurten(fc, wijkenFC);
 
-  // Voeg wijknamen toe aan buurten als dat nog niet is gedaan
-  try {
-    const heeftOverlaps = fc.features.some(f => Array.isArray(f.properties?.overlapping_wijken) && f.properties.overlapping_wijken.length);
-    if (!heeftOverlaps && window.multiLoaderState?.wijkenFC && typeof addWijkenToBuurten === 'function') {
-      addWijkenToBuurten(fc, window.multiLoaderState.wijkenFC);
-    }
-  } catch (e) { /* ignore */ }
-
-  // Bepaal stijl per feature op basis van filterresultaat en waarde
-  function styleFeature(feature) {
-    const waarde      = feature.properties?.[veld];
-    const passeert    = waardePasseertFilter(waarde, alleWaarden, activeFilter);
-
-    if (!passeert) return { color: KAART_CONFIG.gefilterdRandKleur, weight: 0.6, fillOpacity: 0.45, fillColor: '#bdbdbd' };
-    if (waarde == null || waarde === '' || isNaN(+waarde)) return { color: KAART_CONFIG.gefilterdRandKleur, weight: 0.6, fillOpacity: 0.3, fillColor: '#ccc' };
-
-    // Zoek de juiste kleurklasse op basis van de breekpunten
-    const num = +waarde;
-    let kleur = kleuren[kleuren.length - 1];
-    for (let i = 0; i < kleuren.length - 1; i++) {
-      if (num < breuken[i + 1]) { kleur = kleuren[i]; break; }
-    }
-    return { color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.randBreedte, fillOpacity: transparantie, fillColor: kleur };
-  }
-
-  // Zorg dat de benodigde Leaflet-panes bestaan (voorkomt render-volgorde-problemen)
-  try {
-    const m = window.appData.map;
-    if (m) {
-      [['dimPane', 450], ['choroplethPane', 460], ['choroplethWijkBorderPane', 475]].forEach(([naam, z]) => {
-        if (!m.getPane(naam)) m.createPane(naam);
-        try { m.getPane(naam).style.zIndex = z; } catch (e) { /* ignore */ }
-      });
-    }
-  } catch (e) { /* ignore */ }
-
-  // Voeg GeoJSON-laag toe met popups en hover-events
-  const laag = L.geoJSON(fc, {
-    style: styleFeature,
-    pane: 'choroplethPane',
-    onEachFeature: (feature, leafletLayer) => {
-      leafletLayer.bindPopup(bouwFeaturePopup(feature, veld, activeFilter, alleWaarden), {
-        closeButton: false, autoPan: false,
-      });
-
-      leafletLayer.on('mouseover', function () {
-        mouseIsOverFeature = true;
-        cancelHideHoverChartPanel();
-        this.openPopup();
-        toonHoverJarenGrafiek(feature, veld);
-        // Stuur hover-identiteit door naar het andere split-screen venster
-        try {
-          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
-            const identity = getFeatureIdentity(feature);
-            if (identity && window.parent && window.parent !== window) {
-              window.parent.postMessage({ type: 'heerlen-hover', panelId: window.splitScreenPanelId || null, identity }, '*');
-            }
-          }
-        } catch (e) { /* ignore */ }
-      });
-
-      leafletLayer.on('mouseout', function () {
-        mouseIsOverFeature = false;
-        // Verberg pas als muis ook niet over popup of paneel is
-        shouldHideHoverChart() ? scheduleHideHoverChartPanel() : cancelHideHoverChartPanel();
-        try {
-          if (window.isSplitScreenPane && !window.__suppressHoverBroadcast && window.parent !== window) {
-            window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
-          }
-        } catch (e) { /* ignore */ }
-      });
-
-      leafletLayer.on('click', () => leafletLayer.openPopup());
-    },
-  }).addTo(window.appData.dataLayer);
-
-  if (window.bringSmallPolygonsToFront) window.bringSmallPolygonsToFront(window.appData.dataLayer);
-
-  window.appData.choroplethLayer = laag;
-
-  // Dikke grenzen voor wijken bovenop de choropleth tekenen
-  try {
-    if (window.appData.choroplethWijkBorderLayer) {
-      try { window.appData.dataLayer.removeLayer(window.appData.choroplethWijkBorderLayer); } catch (e) { /* ignore */ }
-      window.appData.choroplethWijkBorderLayer = null;
-    }
-    const wijkFC = window.multiLoaderState?.wijkenFC;
-    if (wijkFC?.features?.length) {
-      const wijkLaag = L.geoJSON(wijkFC, {
-        style: () => ({ color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.wijkRandBreedte, opacity: 1, fillOpacity: 0 }),
-        pane: 'choroplethWijkBorderPane',
-        interactive: false,
-      }).addTo(window.appData.dataLayer);
-      try { wijkLaag.bringToFront(); } catch (e) { /* ignore */ }
-      window.appData.choroplethWijkBorderLayer = wijkLaag;
-    }
-  } catch (e) { /* ignore */ }
-
-  // ---- Dim-overlay: verduister alles buiten de gevisualiseerde polygonen ----
-  // Werkt via een SVG-masker: polygoonvormen worden als "gaten" in het masker gestanst,
-  // zodat de choropleth-gebieden volledig zichtbaar blijven maar de rest dimmer wordt.
-  (function setupDimOverlay() {
-    const m = window.appData.map;
-    if (!m) return;
-
-    // Panes aanmaken indien nodig
-    if (!m.getPane('dimPane'))        m.createPane('dimPane');
-    if (!m.getPane('choroplethPane')) m.createPane('choroplethPane');
-    m.getPane('dimPane').style.zIndex        = 450;
-    m.getPane('choroplethPane').style.zIndex = 460;
-
-    const mapContainer = m.getContainer?.() || document.getElementById('map');
-    if (!mapContainer) return;
-
-    // Verwijder bestaande SVG-overlay
-    mapContainer.querySelector('svg.choropleth-dim-svg')?.remove();
-
-    const svgNS = 'http://www.w3.org/2000/svg';
-    const svg   = document.createElementNS(svgNS, 'svg');
-    svg.classList.add('choropleth-dim-svg');
-    Object.assign(svg.style, { position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', pointerEvents: 'none', zIndex: '400' });
-    svg.setAttribute('preserveAspectRatio', 'none');
-
-    const defs = document.createElementNS(svgNS, 'defs');
-    svg.appendChild(defs);
-
-    const mask = document.createElementNS(svgNS, 'mask');
-    mask.setAttribute('id', 'choropleth-dim-mask');
-    defs.appendChild(mask);
-
-    // Wit vlak: alles is standaard zichtbaar; polygoon-paden worden zwart (= gat in masker)
-    const volRect = document.createElementNS(svgNS, 'rect');
-    volRect.setAttribute('width', '100%'); volRect.setAttribute('height', '100%');
-    volRect.setAttribute('x', '0');        volRect.setAttribute('y', '0');
-    volRect.setAttribute('fill', 'white');
-    mask.appendChild(volRect);
-
-    // Dimrect: halftransparant zwart over het volledige kaartgebied
-    const dimRect = document.createElementNS(svgNS, 'rect');
-    dimRect.setAttribute('width', '100%'); dimRect.setAttribute('height', '100%');
-    dimRect.setAttribute('x', '0');        dimRect.setAttribute('y', '0');
-    dimRect.setAttribute('fill', '#000');  dimRect.setAttribute('opacity', '0.6');
-    dimRect.setAttribute('mask', 'url(#choropleth-dim-mask)');
-    svg.appendChild(dimRect);
-
-    mapContainer.appendChild(svg);
-
-    window.appData.choroplethDimOverlayState = { map: m, mapContainer, mask, popupEl: null };
-
-    // Herbereken masker-paden bij elke kaartbeweging
-    function updateMask() {
-      // Verwijder alle eerder berekende gat-paden (eerste kind = volRect bewaren)
-      while (mask.childNodes.length > 1) mask.removeChild(mask.lastChild);
-
-      // Voeg een gat toe voor de open popup (zodat die ook goed zichtbaar blijft)
-      const popupEl = window.appData.choroplethDimOverlayState?.popupEl;
-      if (popupEl) {
-        const pr = popupEl.getBoundingClientRect();
-        const cr = mapContainer.getBoundingClientRect();
-        const left = Math.max(0, pr.left - cr.left);
-        const top  = Math.max(0, pr.top  - cr.top);
-        const w    = Math.min(cr.width  - left, pr.width);
-        const h    = Math.min(cr.height - top,  pr.height);
-        if (w > 0 && h > 0) {
-          const rect = document.createElementNS(svgNS, 'rect');
-          Object.assign(rect, {}); 
-          rect.setAttribute('x', left); rect.setAttribute('y', top);
-          rect.setAttribute('width', w); rect.setAttribute('height', h);
-          rect.setAttribute('rx', '12'); rect.setAttribute('ry', '12');
-          rect.setAttribute('fill', 'black');
-          mask.appendChild(rect);
-        }
-      }
-
-      // Projecteer GeoJSON-coördinaten naar schermcoördinaten en bouw SVG-paden
-      function projectCoord(coord) {
-        const p = m.latLngToContainerPoint([coord[1], coord[0]]);
-        return `${p.x},${p.y}`;
-      }
-      function ringNaarPad(ring) {
-        return ring.map(projectCoord).map((c, i) => (i === 0 ? `M${c}` : `L${c}`)).join(' ') + ' Z';
-      }
-
-      (fc.features || []).forEach(feat => {
-        const geom = feat.geometry;
-        if (!geom) return;
-        const polygonen = geom.type === 'Polygon'
-          ? [geom.coordinates]
-          : geom.type === 'MultiPolygon' ? geom.coordinates : [];
-
-        polygonen.forEach(poly => {
-          const path = document.createElementNS(svgNS, 'path');
-          path.setAttribute('d', poly.map(ringNaarPad).join(' '));
-          path.setAttribute('fill', 'black');
-          mask.appendChild(path);
-        });
-      });
-    }
-
-    updateMask();
-
-    // Verwijder eventuele vorige listener
-    try {
-      if (m._choroplethDimUpdater) {
-        m.off('move moveend viewreset zoomend resize', m._choroplethDimUpdater);
-      }
-    } catch (e) { /* ignore */ }
-
-    // Gebruik requestAnimationFrame om te voorkomen dat updateMask te vaak vuurt
-    let rafId = null;
-    const schedule = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => { rafId = null; try { updateMask(); } catch (e) { /* ignore */ } });
+  const stijl = (feature) => {
+    const waarde = feature.properties?.[veld];
+    if (!waardePasseertFilter(waarde, alleWaarden, filter)) return KAART_CONFIG.buitenFilterStijl;
+    if (waarde === null || waarde === '' || isNaN(+waarde)) return KAART_CONFIG.geenDataStijl;
+    const klasse = breuken.slice(1, -1).findIndex(grens => +waarde < grens);
+    return {
+      color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.randBreedte, fillOpacity: opacity,
+      fillColor: kleuren[klasse === -1 ? kleuren.length - 1 : klasse],
     };
+  };
 
-    window.requestChoroplethDimOverlayUpdate = schedule;
-    m.on('move moveend viewreset zoom zoomstart zoomend zoomanim resize', schedule);
-    m._choroplethDimUpdater = schedule;
+  appData.choroplethLayer = L.geoJSON(fc, {
+    style: stijl,
+    pane: 'choroplethPane',
+    onEachFeature: (feature, laag) => {
+      laag.bindPopup(bouwFeaturePopup(feature, veld, filter, alleWaarden), { closeButton: false, autoPan: false });
+      laag.on('click', () => laag.openPopup());
+      laag.on('mouseover', () => {
+        trend.bovenFeature = true;
+        laag.openPopup();
+        toonTrendgrafiek(feature, veld);
+        stuurNaarAndereKaart({ type: 'heerlen-hover', identity: getFeatureIdentity(feature) });
+      });
+      laag.on('mouseout', () => {
+        trend.bovenFeature = false;
+        planVerbergTrend();
+        stuurNaarAndereKaart({ type: 'heerlen-hover-clear' });
+      });
+    },
+  }).addTo(appData.dataLayer);
+  window.bringSmallPolygonsToFront(appData.dataLayer);
 
-    try { window.appData.choroplethLayer?.bringToFront?.(); } catch (e) { /* ignore */ }
-  })();
-
-  // Zoom naar data alleen als het een nieuwe dataset is (niet bij visuele updates)
-  const isNieuweDataset = window.appData.lastLoadedData !== fc;
-  if (isNieuweDataset) {
-    if (!window.appData?.skipFitOnNextRender) {
-      try { window.appData.map.fitBounds(laag.getBounds(), { maxZoom: KAART_CONFIG.maxZoomNaDataLoad }); } catch (e) { /* ignore */ }
-    } else {
-      delete window.appData.skipFitOnNextRender;
-    }
-    window.appData.lastLoadedData = fc;
-  }
-
+  // Kleuren verandert nooit de kaartuitsnede; inzoomen gebeurt alleen bij het laden van data
+  gemeentegrens.toon(fc);
   tekenLegenda(breuken, kleuren, veld);
 };
 
-// Achterwaartse compatibiliteit alias
-window.applyChoropleth = window.toonChoropleth;
+
+map.on('popupclose', planVerbergTrend);
+
 
 // ============================================================================
-// POPUP HOVER-SYNCHRONISATIE — Koppeling tussen split-screen vensters
+// GEMEENTEGRENS — De buitenrand van alle buurten samen, als zwarte lijn.
+// Aangrenzende buurten delen in PDOK exact dezelfde punten: een rand die maar
+// bij één buurt hoort, ligt aan de buitenkant. (Ook gebruikt door intro.js.)
 // ============================================================================
 
-// Popup open/dicht: houd mouseIsOverPopup bij en update de dim-overlay
-if (map && typeof map.on === 'function') {
-  map.on('popupopen', (e) => {
-    try {
-      const popupEl = e.popup?.getElement?.();
-      if (!popupEl) return;
-
-      if (!popupEl.__hoverHandlersAttached) {
-        popupEl.__hoverHandlersAttached = true;
-
-        popupEl.addEventListener('mouseenter', () => {
-          mouseIsOverPopup = true;
-          cancelHideHoverChartPanel();
-          try {
-            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast) {
-              const feature  = e.popup?._source?.feature;
-              const identity = feature ? getFeatureIdentity(feature) : null;
-              if (identity && window.parent !== window) {
-                window.parent.postMessage({ type: 'heerlen-hover', identity, panelId: window.splitScreenPanelId || null }, '*');
-              }
-            }
-          } catch (err) { /* ignore */ }
-        });
-
-        popupEl.addEventListener('mouseleave', () => {
-          mouseIsOverPopup = false;
-          if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
-          try {
-            if (window.isSplitScreenPane && !window.__suppressHoverBroadcast && window.parent !== window) {
-              window.parent.postMessage({ type: 'heerlen-hover-clear', panelId: window.splitScreenPanelId || null }, '*');
-            }
-          } catch (err) { /* ignore */ }
-        });
+/** Alle randsegmenten met de items waar ze bij horen; een gedeelde rand komt twee keer voor. */
+function randSegmenten(items, geometrieVan) {
+  const segmenten = new Map();
+  for (const item of items) {
+    const g = geometrieVan(item);
+    const ringen = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).flat();
+    for (const ring of ringen) {
+      for (let i = 0; i < ring.length - 1; i++) {
+        const p = ring[i], q = ring[i + 1];
+        const kp = p.join(','), kq = q.join(',');
+        if (kp === kq) continue;
+        const sleutel = kp < kq ? `${kp}|${kq}` : `${kq}|${kp}`;
+        const seg = segmenten.get(sleutel) || { a: p, b: q, buurten: [] };
+        seg.buurten.push(item);
+        segmenten.set(sleutel, seg);
       }
-
-      const state = window.appData?.choroplethDimOverlayState;
-      if (state) state.popupEl = popupEl;
-      window.requestChoroplethDimOverlayUpdate?.();
-    } catch (err) { /* ignore */ }
-  });
-
-  map.on('popupclose', () => {
-    mouseIsOverPopup = false;
-    const state = window.appData?.choroplethDimOverlayState;
-    if (state) state.popupEl = null;
-    window.requestChoroplethDimOverlayUpdate?.();
-    if (shouldHideHoverChart()) scheduleHideHoverChartPanel();
-  });
-}
-
-// Zoek een Leaflet-laag op basis van feature-identiteit
-function findLayerByIdentity(identity) {
-  if (!identity || !window.appData?.dataLayer) return null;
-  let gevonden = null;
-  try {
-    window.appData.dataLayer.eachLayer(function doorzoek(layer) {
-      if (gevonden) return;
-      if (layer?.feature && matchesFeatureIdentity(layer.feature, identity)) { gevonden = layer; return; }
-      if (typeof layer?.eachLayer === 'function') {
-        layer.eachLayer(inner => {
-          if (!gevonden && inner?.feature && matchesFeatureIdentity(inner.feature, identity)) gevonden = inner;
-        });
-      }
-    });
-  } catch (e) { /* ignore */ }
-  return gevonden;
-}
-
-/** Markeer een feature op de kaart via identiteit (gebruikt door peer split-screen). */
-function highlightFeatureByIdentity(identity) {
-  const layer = findLayerByIdentity(identity);
-  if (!layer) return false;
-  try {
-    window.__suppressHoverBroadcast = true;
-    layer.openPopup();
-    try { toonHoverJarenGrafiek(layer.feature); } catch (e) { /* ignore */ }
-    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 350);
-    return true;
-  } catch (e) {
-    window.__suppressHoverBroadcast = false;
-    return false;
-  }
-}
-
-function clearPeerHighlight() {
-  try {
-    window.__suppressHoverBroadcast = true;
-    map?.closePopup?.();
-    window.hideHoverTimeSeries?.();
-    setTimeout(() => { window.__suppressHoverBroadcast = false; }, 250);
-  } catch (e) { window.__suppressHoverBroadcast = false; }
-}
-
-// Luister naar berichten van het peer-venster (split-screen)
-window.addEventListener('message', (event) => {
-  const data = event.data;
-  if (!data || typeof data !== 'object') return;
-  if (data.type === 'heerlen-set-hover' && data.identity) highlightFeatureByIdentity(data.identity);
-  else if (data.type === 'heerlen-clear-hover') clearPeerHighlight();
-});
-
-// ============================================================================
-// COÖRDINAAT HERPROJECTIE — RD (EPSG:28992) → WGS84
-// ============================================================================
-
-// Registreer RD New projectie bij proj4 indien beschikbaar
-if (typeof proj4 !== 'undefined') {
-  try {
-    proj4.defs('EPSG:28992',
-      '+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 ' +
-      '+k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +no_defs'
-    );
-  } catch (e) { /* al gedefinieerd */ }
-}
-
-/** Detecteer of coördinaten in meters zijn (RD-stelsel: waarden >> 180). */
-function coorsDinatenZijnGeprojecteerd(geom) {
-  let gevonden = false;
-  function loop(c) {
-    if (gevonden) return;
-    if (Array.isArray(c)) {
-      if (typeof c[0] === 'number' && (Math.abs(c[0]) > 1000 || Math.abs(c[1]) > 1000)) gevonden = true;
-      else c.forEach(loop);
     }
   }
-  loop(geom.coordinates);
-  return gevonden;
+  return [...segmenten.values()];
 }
 
-/** Herprojecteer alle coördinaten van een geometrie van RD naar WGS84. */
-function herprojecteerGeometrie(geom) {
-  if (!proj4) return geom;
-  const herpunt = pt => proj4('EPSG:28992', 'EPSG:4326', pt);
+/** Rijg losse segmenten aaneen tot zo lang mogelijke lijnen ([lat, lng]-arrays). */
+function maakKetens(segmenten) {
+  const sleutel = p => p.join(',');
+  const perPunt = new Map();
+  segmenten.forEach((s, i) => [s.a, s.b].forEach(p => {
+    const k = sleutel(p);
+    if (!perPunt.has(k)) perPunt.set(k, []);
+    perPunt.get(k).push(i);
+  }));
 
-  if      (geom.type === 'Point')                       geom.coordinates = herpunt(geom.coordinates);
-  else if (geom.type === 'MultiPoint' || geom.type === 'LineString') geom.coordinates = geom.coordinates.map(herpunt);
-  else if (geom.type === 'Polygon')                     geom.coordinates = geom.coordinates.map(r => r.map(herpunt));
-  else if (geom.type === 'MultiPolygon')                geom.coordinates = geom.coordinates.map(p => p.map(r => r.map(herpunt)));
-  return geom;
+  const gebruikt = new Array(segmenten.length).fill(false);
+  const volg = (startIndex, startPunt) => {
+    const keten = [startPunt];
+    let punt = startPunt, index = startIndex;
+    while (index !== undefined) {
+      gebruikt[index] = true;
+      const s = segmenten[index];
+      punt = sleutel(s.a) === sleutel(punt) ? s.b : s.a;
+      keten.push(punt);
+      index = perPunt.get(sleutel(punt)).find(j => !gebruikt[j]);
+    }
+    return keten;
+  };
+
+  const ketens = [];
+  // Eerst open lijnen vanaf hun eindpunt, daarna gesloten ringen
+  for (const [k, lijst] of perPunt) {
+    if (lijst.length === 1 && !gebruikt[lijst[0]]) ketens.push(volg(lijst[0], k.split(',').map(Number)));
+  }
+  segmenten.forEach((s, i) => { if (!gebruikt[i]) ketens.push(volg(i, s.a)); });
+  return ketens.map(k => k.map(([lon, lat]) => [lat, lon]));
 }
 
-/**
- * Herprojecteer een FeatureCollection van RD naar WGS84 als de coördinaten dat vereisen.
- * Wordt aangeroepen na het inladen van externe GeoJSON/shapefile-data.
- */
-window.herprojecteerAlsNodig = function(fc) {
-  if (!fc?.features || !proj4) return fc;
+const gemeentegrens = (function () {
+  const lijn = (stijl) => L.polyline([], { pane: 'grensPane', interactive: false, ...stijl });
+  const lagen = [lijn(KAART_CONFIG.grensGloed), lijn(KAART_CONFIG.grensLijn)];
+  let sleutel = null;  // de grens verandert alleen als er andere buurten op de kaart staan
+
+  return {
+    toon(fc) {
+      const codes = fc.features.map(f => f.properties?.buurtcode).join();
+      if (codes !== sleutel) {
+        const ketens = maakKetens(randSegmenten(fc.features, f => f.geometry).filter(s => s.buurten.length === 1));
+        lagen.forEach(l => l.setLatLngs(ketens));
+        sleutel = codes;
+      }
+      lagen.forEach(l => { if (!map.hasLayer(l)) l.addTo(map); });
+    },
+  };
+})();
+
+
+// ============================================================================
+// SPLIT-SCREEN — Aangewezen buurt ook in de andere kaart tonen
+// ============================================================================
+
+let onderdrukHoverBericht = false;  // berichten die wij zelf veroorzaken niet terugsturen
+
+function stuurNaarAndereKaart(bericht) {
+  if (!window.isSplitScreenPane || onderdrukHoverBericht || bericht.identity === null) return;
+  window.parent.postMessage({ ...bericht, panelId: window.splitScreenPanelId }, '*');
+}
+
+/** Voer een actie uit zonder dat de hover-gebeurtenissen die ze veroorzaakt worden doorgestuurd. */
+function zonderTerugsturen(actie, ms) {
+  onderdrukHoverBericht = true;
+  try { actie(); } finally { setTimeout(() => { onderdrukHoverBericht = false; }, ms); }
+}
+
+window.addEventListener('message', ({ data }) => {
+  if (data?.type === 'heerlen-set-hover' && data.identity) {
+    const laag = window.appData.choroplethLayer?.getLayers().find(l => heeftIdentiteit(l.feature, data.identity));
+    if (laag) zonderTerugsturen(() => { laag.openPopup(); toonTrendgrafiek(laag.feature); }, 350);
+  } else if (data?.type === 'heerlen-clear-hover') {
+    zonderTerugsturen(() => { map.closePopup(); planVerbergTrend(); }, 250);
+  }
+});
+
+
+// ============================================================================
+// HERPROJECTIE — Eigen bestanden in RD-coördinaten (meters) omzetten naar WGS84
+// ============================================================================
+
+// proj4 komt van een CDN; zonder proj4 blijven de coördinaten zoals ze zijn
+window.proj4?.defs('EPSG:28992',
+  '+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889 ' +
+  '+k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel +units=m +no_defs');
+
+/** Coördinaten groter dan 1000 kunnen geen graden zijn, dus het zijn RD-meters. */
+const isRdGeometrie = (geom) => geom.coordinates.flat(Infinity).some(n => Math.abs(n) > 1000);
+
+function herprojecteer(coordinaten) {
+  return typeof coordinaten[0] === 'number'
+    ? proj4('EPSG:28992', 'EPSG:4326', coordinaten)
+    : coordinaten.map(herprojecteer);
+}
+
+window.herprojecteerAlsNodig = function (fc) {
+  if (!window.proj4) return fc;
   for (const f of fc.features) {
-    if (f.geometry && coorsDinatenZijnGeprojecteerd(f.geometry)) f.geometry = herprojecteerGeometrie(f.geometry);
+    if (f.geometry?.coordinates && isRdGeometrie(f.geometry)) f.geometry.coordinates = herprojecteer(f.geometry.coordinates);
   }
   return fc;
 };

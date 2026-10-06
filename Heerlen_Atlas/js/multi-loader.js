@@ -607,7 +607,7 @@ function applyYearFilter(jaar) {
   window.appData.lastFC                 = filterFeaturesByYear(original, jaar);
   window.appData.skipFitOnNextRender    = true;  // Voorkomt ongewenste zoom-reset
 
-  window.herllaadVisualisatie?.();
+  window.herlaadVisualisatie?.();
 }
 
 // ============================================================================

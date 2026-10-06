@@ -1086,8 +1086,10 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-intro')?.addEventListener('click', openIntro);
 
+    // Geen introductie in de helften van het splitscherm
+    const splitHelft = document.documentElement.classList.contains('split-pane');
     const alGezien = window.leesCookie?.(INTRO_CONFIG.gezienCookie) === '1';
-    if (INTRO_CONFIG.altijdTonen || !alGezien) openIntro();
+    if (!splitHelft && (INTRO_CONFIG.altijdTonen || !alGezien)) openIntro();
     else window.toonCookieMelding?.();
   });
 

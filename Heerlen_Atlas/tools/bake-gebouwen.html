@@ -22,7 +22,7 @@
 
 <script>
 'use strict';
-// Vaste oorsprong — moet gelijk zijn aan ORIGIN in huisjes-3d.html
+// Vaste oorsprong — moet gelijk zijn aan LON0/LAT0 in huisjes-3d.html
 const LON0 = 5.9750, LAT0 = 50.8890;
 const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110574;
 const proj = (lon, lat) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];        // x = oost, z = -noord
@@ -76,9 +76,9 @@ document.getElementById('start').onclick = async () => {
   try {
     // 1. BAG-panden ---------------------------------------------------------
     const panden = new Map();
-    let laatste = "0917";     // keyset-paginering: de server weigert startIndex > ~51000
+    let laatste = '0917';     // keyset-paginering: de server weigert startIndex > ~51000
     for (;;) {
-      const j = await haal(BAG + "&count=1000" + bagFilter(laatste));
+      const j = await haal(BAG + '&count=1000' + bagFilter(laatste));
       const f = j.features || [];
       for (const x of f) panden.set(String(x.properties.identificatie), x);
       if (f.length) laatste = String(f[f.length - 1].properties.identificatie);
@@ -113,10 +113,9 @@ document.getElementById('start').onclick = async () => {
     // 4. Verwerken --------------------------------------------------------
     const oppervlak = p => { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; } return a / 2; };
     const GEBRUIK = { woonfunctie: 1, industriefunctie: 2, winkelfunctie: 4, kantoorfunctie: 8, onderwijsfunctie: 16, gezondheidszorgfunctie: 32, bijeenkomstfunctie: 64, overige: 128 };
-    // Alle 11 officiële BAG-gebruiksfuncties, voor de "gebouwtypen"-kleuring in huisjes-3d.html.
-    // Eén pand kan meerdere functies hebben (bv. "winkelfunctie,woonfunctie") — TYPE_MATCHVOLGORDE
-    // bepaalt dan welke telt: zeldzame/specifieke functies wegen zwaarder dan veelvoorkomende, zodat
-    // zo'n pand als winkel gekleurd wordt in plaats van te verdwijnen in de veel grotere groep woningen.
+    // De 11 BAG-gebruiksfuncties; volgorde moet gelijk zijn aan GEBOUWTYPEN in huisjes-3d.html.
+    // Heeft een pand meerdere functies, dan wint de achterste in deze lijst (de zeldzaamste):
+    // een winkel met woning erboven telt als winkel. 'Overige' is het vangnet.
     const TYPES = [
       { key: 'woonfunctie', label: 'Woning' },
       { key: 'winkelfunctie', label: 'Winkel' },
@@ -130,7 +129,6 @@ document.getElementById('start').onclick = async () => {
       { key: 'celfunctie', label: 'Cel' },
       { key: 'overige', label: 'Overig / onbekend' },
     ];
-    const TYPE_MATCHVOLGORDE = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]; // index in TYPES; laatste (10, overig) is altijd het vangnet
     const bouw = [];
     let zonderHoogte = 0;
     for (const [id, f] of panden) {
@@ -139,9 +137,9 @@ document.getElementById('start').onclick = async () => {
       const geo = f.geometry; if (!geo) continue;
       const polys = geo.type === 'Polygon' ? [geo.coordinates] : geo.type === 'MultiPolygon' ? geo.coordinates : [];
       const doel = String(f.properties.gebruiksdoel || '');
-      let vlag = 0; for (const k of Object.keys(GEBRUIK)) if (doel.includes(k.replace('functie', 'functie'))) vlag |= GEBRUIK[k];
+      let vlag = 0; for (const k in GEBRUIK) if (doel.includes(k)) vlag |= GEBRUIK[k];
       if (!vlag) vlag = doel ? 128 : 0;
-      let typ = 10; for (const idx of TYPE_MATCHVOLGORDE) { if (doel.includes(TYPES[idx].key)) { typ = idx; break; } }
+      let typ = 10; for (let i = 9; i >= 0; i--) if (doel.includes(TYPES[i].key)) { typ = i; break; }
       const hg = hoogte.get(id);
       let H = hg ? hg.top - hg.grond : NaN;
       if (!isFinite(H) || H < 1.5) { H = (vlag & 1) ? 6.5 : 8; if (!hg) zonderHoogte++; }
@@ -174,11 +172,9 @@ document.getElementById('start').onclick = async () => {
     odv.setFloat64(16, LON0, true); odv.setFloat64(24, LAT0, true);
     odv.setFloat32(32, x0, true); odv.setFloat32(36, z0, true); odv.setFloat32(40, Q, true);
     let p = KOP;
-    const secties = {};
-    const sectie = (naam, bytes) => { secties[naam] = p; p += pad4(bytes); return secties[naam]; };
-    const oRing = sectie('ringen', N), oLen = sectie('len', R * 2), oX = sectie('x', V * 2), oZ = sectie('z', V * 2),
-          oH = sectie('h', N * 2), oG = sectie('g', N * 2), oBJ = sectie('bj', N * 2), oVO = sectie('vo', N * 2), oV = sectie('vlag', N),
-          oTy = sectie('typ', N);
+    const sectie = bytes => { const begin = p; p += pad4(bytes); return begin; };
+    const oRing = sectie(N), oLen = sectie(R * 2), oX = sectie(V * 2), oZ = sectie(V * 2),
+          oH = sectie(N * 2), oG = sectie(N * 2), oBJ = sectie(N * 2), oVO = sectie(N * 2), oV = sectie(N), oTy = sectie(N);
     let ri = 0, vi = 0;
     bouw.forEach((b, i) => {
       out[oRing + i] = b.ringen.length;

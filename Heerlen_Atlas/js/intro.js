@@ -63,6 +63,9 @@
     legendaWaarden: [0, 20, 40, 60, 80],
     geenDataKleur:  '#d9e2ec',
 
+    // Stap 4: de armoedegrens-schuif loopt vanzelf door de definities tot je hem aanraakt
+    autoDraaiMs:     4000,
+
     // --- Kaart ---
     startBounds:     [[50.855, 5.885], [50.935, 6.045]],
     tegelUrl:        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -241,6 +244,8 @@
     stap: 0,
     definitie: 0,
     bekekenDefinities: new Set([0]),
+    autoDraaiTimer: null,
+    autoDraaiGestopt: false,   // na de eerste aanraking blijft de schuif voorgoed stil
     model: null,
     laadFout: null,
     laadBelofte: null,
@@ -899,11 +904,6 @@
     blok.querySelector('.intro-drempel-stad').innerHTML =
       `<strong>${pct(def.stad(staat.model), true)}</strong> van de inwoners van Heerlen telt zo als arm`;
     blok.querySelector('.intro-drempel-boodschap').classList.toggle('is-zichtbaar', staat.bekekenDefinities.size > 1);
-
-    const volgende = staat.inhoud.querySelector('[data-actie="volgende"]');
-    const genoegBekeken = staat.bekekenDefinities.size >= 2;
-    if (volgende) volgende.disabled = !genoegBekeken;
-    staat.inhoud.querySelector('.intro-hint')?.toggleAttribute('hidden', genoegBekeken);
   }
 
   function kiesDefinitie(index) {
@@ -913,6 +913,20 @@
     werkDrempelBij();
     animatieToken++;
     kleurDefinitie(index, 750);
+  }
+
+  /** Laat de schuif vanzelf door de definities lopen zolang stap 4 open is en niemand hem heeft aangeraakt. */
+  function regelAutoDraai() {
+    clearInterval(staat.autoDraaiTimer);
+    staat.autoDraaiTimer = null;
+    if (!staat.open || staat.stap !== 3 || !staat.model || staat.autoDraaiGestopt) return;
+    staat.autoDraaiTimer = setInterval(
+      () => kiesDefinitie((staat.definitie + 1) % DEFINITIES.length), INTRO_CONFIG.autoDraaiMs);
+  }
+
+  function stopAutoDraai() {
+    staat.autoDraaiGestopt = true;
+    regelAutoDraai();
   }
 
   /** Drie kleine kaarten naast elkaar (stap 5), zonder achtergrond en niet zoombaar. */
@@ -967,7 +981,6 @@
       <h2 class="intro-titel" id="intro-titel">${s.titel}</h2>
       <div class="intro-tekst">${s.tekst}</div>
       ${s.extra ? `<div class="intro-extra">${s.extra(staat.model)}</div>` : ''}
-      ${index === 3 ? '<p class="intro-hint">Bekijk minstens twee armoedegrenzen om de kaarten te vergelijken.</p>' : ''}
       <div class="intro-navigatie">
         <button type="button" class="intro-vorige" data-actie="vorige" ${index === 0 ? 'disabled' : ''}>
           <span aria-hidden="true">←</span> Vorige
@@ -981,6 +994,7 @@
       staat.inhoud.innerHTML = paneelHtml(staat.stap);
       staat.paneel.scrollTop = 0;
       if (staat.stap === 3) werkDrempelBij();
+      regelAutoDraai();
 
       staat.vergelijking.hidden = staat.stap !== 4;
       if (staat.stap === 4) staat.vergelijking.innerHTML = vergelijkingHtml(staat.model);
@@ -1048,6 +1062,9 @@
         case 'opnieuw-laden': startLaden(); renderPaneel(false); break;
       }
     });
+    ['pointerdown', 'keydown'].forEach(type => staat.paneel.addEventListener(type, (e) => {
+      if (e.target.closest('.intro-drempel')) stopAutoDraai();
+    }));
     staat.paneel.addEventListener('input', (e) => {
       if (e.target.matches('.intro-drempel-invoer')) kiesDefinitie(Number(e.target.value));
     });
@@ -1114,6 +1131,7 @@
     if (!staat.open) return;
     staat.open = false;
     animatieToken++;
+    regelAutoDraai();
 
     staat.overlay.classList.remove('is-zichtbaar');
     document.body.classList.remove('intro-open');

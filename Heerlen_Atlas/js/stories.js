@@ -634,7 +634,8 @@
       method,
       palette,
       opacity: Number.isFinite(opacity) ? opacity : 0.65,
-      classes: 5
+      classes: 5,
+      klassenFC: window.multiLoaderState?.originalData
     });
   }
 

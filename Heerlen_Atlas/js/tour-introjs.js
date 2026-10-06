@@ -18,20 +18,19 @@ window.tourSteps = window.tourSteps || [
     content: 'Welkom. Deze korte rondleiding laat rustig de belangrijkste bedieningselementen zien.'
   },
   {
-    id:      'sidebar',
-    title:   'Zijbalk',
-    content: 'Hier staan legenda, variabele keuze en filters.'
-  },
-  {
-    id:       'year-filter-area',
-    selector: '#year-filter-area',
-    title:    'Filter op jaar',
-    content:  'Met deze schuifregelaar kun je het jaar filteren.'
-  },
-  {
     id:      'controls',
-    title:   'Variabelen',
-    content: 'Voeg hier extra variabelen toe en pas kleuren/opacity aan.'
+    title:   'Verken de data',
+    content: 'De variabele bij het kaart-icoon kleurt de kaart. Met + voeg je variabelen toe die je ziet als je over een buurt beweegt.'
+  },
+  {
+    id:      'year-filter-area',
+    title:   'Tijdlijn',
+    content: 'Kies met de twee driehoekjes een periode en druk op afspelen om door de jaren te gaan.'
+  },
+  {
+    id:      'legend-widget',
+    title:   'Kaartweergave en legenda',
+    content: 'Met het tandwiel kies je kleuren, dekking en ondergrond. De i toont de legenda.'
   },
   {
     id:      'map',

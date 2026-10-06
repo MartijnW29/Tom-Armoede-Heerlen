@@ -14,10 +14,11 @@ const KAART_CONFIG = {
   standaardAantalKlassen: 5,
   standaardClassificatie: 'quantile',  // quantile | equal
 
-  // --- Randstijl polygonen ---
-  randKleur:              '#333',
-  randBreedte:            0.6,
-  wijkRandBreedte:        2.5,         // Dikkere rand voor wijkgrenzen
+  // --- Randstijl polygonen (zelfde rustige look als de introductie) ---
+  randKleur:              '#ffffff',
+  randBreedte:            1,
+  wijkRandKleur:          '#243b53',
+  wijkRandBreedte:        2,           // Dikkere rand voor wijkgrenzen
   gefilterdRandKleur:     '#999',
   gefilterdVulKleur:      '#e8e8e8',
   gefilterdTransparantie: 0.15,
@@ -27,6 +28,8 @@ const KAART_CONFIG = {
 
   // --- Kaartweergave ---
   maxZoomNaDataLoad: 14,
+  dimKleur:          '#f5f7fa',        // Alles buiten Heerlen vervaagt naar wit
+  dimOpaciteit:      0.7,
 };
 
 // Synchroniseer standaard-transparantie met globale APP_SETTINGS
@@ -649,7 +652,9 @@ function tekenLegenda(breuken, kleuren, veldnaam) {
  *
  * @param {GeoJSON} fc    - FeatureCollection met alle features
  * @param {string}  veld  - Naam van het numerieke eigenschapsveld
- * @param {Object}  opties - { method, palette, opacity, classes }
+ * @param {Object}  opties - { method, palette, opacity, classes, klassenFC }
+ *                          klassenFC: dataset waarop de klassengrenzen gebaseerd worden
+ *                          (alle jaren), zodat dezelfde kleur elk jaar dezelfde waarde betekent.
  */
 window.toonChoropleth = function(fc, veld, opties = {}) {
   if (!fc?.features?.length) return;
@@ -674,10 +679,10 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     return;
   }
 
-  // Filter toepassen: gebruik alleen gefilterde waarden voor breekpunten
+  // Breekpunten over alle jaren (klassenFC), alleen met waarden die door het filter komen
   const activeFilter     = window.appData?.filter || null;
-  const gefilterd        = filtreerdFeatures(fc, veld, activeFilter);
-  const gefilterdWaarden = gefilterd.map(f => +f.properties[veld]).filter(v => !isNaN(v));
+  const klassenBron      = opties.klassenFC?.features?.length ? opties.klassenFC : fc;
+  const gefilterdWaarden = haalNumeriekeWaarden({ features: filtreerdFeatures(klassenBron, veld, activeFilter) }, veld);
   const teGebruiken      = gefilterdWaarden.length ? gefilterdWaarden : alleWaarden;
 
   const breuken = methode === 'equal'
@@ -774,7 +779,7 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     const wijkFC = window.multiLoaderState?.wijkenFC;
     if (wijkFC?.features?.length) {
       const wijkLaag = L.geoJSON(wijkFC, {
-        style: () => ({ color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.wijkRandBreedte, opacity: 1, fillOpacity: 0 }),
+        style: () => ({ color: KAART_CONFIG.wijkRandKleur, weight: KAART_CONFIG.wijkRandBreedte, opacity: 0.8, fillOpacity: 0 }),
         pane: 'choroplethWijkBorderPane',
         interactive: false,
       }).addTo(window.appData.dataLayer);
@@ -822,11 +827,12 @@ window.toonChoropleth = function(fc, veld, opties = {}) {
     volRect.setAttribute('fill', 'white');
     mask.appendChild(volRect);
 
-    // Dimrect: halftransparant zwart over het volledige kaartgebied
+    // Dimrect: lichte waas over het volledige kaartgebied
     const dimRect = document.createElementNS(svgNS, 'rect');
     dimRect.setAttribute('width', '100%'); dimRect.setAttribute('height', '100%');
     dimRect.setAttribute('x', '0');        dimRect.setAttribute('y', '0');
-    dimRect.setAttribute('fill', '#000');  dimRect.setAttribute('opacity', '0.6');
+    dimRect.setAttribute('fill', KAART_CONFIG.dimKleur);
+    dimRect.setAttribute('opacity', KAART_CONFIG.dimOpaciteit);
     dimRect.setAttribute('mask', 'url(#choropleth-dim-mask)');
     svg.appendChild(dimRect);
 

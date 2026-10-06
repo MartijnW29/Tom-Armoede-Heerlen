@@ -455,16 +455,22 @@ function toonGemergedData(fc) {
 
 
 // ============================================================================
-// JAAR-SLIDER — Initialiseren, renderen en filteren
+// TIJDLIJN — Onderin de kaart: twee ▼-schuifjes kiezen de periode, het
+// bolletje (#year-slider) is het getoonde jaar
 // ============================================================================
 
-/** Initialiseer de jaarslider op basis van beschikbare jaren in de data. */
+const tijdlijn = {
+  baan:   () => document.getElementById('tijdlijn-baan'),
+  jaar:   () => document.getElementById('year-slider'),
+  start:  () => document.getElementById('year-start'),
+  eind:   () => document.getElementById('year-end'),
+  ticks:  () => document.getElementById('year-ticks'),
+};
+
+/** Initialiseer de tijdlijn op basis van de beschikbare jaren in de data; de periode beslaat alle jaren. */
 function updateYearSlider(fc) {
-  const slider      = document.getElementById('year-slider');
-  const display     = document.getElementById('year-display');
-  const clearButton = document.getElementById('year-filter-clear');
-  const jaarRange   = getYearRange(fc);
-  if (!jaarRange || !slider) return;
+  const jaarRange = getYearRange(fc);
+  if (!jaarRange || !tijdlijn.jaar()) return;
 
   const alleJaren = getAvailableYears(fc).filter(
     j => j >= MULTI_LOADER_CONFIG.minYear && j <= MULTI_LOADER_CONFIG.maxYear
@@ -473,121 +479,125 @@ function updateYearSlider(fc) {
     Math.max(jaarRange.min, MULTI_LOADER_CONFIG.minYear),
     Math.min(jaarRange.max, MULTI_LOADER_CONFIG.maxYear),
   ].filter(Number.isFinite);
-
   window.multiLoaderState.availableYears = jaren;
-  slider.min  = String(jaren[0]);
-  slider.max  = String(jaren.at(-1));
-  slider.step = '1';
 
-  const standaardJaar = jaren.includes(2024) ? 2024 : jaren.at(-1);
-  slider.value = String(standaardJaar);
+  [tijdlijn.jaar(), tijdlijn.start(), tijdlijn.eind()].forEach(input => {
+    Object.assign(input, { min: String(jaren[0]), max: String(jaren.at(-1)), step: '1' });
+  });
+  tijdlijn.start().value = String(jaren[0]);
+  tijdlijn.eind().value  = String(jaren.at(-1));
+  tijdlijn.jaar().value  = String(jaren.includes(2024) ? 2024 : jaren.at(-1));
 
-  renderYearTicks(slider, jaren);
-  if (display) display.textContent = String(standaardJaar);
+  renderYearTicks(jaren);
   updateYearDisplay();
+}
 
-  if (clearButton) { clearButton.hidden = true; clearButton.setAttribute('aria-hidden', 'true'); }
+/** Gekozen periode als { start, eind }, gesnapt naar beschikbare jaren. */
+function haalPeriode() {
+  return {
+    start: snapYearToAvailableYear(parseInt(tijdlijn.start()?.value, 10)),
+    eind:  snapYearToAvailableYear(parseInt(tijdlijn.eind()?.value, 10)),
+  };
+}
+
+/** Plaats van een jaar op de baan, van 0 (eerste jaar) tot 1 (laatste jaar). */
+function positieOpBaan(jaar) {
+  const min = parseInt(tijdlijn.jaar().min, 10);
+  const max = parseInt(tijdlijn.jaar().max, 10);
+  return max > min ? (jaar - min) / (max - min) : 0;
 }
 
 /**
- * Teken streepjes en labels onder de jaarslider.
- * Labels tonen het volledige jaartal. Past niet elk jaartal naast elkaar, dan
- * worden labels uitgedund op basis van `MIN_LABEL_BREEDTE_PX` (het laatste jaar
- * blijft altijd staan); de streepjes blijven voor elk jaar staan.
- * Wordt opnieuw getekend zodra de breedte van de slider verandert.
+ * Teken streepjes en jaartallen onder de baan. Past niet elk jaartal, dan worden
+ * labels uitgedund (het laatste jaar blijft altijd staan). Tekent opnieuw bij een
+ * andere breedte.
  */
 const MIN_LABEL_BREEDTE_PX = 34; // ruimte voor een volledig jaartal (2013), incl. marge
 
-function renderYearTicks(slider, jaren) {
-  const container = document.getElementById('year-ticks');
-  if (!container || !slider || !jaren?.length) return;
+function renderYearTicks(jaren) {
+  const container = tijdlijn.ticks();
+  if (!container || !jaren?.length) return;
 
   container._jaren = jaren;
-  const minJ = parseInt(slider.min, 10);
-  const maxJ = parseInt(slider.max, 10);
-  const span = Math.max(maxJ - minJ, 1);
-
-  // Hoeveel jaren passen er tussen twee labels? (breedte 0 bij verborgen paneel → eerst alles tonen)
-  const breedte   = container.clientWidth || slider.clientWidth || 0;
-  const pxPerJaar = breedte ? breedte / span : MIN_LABEL_BREEDTE_PX;
+  const span      = Math.max(jaren.at(-1) - jaren[0], 1);
+  const pxPerJaar = container.clientWidth ? container.clientWidth / span : MIN_LABEL_BREEDTE_PX;
   const labelStap = Math.max(1, Math.ceil(MIN_LABEL_BREEDTE_PX / pxPerJaar));
   const laatste   = jaren.length - 1;
 
-  container.innerHTML = '';
-  jaren.forEach((jaar, i) => {
-    const left = `${((jaar - minJ) / span) * 100}%`;
-    const edge = i === 0 ? 'start' : (i === laatste ? 'end' : 'middle');
-    // Tel vanaf het laatste jaar terug; het eerste jaar alleen als er ruimte voor is
+  container.innerHTML = jaren.map((jaar, i) => {
     const toonLabel = (laatste - i) % labelStap === 0 || (i === 0 && (laatste % labelStap) >= labelStap / 2);
+    const left = `${positieOpBaan(jaar) * 100}%`;
+    return `<span class="year-tick" data-year="${jaar}" style="left:${left}"></span>
+            <span class="year-tick-label" data-year="${jaar}" style="left:${left}">${toonLabel ? jaar : ''}</span>`;
+  }).join('');
 
-    const tick = document.createElement('span');
-    Object.assign(tick, { className: 'year-tick', title: String(jaar) });
-    tick.style.left   = left;
-    tick.dataset.year = String(jaar);
-    tick.dataset.edge = edge;
+  werkTijdlijnBij();
 
-    const label = document.createElement('span');
-    label.className    = 'year-tick-label';
-    label.style.left   = left;
-    label.title        = String(jaar); // volledig jaartal bij hover
-    label.dataset.edge = edge;
-    label.dataset.year = String(jaar);
-    label.textContent  = toonLabel ? String(jaar) : '';
-
-    container.append(tick, label);
-  });
-
-  updateYearTickHighlight(snapYearToAvailableYear(parseInt(slider.value, 10)));
-
-  // Eenmalig: opnieuw tekenen bij een andere breedte (zijbalk verkleinen, venster, mobiel)
   if (!container._resizeObserver && typeof ResizeObserver !== 'undefined') {
     let vorigeBreedte = container.clientWidth;
     container._resizeObserver = new ResizeObserver(() => {
       if (Math.abs(container.clientWidth - vorigeBreedte) < 4) return;
       vorigeBreedte = container.clientWidth;
-      renderYearTicks(slider, container._jaren);
+      renderYearTicks(container._jaren);
     });
     container._resizeObserver.observe(container);
   }
 }
 
-/** Markeer het actieve jaar visueel in de tick-reeks. */
-function updateYearTickHighlight(jaar) {
-  const container = document.getElementById('year-ticks');
-  if (!container) return;
-  container.querySelectorAll('.year-tick').forEach(t =>
-    t.classList.toggle('is-active', jaar !== null && t.dataset.year === String(jaar)));
-  container.querySelectorAll('.year-tick-label').forEach(l =>
-    l.classList.toggle('is-active', jaar !== null && l.dataset.year === String(jaar) && l.textContent !== ''));
+/** Werk de gekleurde periode, de streepjes en de jaartallen bij. */
+function werkTijdlijnBij() {
+  const baan = tijdlijn.baan();
+  if (!baan) return;
+  const { start, eind } = haalPeriode();
+  const huidig = snapYearToAvailableYear(parseInt(tijdlijn.jaar().value, 10));
+
+  baan.style.setProperty('--start', positieOpBaan(start));
+  baan.style.setProperty('--eind', positieOpBaan(eind));
+  baan.querySelectorAll('[data-year]').forEach(el => {
+    const jaar = Number(el.dataset.year);
+    el.classList.toggle('is-active', jaar === huidig);
+    el.classList.toggle('is-buiten', jaar < start || jaar > eind);
+  });
 }
 
-/**
- * Snap een jaar naar het dichtstbijzijnde beschikbare jaar.
- * Voorkomt dat de slider op een jaar staat waarvoor geen data beschikbaar is.
- */
+/** Snap een jaar naar het dichtstbijzijnde beschikbare jaar. */
 function snapYearToAvailableYear(jaar) {
   const jaren = window.multiLoaderState.availableYears || [];
   if (!Number.isFinite(jaar) || !jaren.length) return Number.isFinite(jaar) ? jaar : null;
   return jaren.reduce((best, k) => Math.abs(k - jaar) < Math.abs(best - jaar) ? k : best, jaren[0]);
 }
 
-/** Lees de sliderwaarde, snap naar beschikbaar jaar en pas het filter toe. */
+/** Lees het getoonde jaar, snap naar een beschikbaar jaar en pas het filter toe. */
 function updateYearDisplay() {
-  const slider      = document.getElementById('year-slider');
-  const display     = document.getElementById('year-display');
-  const clearButton = document.getElementById('year-filter-clear');
+  const slider  = tijdlijn.jaar();
+  const display = document.getElementById('year-display');
   if (!slider || !display) return;
 
   const huidigJaar = snapYearToAvailableYear(parseInt(slider.value, 10));
   if (huidigJaar !== null && String(huidigJaar) !== slider.value) slider.value = String(huidigJaar);
 
   display.textContent = huidigJaar === null ? 'Alle jaren' : String(huidigJaar);
-  updateYearTickHighlight(huidigJaar);
+  werkTijdlijnBij();
+  if (huidigJaar !== null) applyYearFilter(huidigJaar);
+}
 
-  if (huidigJaar !== null) {
-    applyYearFilter(huidigJaar);
-    if (clearButton) { clearButton.hidden = false; clearButton.setAttribute('aria-hidden', 'false'); }
-  }
+/** Houd het getoonde jaar binnen de gekozen periode. */
+function houdJaarInPeriode() {
+  const { start, eind } = haalPeriode();
+  const slider = tijdlijn.jaar();
+  slider.value = String(Math.min(Math.max(parseInt(slider.value, 10), start), eind));
+}
+
+/** Een periode-schuifje mag niet voorbij het andere; het getoonde jaar schuift zo nodig mee. */
+function opPeriodeGewijzigd(e) {
+  const { start, eind } = haalPeriode();
+  if (start > eind) e.target.value = String(e.target === tijdlijn.start() ? eind : start);
+  e.target.value = String(snapYearToAvailableYear(parseInt(e.target.value, 10)));
+
+  const voor = tijdlijn.jaar().value;
+  houdJaarInPeriode();
+  if (tijdlijn.jaar().value !== voor) updateYearDisplay();
+  else werkTijdlijnBij();
 }
 
 /** Filter data op het gekozen jaar en herlaad de visualisatie zonder opnieuw in te zoomen. */
@@ -603,69 +613,48 @@ function applyYearFilter(jaar) {
 }
 
 // ============================================================================
-// JAAR-ANIMATIE — Automatisch afspelen door de beschikbare jaren
+// JAAR-ANIMATIE — Automatisch afspelen door de gekozen periode
 // ============================================================================
 
 const YEAR_PLAY_CONFIG = { stepDelayMs: 1200 }; // tijd tussen twee jaren tijdens afspelen
 
 window.multiLoaderState.yearPlayTimer = window.multiLoaderState.yearPlayTimer || null;
 
-/** Start of stop het automatisch doorlopen van de jaren, afhankelijk van de huidige status. */
 function toggleYearPlay() {
   window.multiLoaderState.yearPlayTimer ? stopYearPlay() : startYearPlay();
 }
 
-/** Start de jaar-animatie: loopt elke `stepDelayMs` naar het volgstende beschikbare jaar. */
+/** Loop elke `stepDelayMs` naar het volgende jaar binnen de periode; na het laatste begint hij opnieuw. */
 function startYearPlay() {
-  const jaren = window.multiLoaderState.availableYears || [];
-  const slider = document.getElementById('year-slider');
+  const slider = tijdlijn.jaar();
   const knop = document.getElementById('year-play-toggle');
-  if (!slider || jaren.length < 2) return;
+  const jarenInPeriode = () => {
+    const { start, eind } = haalPeriode();
+    return (window.multiLoaderState.availableYears || []).filter(j => j >= start && j <= eind);
+  };
+  if (!slider || jarenInPeriode().length < 2) return;
 
-  // Begin opnieuw vanaf het eerste jaar als de slider al op het laatste jaar staat
-  const huidig = snapYearToAvailableYear(parseInt(slider.value, 10));
-  if (huidig === jaren.at(-1)) {
-    slider.value = String(jaren[0]);
+  const stap = (vanafBegin) => {
+    const jaren = jarenInPeriode();
+    const idx = jaren.indexOf(snapYearToAvailableYear(parseInt(slider.value, 10)));
+    slider.value = String(vanafBegin || idx === -1 || idx >= jaren.length - 1 ? jaren[0] : jaren[idx + 1]);
     updateYearDisplay();
-  }
+  };
 
-  window.multiLoaderState.yearPlayTimer = setInterval(() => {
-    const jaren = window.multiLoaderState.availableYears || [];
-    const huidigJaar = snapYearToAvailableYear(parseInt(slider.value, 10));
-    const idx = jaren.indexOf(huidigJaar);
-    if (idx === -1) { stopYearPlay(); return; }
-    // Bij het laatste jaar: begin weer opnieuw vanaf het eerste (oneindige loop)
-    const volgendeIdx = idx >= jaren.length - 1 ? 0 : idx + 1;
-    slider.value = String(jaren[volgendeIdx]);
-    updateYearDisplay();
-  }, YEAR_PLAY_CONFIG.stepDelayMs);
+  // Staat het jaar buiten de periode of aan het eind, dan beginnen we vooraan
+  const jaren = jarenInPeriode();
+  if (!jaren.slice(0, -1).includes(snapYearToAvailableYear(parseInt(slider.value, 10)))) stap(true);
 
+  window.multiLoaderState.yearPlayTimer = setInterval(() => stap(false), YEAR_PLAY_CONFIG.stepDelayMs);
   if (knop) { knop.innerHTML = '&#10074;&#10074;'; knop.setAttribute('aria-pressed', 'true'); knop.title = 'Afspelen stoppen'; }
 }
 
-/** Stop de jaar-animatie. */
 function stopYearPlay() {
   if (window.multiLoaderState.yearPlayTimer) clearInterval(window.multiLoaderState.yearPlayTimer);
   window.multiLoaderState.yearPlayTimer = null;
 
   const knop = document.getElementById('year-play-toggle');
-  if (knop) { knop.innerHTML = '&#9654;'; knop.setAttribute('aria-pressed', 'false'); knop.title = 'Automatisch afspelen door de jaren'; }
-}
-
-/** Zet het jaarfilter terug en toon alle jaren opnieuw. */
-function clearYearFilter() {
-  const display     = document.getElementById('year-display');
-  const clearButton = document.getElementById('year-filter-clear');
-
-  window.multiLoaderState.yearFilter = null;
-  if (!window.multiLoaderState.originalData) return;
-
-  window.appData.lastFC = window.multiLoaderState.originalData;
-  if (display)     display.textContent = 'Alle jaren';
-  if (clearButton) { clearButton.hidden = true; clearButton.setAttribute('aria-hidden', 'true'); }
-
-  updateYearTickHighlight(null);
-  window.herllaadVisualisatie?.();
+  if (knop) { knop.innerHTML = '&#9654;'; knop.setAttribute('aria-pressed', 'false'); knop.title = 'Afspelen door de gekozen periode'; }
 }
 
 
@@ -734,10 +723,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('multi-file-input')?.addEventListener('change',    updateFileList);
   document.getElementById('add-api-url')?.addEventListener('click',          addApiUrlInput);
   document.getElementById('load-all-apis')?.addEventListener('click',        loadAllAPIs);
-  document.getElementById('year-slider')?.addEventListener('input',          updateYearDisplay);
-  document.getElementById('year-slider')?.addEventListener('pointerdown',    stopYearPlay); // handmatig schuiven stopt de animatie
-  document.getElementById('year-filter-clear')?.addEventListener('click',    clearYearFilter);
   document.getElementById('year-play-toggle')?.addEventListener('click',     toggleYearPlay);
+  document.getElementById('year-start')?.addEventListener('input',           opPeriodeGewijzigd);
+  document.getElementById('year-end')?.addEventListener('input',             opPeriodeGewijzigd);
+  document.getElementById('year-slider')?.addEventListener('pointerdown',    stopYearPlay); // handmatig schuiven stopt de animatie
+  document.getElementById('year-slider')?.addEventListener('input', (e) => {
+    // Alleen de gebruiker zelf blijft binnen de periode; stories mogen elk jaar tonen
+    if (e.isTrusted) houdJaarInPeriode();
+    updateYearDisplay();
+  });
 
   // CBS-knop: voeg toe in HTML als <button id="load-cbs-data">CBS kerncijfers laden</button>
   document.getElementById('load-cbs-data')?.addEventListener('click', laadEnKoppelCbs);
@@ -761,7 +755,6 @@ Object.assign(window, {
   loadAllAPIs,
   laadEnKoppelCbs,
   applyYearFilter,
-  clearYearFilter,
   getYearFromFeature,
   getYearRange,
   getAvailableYears,

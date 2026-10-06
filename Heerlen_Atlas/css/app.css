@@ -17,6 +17,9 @@
   --kleur-primair-hover: #0a5d6c;
   --kleur-primair-actief: #084c59;
   --kleur-focus: rgba(11, 114, 133, 0.35);
+  --kleur-accent: #e8590c;              /* getoonde jaar op de tijdlijn */
+
+  --tijdlijn-ruimte: 96px;              /* vrije ruimte onderin de kaart voor de tijdlijn */
 
   --schaduw-paneel: -2px 0 10px rgba(15, 23, 42, 0.12);
 
@@ -63,60 +66,80 @@ body.story-open {
   z-index: 250;
 }
 
-/* ========== Legenda-widget: "i"-icoon rechtsboven op de kaart ========== */
+/* ========== Kaartknoppen rechtsboven: tandwiel (kaartweergave) en "i" (legenda) ========== */
 .legend-widget {
   position: absolute;
   top: 16px;
   right: 16px;
   z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
 }
 
-.legend-icon-toggle {
+.kaart-knoppen {
+  display: flex;
+  gap: 8px;
+}
+
+.kaart-icoonknop {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  margin-left: auto;
-  border: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--kleur-rand);
   border-radius: 50%;
-  background: var(--kleur-primair);
-  color: #fff;
+  background: var(--kleur-paneel);
+  color: var(--kleur-primair);
   font-family: Georgia, 'Times New Roman', serif;
   font-style: italic;
-  font-weight: 700;
   font-size: 15px;
   line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.25);
-  transition: transform 0.12s ease, background 0.15s ease;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+  transition: transform 0.12s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.legend-icon-toggle:hover {
-  transform: scale(1.07);
+.kaart-icoonknop:hover {
+  background: var(--kleur-paneel-zacht);
+  transform: scale(1.06);
 }
 
-.legend-icon-toggle[aria-expanded="true"] {
-  background: var(--kleur-primair-donker, #084c59);
+.kaart-icoonknop[aria-expanded="true"] {
+  border-color: transparent;
+  background: var(--kleur-primair);
+  color: #fff;
 }
 
-.legend-floating-panel {
-  display: none;
-  position: absolute;
-  top: 40px;
-  right: 0;
-  min-width: 190px;
-  max-width: 260px;
-  padding: var(--ruimte-2);
+.kaart-icoonknop svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.kaart-icoonknop.is-klein {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.kaart-popover {
+  width: 236px;
+  padding: 12px;
   border: 1px solid var(--kleur-rand);
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--kleur-paneel);
-  box-shadow: var(--schaduw-paneel, 0 12px 30px rgba(15, 23, 42, 0.22));
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
   font-size: 12px;
 }
 
-.legend-floating-panel.is-zichtbaar {
-  display: block;
+.kaart-popover[hidden],
+.legend-floating-panel:not(.is-zichtbaar) {
+  display: none;
 }
 
 .legend-floating-panel h3 {
@@ -125,6 +148,93 @@ body.story-open {
   font-size: 14px;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+#kaartweergave h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--kleur-tekst-zacht);
+}
+
+#kaartweergave .keuze-raster {
+  margin-bottom: 14px;
+}
+
+#kaartweergave .keuze-raster:last-child {
+  margin-bottom: 0;
+}
+
+/* Keuzes als voorbeeld in plaats van tekst: kleurstalen en ondergrond-plaatjes */
+.keuze-raster {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.keuze-raster.is-drie {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.keuze-knop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--kleur-rand);
+  border-radius: 8px;
+  background: var(--kleur-paneel);
+  color: var(--kleur-tekst);
+  font-size: 11px;
+}
+
+.keuze-knop:hover {
+  border-color: #bcccdc;
+  background: var(--kleur-paneel-zacht);
+}
+
+.keuze-knop[aria-checked="true"] {
+  border-color: var(--kleur-primair);
+  box-shadow: 0 0 0 1px var(--kleur-primair);
+  color: var(--kleur-primair);
+}
+
+.palet-staal {
+  display: flex;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.palet-staal i {
+  flex: 1;
+}
+
+.ondergrond-voorbeeld {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #e6ebf0;
+}
+
+.choropleth-dim-svg {
+  transition: opacity 0.25s ease;
+}
+
+#map.is-zoomend .choropleth-dim-svg {
+  opacity: 0;
+  transition-duration: 0.1s;
+}
+
+/* Lichte ondergrond: dezelfde rustige grijze kaart als in de introductie */
+#map[data-ondergrond="licht"] .leaflet-tile-pane,
+.ondergrond-voorbeeld.is-licht {
+  filter: grayscale(1) contrast(0.9) brightness(1.06);
+  opacity: 0.55;
 }
 
 /* ========== Hover Tijdreeks Paneel — Inklapbaar ========== */
@@ -302,13 +412,6 @@ html.split-pane #open-3d {
   display: none;
 }
 
-.paneel-kop h2 {
-  margin: 0 0 var(--ruimte-3);
-  padding-bottom: var(--ruimte-2);
-  font-size: 18px;
-  border-bottom: 2px solid var(--kleur-primair);
-}
-
 .kaart-paneel {
   margin-bottom: var(--ruimte-3);
   padding: var(--ruimte-2);
@@ -356,27 +459,6 @@ html.split-pane #open-3d {
 /* Verberg alle inhoud behalve de kop wanneer het paneel is ingeklapt */
 .kaart-paneel.is-ingeklapt > :not(h3) {
   display: none !important;
-}
-
-.custom-fields-section {
-  margin: 0 0 var(--ruimte-2);
-  padding: var(--ruimte-2);
-  border: 1px solid rgba(11, 114, 133, 0.24);
-  border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(11, 114, 133, 0.08), rgba(11, 114, 133, 0.02));
-}
-
-.custom-fields-section-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--kleur-primair);
-  margin-bottom: 4px;
-}
-
-.custom-fields-section-text {
-  font-size: 11px;
-  color: var(--kleur-tekst-zacht);
-  line-height: 1.4;
 }
 
 .stapel-klein {
@@ -526,112 +608,331 @@ button:focus-visible {
   margin-top: var(--ruimte-2);
 }
 
-/* ========== Veld-picker: custom dropdown met favoriet-ster en verwijderknop ========== */
+/* ========== Verken de data: kaartvariabele en info-venster-variabelen ========== */
+.verken-blok {
+  margin-bottom: var(--ruimte-4);
+}
+
+.verken-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ruimte-3);
+  padding-bottom: var(--ruimte-2);
+  border-bottom: 2px solid var(--kleur-primair);
+}
+
+.verken-kop h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.verken-info {
+  margin: 0 0 var(--ruimte-3);
+  padding: 8px 10px;
+  border: 1px solid var(--kleur-rand);
+  border-radius: var(--radius);
+  background: var(--kleur-paneel-zacht);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--kleur-tekst-zacht);
+}
+
+.field-list .hint {
+  font-size: 12px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.field-row {
+  position: relative;               /* het keuzemenu krijgt de volle breedte van de rij */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.field-row[data-rol="kaart"] {
+  margin: 0 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--kleur-rand);
+}
+
+.rij-icoon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--kleur-primair);
+}
+
+.rij-icoon svg,
+.rij-verwijder svg,
+.veld-verwijder svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+/* Het tekstballon-icoon staat alleen bij de eerste info-rij (groepering) */
+.field-row[data-rol="info"] ~ .field-row[data-rol="info"] .rij-icoon {
+  visibility: hidden;
+}
+
+.rij-verwijder {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--kleur-tekst-zacht);
+}
+
+.rij-verwijder svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rij-verwijder:hover {
+  background: #fdecec;
+  color: #b42318;
+}
+
+/* De kaart toont altijd iets: de kaartvariabele kan niet verwijderd worden */
+.field-row[data-rol="kaart"] .rij-verwijder {
+  visibility: hidden;
+}
+
+.verken-toevoegen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 12px auto 0;
+  padding: 0;
+  border: 1.5px solid var(--kleur-primair);
+  border-radius: 50%;
+  background: var(--kleur-paneel);
+  color: var(--kleur-primair);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.verken-toevoegen:hover {
+  background: var(--kleur-primair);
+  color: #fff;
+}
+
+/* ========== Veld-picker: zoekbalk en categorieën (één niveau diep) ========== */
 .veld-picker {
-  position: relative;
   flex: 1;
   min-width: 0;
 }
 
 .veld-picker-trigger {
   width: 100%;
-  padding: 5px 22px 5px 8px;
+  margin: 0;
+  padding: 7px 26px 7px 10px;
   border: 1px solid var(--kleur-rand);
   border-radius: var(--radius);
-  background: var(--kleur-paneel) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23888'/></svg>") no-repeat right 8px center;
+  background: var(--kleur-paneel) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23888'/></svg>") no-repeat right 10px center;
   background-size: 9px 6px;
-  color: var(--kleur-tekst, #1f2937);
-  font-size: 12px;
+  color: var(--kleur-tekst);
+  font-size: 13px;
+  font-weight: 500;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+}
+
+.veld-picker-trigger:hover {
+  border-color: #bcccdc;
+  background-color: var(--kleur-paneel-zacht);
+}
+
+.veld-picker-trigger.is-leeg {
+  color: var(--kleur-tekst-zacht);
+  font-style: italic;
 }
 
 .veld-picker-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
+  right: 0;
   z-index: 1200;
-  min-width: 230px;
-  max-width: 300px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  padding: 6px;
   border: 1px solid var(--kleur-rand);
   border-radius: var(--radius);
   background: var(--kleur-paneel);
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.22);
 }
 
-.veld-picker-group-label {
-  margin: 6px 4px 2px;
-  font-size: 10px;
+.veld-picker-menu[hidden] {
+  display: none;
+}
+
+.veld-picker-zoek {
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--kleur-rand);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--kleur-tekst);
+}
+
+.veld-picker-lijst {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.veld-picker-menu button {
+  margin: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--kleur-tekst);
+  font-weight: 500;
+  text-align: left;
+}
+
+.veld-picker-menu button:hover {
+  background: var(--kleur-paneel-zacht);
+}
+
+.veld-picker-categorie,
+.veld-picker-terug {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 12.5px;
+}
+
+.veld-picker-categorie.is-actief {
+  color: var(--kleur-primair);
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+}
+
+.veld-picker-aantal {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef2f6;
   color: var(--kleur-tekst-zacht);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.veld-picker-menu .veld-picker-terug {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--kleur-rand);
+  border-radius: 0;
+  color: var(--kleur-primair);
+  font-weight: 700;
 }
 
 .veld-picker-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--radius);
+  gap: 2px;
+  border-radius: 6px;
 }
 
 .veld-picker-item:hover {
   background: var(--kleur-paneel-zacht);
 }
 
-.veld-picker-item.is-geselecteerd .veld-picker-naam {
-  font-weight: 700;
-}
-
-.veld-ster {
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  line-height: 1;
-  color: #b3b3b3;
-  cursor: pointer;
-  padding: 2px;
-}
-
-.veld-ster.is-actief {
-  color: #d4a017;
-}
-
 .veld-picker-naam {
   flex: 1;
-  font-size: 12px;
-  cursor: pointer;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.veld-verwijder {
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px;
-  opacity: 0.65;
+.veld-picker-item .veld-picker-naam {
+  padding: 6px 4px;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: normal;
 }
 
-.veld-verwijder:hover {
-  opacity: 1;
+.veld-picker-naam small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.veld-picker-item.is-geselecteerd .veld-picker-naam {
+  color: var(--kleur-primair);
+  font-weight: 700;
+}
+
+.veld-picker-menu .veld-ster,
+.veld-picker-menu .veld-verwijder {
+  flex-shrink: 0;
+  padding: 4px;
+  color: #b3b3b3;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.veld-picker-menu .veld-ster.is-actief {
+  color: #d4a017;
+}
+
+.veld-verwijder svg {
+  width: 14px;
+  height: 14px;
+}
+
+.veld-picker-menu .veld-verwijder:hover {
+  color: #b42318;
 }
 
 .veld-picker-leeg {
   padding: 6px 4px;
   font-size: 12px;
   color: var(--kleur-tekst-zacht);
+}
+
+/* ========== Meer: uitleg, andere weergaven en geavanceerde opties ========== */
+.meer-knoppen {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: var(--ruimte-3);
+}
+
+.meer-knoppen button {
+  margin: 0;
+  border: 1px solid var(--kleur-rand);
+  background: var(--kleur-paneel);
+  color: var(--kleur-primair);
+}
+
+.meer-knoppen button:hover {
+  background: var(--kleur-paneel-zacht);
+}
+
+#meer-area .kaart-paneel {
+  background: var(--kleur-paneel);
 }
 
 #legend,
@@ -755,53 +1056,196 @@ button:focus-visible {
   color: var(--kleur-tekst-zacht);
 }
 
-/* ========== Jaar-Slider Stijlen ========== */
-.slider-container {
+/* ========== Tijdlijn onderin de kaart ========== */
+/* Periode (▼-schuifjes, balk en afspeelknop) in de hoofdkleur, het getoonde jaar in de accentkleur.
+   Alle schuifknoppen zijn 16px breed: streepjes en balk lopen daarom van 8px tot (breedte - 8px). */
+.tijdlijn {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  z-index: 1000;
   display: flex;
   align-items: center;
-  gap: var(--ruimte-2);
-  margin: var(--ruimte-2) 0;
+  gap: 14px;
+  width: min(640px, calc(100% - 32px));
+  padding: 6px 12px 6px 16px;
+  transform: translateX(-50%);
+  border: 1px solid var(--kleur-rand);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14);
 }
 
-.slider-container input[type="range"] {
+.tijdlijn-jaar {
+  min-width: 44px;
+  color: var(--kleur-accent);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.tijdlijn-baan {
+  --start: 0;
+  --eind: 1;
+  position: relative;
   flex: 1;
-  margin: 0;
+  height: 48px;
 }
 
-/* Grote jaarweergave als badge naast de "Filter op jaar"-titel */
-.waarde-badge,
-#year-display {
-  flex-shrink: 0;
-  padding: 2px 9px;
+.tijdlijn-lijn,
+.year-ticks {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+}
+
+.tijdlijn-lijn {
+  top: 20px;
+  height: 4px;
   border-radius: 999px;
-  background: rgba(11, 114, 133, 0.10);
-  font-weight: 700;
-  color: var(--kleur-primair);
-  font-size: 13px;
+  background: #dfe6ee;
 }
 
-#year-filter-area .slider-container {
-  /* Geen ovaal meer om de balk: de slider staat direct in het paneel */
-  padding: 4px 4px 0;
+.tijdlijn-bereik {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--start) * 100%);
+  right: calc((1 - var(--eind)) * 100%);
+  border-radius: inherit;
+  background: var(--kleur-primair);
+  opacity: 0.45;
 }
 
-#year-filter-area .slider-container input[type="range"] {
-  accent-color: var(--kleur-primair);
+.year-ticks {
+  top: 16px;
+  height: 30px;
+  pointer-events: none;
 }
+
+.year-tick,
+.year-tick-label {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.year-tick {
+  top: 0;
+  width: 1px;
+  height: 12px;
+  background: rgba(36, 59, 83, 0.3);
+}
+
+.year-tick-label {
+  top: 15px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--kleur-tekst-zacht);
+  white-space: nowrap;
+}
+
+.year-tick.is-buiten,
+.year-tick-label.is-buiten {
+  opacity: 0.4;
+}
+
+.year-tick-label.is-active {
+  color: var(--kleur-accent);
+  font-weight: 800;
+}
+
+/* Gedeelde basis voor de drie schuiven: alleen de knoppen zijn zichtbaar */
+.tijdlijn-baan input[type="range"] {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tijdlijn-baan input[type="range"]:focus {
+  box-shadow: none;
+}
+
+.tijdlijn-baan input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.tijdlijn-baan input::-moz-range-track { background: transparent; }
+
+/* Getoond jaar: bolletje op de lijn */
+.tijdlijn-huidig {
+  top: 14px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.tijdlijn-huidig::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--kleur-accent);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4);
+}
+
+.tijdlijn-huidig::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--kleur-accent);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4);
+}
+
+/* Periode: ▼-schuifjes boven de lijn; alleen de knoppen vangen de muis */
+.tijdlijn-grens {
+  top: 4px;
+  z-index: 2;
+  height: 12px;
+  pointer-events: none;
+}
+
+.tijdlijn-grens::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 12px;
+  background: var(--kleur-primair);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.tijdlijn-grens::-moz-range-thumb {
+  width: 16px;
+  height: 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--kleur-primair);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.tijdlijn-huidig:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--kleur-focus); }
+.tijdlijn-huidig:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--kleur-focus); }
+.tijdlijn-grens:focus-visible::-webkit-slider-thumb { background: var(--kleur-primair-actief); }
+.tijdlijn-grens:focus-visible::-moz-range-thumb { background: var(--kleur-primair-actief); }
 
 .year-play-button {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: none;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0 0 0 2px;
   border-radius: 50%;
   background: var(--kleur-primair);
   color: #fff;
-  font-size: 11px;
-  cursor: pointer;
+  font-size: 12px;
   transition: background 0.15s ease, transform 0.1s ease;
 }
 
@@ -810,74 +1254,20 @@ button:focus-visible {
 }
 
 .year-play-button[aria-pressed="true"] {
-  background: #084c59;
-}
-
-.year-slider-control {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  padding-bottom: 20px;
-}
-
-.year-slider-control input[type="range"] {
-  width: 100%;
-}
-
-#year-filter-area .slider-container {
-  position: relative;
-}
-
-#year-filter-area .slider-container input[type="range"] {
-  position: relative;
-  z-index: 2;
-}
-
-.year-ticks {
-  position: relative;
-  position: absolute;
-  left: 8px;  /* = halve breedte van de slider-knop, zodat streepjes onder het midden van de knop vallen */
-  right: 8px;
-  bottom: 0;
-  height: 22px;
   padding: 0;
+  background: var(--kleur-primair-actief);
+  font-size: 10px;
 }
 
-.year-tick,
-.year-tick-label {
-  position: absolute;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.year-tick {
-  top: 0;
-  width: 2px;
-  height: 9px;
+/* Kleine badge (bijv. dekking-percentage) */
+.waarde-badge {
+  flex-shrink: 0;
+  padding: 2px 9px;
   border-radius: 999px;
-  background: rgba(11, 114, 133, 0.28);
-}
-
-.year-tick.is-active {
-  height: 13px;
-  background: var(--kleur-primair);
-}
-
-.year-tick-label {
-  top: 10px;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--kleur-tekst-zacht);
-  white-space: nowrap;
-}
-
-.year-tick-label.is-active {
-  color: var(--kleur-primair);
+  background: rgba(11, 114, 133, 0.10);
   font-weight: 700;
-}
-
-#year-filter-clear {
-  margin: 0;
+  color: var(--kleur-primair);
+  font-size: 13px;
 }
 
 .leaflet-control-zoom-in,
@@ -910,7 +1300,7 @@ button:focus-visible {
 .hover-timeseries-panel {
   position: fixed;
   left: 14px;
-  bottom: 14px;
+  bottom: var(--tijdlijn-ruimte);
   z-index: 900;
   width: 360px;
   max-width: calc(100% - 28px);
@@ -1160,7 +1550,7 @@ button:focus-visible {
 #year-filter-area.tour-highlight {
   box-shadow: 0 14px 36px rgba(11,114,133,0.16), 0 2px 8px rgba(11,114,133,0.06);
   outline: 3px solid rgba(11,114,133,0.14);
-  transform: translateY(-2px);
+  transform: translate(-50%, -2px);   /* tijdlijn is horizontaal gecentreerd */
 }
 
 /* precise absolute overlay used by the tour to guarantee highlight alignment */
@@ -1768,20 +2158,6 @@ button:focus-visible {
   color: #0b3040;
 }
 
-/* Afspeelknop + jaarbadge rechts in de kop van "Filter op jaar" */
-.jaar-acties {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.jaar-acties .year-play-button {
-  width: 24px;
-  height: 24px;
-  font-size: 10px;
-}
-
 /* Slider met waarde-badge en 0% / 50% / 100% onder de balk (Dekking) */
 .slider-kop {
   display: flex;
@@ -1791,7 +2167,8 @@ button:focus-visible {
   margin-bottom: 2px;
 }
 
-.slider-kop label {
+.slider-kop label,
+.slider-kop h3 {
   margin-bottom: 0;
 }
 

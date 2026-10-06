@@ -634,12 +634,6 @@ body.intro-open {
   visibility: hidden;
 }
 
-.intro-hint {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: #627d8a;
-}
-
 /* ========== Vergelijking: drie kaarten naast elkaar (stap 5) ========== */
 .intro-vergelijking {
   position: absolute;

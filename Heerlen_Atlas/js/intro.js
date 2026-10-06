@@ -1086,7 +1086,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-intro')?.addEventListener('click', openIntro);
 
-    // Geen introductie in (of bij terugkomst uit) het splitscherm
+    // Geen introductie in het splitscherm of bij terugkomst uit splitscherm/3D
     const overslaan = document.documentElement.classList.contains('split-pane')
       || new URLSearchParams(location.search).get('intro') === 'uit';
     const alGezien = window.leesCookie?.(INTRO_CONFIG.gezienCookie) === '1';

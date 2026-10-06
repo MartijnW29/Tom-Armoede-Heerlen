@@ -770,8 +770,9 @@ document.getElementById('verken-info-toggle').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-expanded', String(!info.hidden));
 });
 
-document.getElementById('open-split-screen').addEventListener('click', () => {
-  history.replaceState(null, '', '?intro=uit');   // met de terugknop van de browser geen introductie
-  window.location.href = 'split-screen.html';
-});
-document.getElementById('open-3d').addEventListener('click', () => { window.location.href = 'huisjes-3d.html'; });
+// Naar splitscherm of 3D; wie daarna terugkomt (ook met de terugknop) krijgt geen introductie
+[['open-split-screen', 'split-screen.html'], ['open-3d', 'huisjes-3d.html']].forEach(([id, pagina]) =>
+  document.getElementById(id).addEventListener('click', () => {
+    history.replaceState(null, '', '?intro=uit');
+    window.location.href = pagina;
+  }));

@@ -221,7 +221,14 @@ body.story-open {
   background: #e6ebf0;
 }
 
+/* Lichte waas over alles buiten Heerlen (opgebouwd door map.js) */
 .choropleth-dim-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
   transition: opacity 0.25s ease;
 }
 
@@ -935,16 +942,25 @@ button:focus-visible {
   background: var(--kleur-paneel);
 }
 
-#legend,
-#charts {
-  font-size: 12px;
+.legenda-rij {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
-#legend h3,
-#charts h3 {
-  margin: 0 0 var(--ruimte-2);
-  overflow-wrap: break-word;
-  word-break: break-word;
+.legenda-rij i {
+  flex-shrink: 0;
+  width: 20px;
+  height: 14px;
+  border: 1px solid #666;
+}
+
+.legenda-rij.is-geen-data {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--kleur-rand);
+  font-style: italic;
 }
 
 /* Leaflet aanpassingen */
@@ -1321,12 +1337,7 @@ button:focus-visible {
   transform: translateY(0);
 }
 
-/* Staat een story-infokaartje (linksboven/-onder) in de weg? Dan schuift
-   map.js (pasHoverPaneelPositieAan) het paneel via een inline `left` vlak
-   naast de story-kaart — dat verschilt per slide (de kaart is niet overal
-   even breed), dus dat kan niet met een vaste CSS-waarde. De .is-shifted
-   klasse zelf hoeft hier niets te doen, maar blijft staan als hook.
-   `left` zit al in de transition hierboven, dus die verschuiving animeert. */
+>>>>
 
 .hover-timeseries-title {
   font-size: 12px;

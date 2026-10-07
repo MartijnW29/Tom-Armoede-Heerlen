@@ -113,9 +113,11 @@ function tekenLegenda(breuken, kleuren, veld) {
   const rij = (kleur, tekst, extraKlasse = '') =>
     `<div class="legenda-rij ${extraKlasse}"><i style="background:${kleur}"></i><span>${tekst}</span></div>`;
 
+  // Hoogste klasse bovenaan
+  const klassen = kleuren.map((kleur, i) => rij(kleur, `${formatteerGetal(breuken[i], veld, 1)} – ${formatteerGetal(breuken[i + 1], veld, 1)}`));
   document.getElementById('legend').innerHTML = `<h3 title="${titel}">${titel}</h3>`
-    + rij('#ccc', 'Geen data', 'is-geen-data')
-    + kleuren.map((kleur, i) => rij(kleur, `${formatteerGetal(breuken[i], veld, 1)} – ${formatteerGetal(breuken[i + 1], veld, 1)}`)).join('');
+    + klassen.reverse().join('')
+    + rij('#ccc', 'Geen data', 'is-geen-data');
 }
 
 

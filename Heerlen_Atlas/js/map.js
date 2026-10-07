@@ -108,13 +108,21 @@ function berekenBreuken(waarden, aantal, methode) {
   });
 }
 
-function tekenLegenda(breuken, kleuren, veld) {
+function tekenLegenda(breuken, kleuren, veld, waarden) {
   const titel = `Legenda: ${window.mooieVeldnaam(veld)}`;
   const rij = (kleur, tekst, extraKlasse = '') =>
     `<div class="legenda-rij ${extraKlasse}"><i style="background:${kleur}"></i><span>${tekst}</span></div>`;
 
+  // Klassen sluiten zonder overlap op elkaar aan: een waarde op de grens hoort bij de hogere klasse,
+  // dus de klasse eronder loopt tot één stap (1, of 0,1 bij decimalen) onder die grens
+  const stap = waarden.every(Number.isInteger) ? 1 : 0.1;
+  const rond = (x) => +x.toFixed(1);
+  const vanaf = (i) => i === 0 ? breuken[0] : rond(Math.ceil(breuken[i] / stap - 1e-9) * stap);
+  const tot = (i) => i === kleuren.length - 1 ? breuken.at(-1) : rond(vanaf(i + 1) - stap);
+  const label = (i) => tot(i) > vanaf(i) ? `${formatteerGetal(vanaf(i), veld, 1)} – ${formatteerGetal(tot(i), veld, 1)}` : formatteerGetal(vanaf(i), veld, 1);
+
   // Hoogste klasse bovenaan
-  const klassen = kleuren.map((kleur, i) => rij(kleur, `${formatteerGetal(breuken[i], veld, 1)} – ${formatteerGetal(breuken[i + 1], veld, 1)}`));
+  const klassen = kleuren.map((kleur, i) => rij(kleur, label(i)));
   document.getElementById('legend').innerHTML = `<h3 title="${titel}">${titel}</h3>`
     + klassen.reverse().join('')
     + rij('#ccc', 'Geen data', 'is-geen-data');
@@ -400,7 +408,7 @@ window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rd
 
   // Kleuren verandert nooit de kaartuitsnede; inzoomen gebeurt alleen bij het laden van data
   gemeentegrens.toon(fc);
-  tekenLegenda(breuken, kleuren, veld);
+  tekenLegenda(breuken, kleuren, veld, klassenWaarden.length ? klassenWaarden : alleWaarden);
 };
 
 

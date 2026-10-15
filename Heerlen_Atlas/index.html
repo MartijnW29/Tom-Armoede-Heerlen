@@ -118,7 +118,7 @@
                 aria-label="Variabele toevoegen aan het info-venster" title="Variabele toevoegen" disabled>+</button>
       </section>
 
-      <!-- Stories — menu wordt gevuld door stories.js -->
+      <!-- Stories — menu wordt gevuld door stories.js (bestanden in de map stories/ en eigen stories) -->
       <section id="stories-area" class="kaart-paneel stories-paneel">
         <h3>Stories</h3>
         <div id="stories-menu" class="stories-menu" aria-label="Stories menu"></div>
@@ -130,6 +130,7 @@
         <div class="meer-knoppen">
           <button id="start-intro" type="button">Introductie</button>
           <button id="start-tour" type="button">Rondleiding</button>
+          <button id="open-storymaker" type="button">Story maken</button>
           <button id="open-split-screen" type="button">Splitscherm</button>
           <button id="open-3d" type="button">3D-kaart</button>
         </div>
@@ -266,7 +267,8 @@
   <script src="js/importer.js"></script>      <!-- eigen bestanden inlezen -->
   <script src="js/cbs-historie.js"></script>  <!-- jaren 2013–2021 uit CBS StatLine -->
   <script src="js/multi-loader.js"></script>  <!-- data laden en tijdlijn -->
-  <script src="js/stories.js"></script>       <!-- verhalen -->
+  <script src="js/stories.js"></script>       <!-- stories laden en afspelen (map stories/) -->
+  <script src="js/storymaker.js"></script>    <!-- zelf stories maken -->
   <script src="js/intro.js"></script>         <!-- introductie "De armoedegrens trekken" -->
 </body>
 </html>

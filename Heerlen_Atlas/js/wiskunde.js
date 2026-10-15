@@ -1,7 +1,8 @@
 // ============================================================================
 // WISKUNDE.JS — Heerlen Opportunity Atlas
 // Zelf een variabele berekenen uit twee bestaande: + − × ÷ en % (A als percentage van B).
-// Formules worden in een cookie onthouden en bij een volgend bezoek opnieuw berekend.
+// Formules worden in een cookie onthouden en bij een volgend bezoek opnieuw berekend;
+// een story neemt de formules mee die hij gebruikt.
 // ============================================================================
 
 (function () {
@@ -21,6 +22,7 @@
   const COOKIE_NAAM = 'atlas_aangemaakte_variabelen';
   const $ = (id) => document.getElementById(id);
   let operator = '+';
+  const tijdelijk = new Map();  // formules uit een story: alleen voor dit bezoek, niet in de cookie
 
 
   // ==========================================================================
@@ -120,7 +122,7 @@
 
   /** Vul zelfgemaakte variabelen aan voor features die het veld nog missen (bijv. later geladen CBS-jaren). */
   window.vulAangemaakteVariabelenAan = function (fc) {
-    leesFormules()
+    [...leesFormules(), ...tijdelijk.values()]
       .filter(({ veld }) => window.customFieldNames.includes(veld))
       .forEach(({ veld, a, b, op }) => fc.features.forEach(f => {
         f.properties ??= {};
@@ -136,7 +138,27 @@
       .forEach(({ veld, a, b, op }) => berekenEnRegistreer(a, b, op, veld));
   };
 
+  /** Formule { veld, a, b, op } van een zelfgemaakte variabele (uit de cookie of uit een story), anders null. */
+  window.formuleVan = (veld) => leesFormules().find(f => f.veld === veld) || tijdelijk.get(veld) || null;
+
+  /**
+   * Zelfgemaakte variabelen uit een story aanmaken die deze bezoeker nog niet heeft, alleen
+   * voor dit bezoek. De volgorde telt: een formule kan een eerdere formule uit de lijst gebruiken.
+   */
+  window.zorgVoorFormules = function (formules = []) {
+    let aangemaakt = false;
+    for (const f of formules) {
+      const velden = window.availableFields;
+      if (velden.includes(f.veld) || !OPERATOREN[f.op] || !velden.includes(f.a) || !velden.includes(f.b)) continue;
+      if (berekenEnRegistreer(f.a, f.b, f.op, f.veld) === null) continue;
+      tijdelijk.set(f.veld, { veld: f.veld, a: f.a, b: f.b, op: f.op });
+      aangemaakt = true;
+    }
+    if (aangemaakt) { window.vernieuwVeldSelecties(); vernieuwFormuleVelden(); }
+  };
+
   window.verwijderAangemaakteVariabele = function (veld) {
+    tijdelijk.delete(veld);
     window.customFieldNames = window.customFieldNames.filter(v => v !== veld);
     window.availableFields  = window.availableFields.filter(v => v !== veld);
     if (window.favorieteVelden.delete(veld)) window.zetCookie(COOKIES.favorieten, [...window.favorieteVelden].join(','));

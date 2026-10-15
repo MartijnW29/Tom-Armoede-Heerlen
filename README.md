@@ -14,7 +14,8 @@ Een interactieve kaart van de buurten in Heerlen. De atlas laat zien hoe sociale
 | **Verken de data** | Kies een variabele voor de kaart en één voor het info-venster. Variabelen zijn ingedeeld in categorieën, doorzoekbaar en als favoriet te bewaren. |
 | **Tijdlijn** | Buurtcijfers van **2013 tot en met 2025**. Kies één jaar of een periode; de trendgrafiek per buurt volgt mee. |
 | **Kaartweergave** | Kleurpalet, dekking en ondergrond instellen via het tandwiel rechtsboven. |
-| **Stories** | Verhalen die stap voor stap een onderwerp op de kaart uitleggen, zoals *Armoede in Heerlen*. |
+| **Stories** | Verhalen die stap voor stap een onderwerp op de kaart uitleggen, zoals *Armoede in Heerlen*. Elke story heeft een eigen link (`index.html?story=…`). |
+| **Story maker** | Zelf stories maken met de cijfers van de atlas (Meer → Story maken), bewaard in de browser en te exporteren als bestand. |
 | **Zelf berekenen** | Maak een nieuwe variabele met een formule op bestaande variabelen. |
 | **Splitscherm** | Twee kaarten naast elkaar die samen bewegen, elk met eigen instellingen. |
 | **Heerlen in 3D** | Alle gebouwen van Heerlen op echt terrein, gekleurd naar buurtcijfers of gebouwtype. |
@@ -36,6 +37,16 @@ python -m http.server 8080 --directory Heerlen_Atlas
 ```
 
 Open daarna http://localhost:8080.
+
+## Stories toevoegen
+
+Elke story is een eigen `.json`-bestand in `Heerlen_Atlas/stories/`. Maak een story in de story maker, kies **Exporteren als bestand** en zet het bestand in die map: de site laadt alles wat in de map staat.
+
+- **Lokaal** leest de site de mappenlijst van de webserver (`start.sh` en `python -m http.server` geven die).
+- **Online** maakt GitHub Pages bij elk bouwen zelf de lijst `stories/lijst.json` (een Jekyll-sjabloon); er hoeft niets bijgehouden te worden.
+- De bestandsnaam is ook de link: `stories/wonen-in-heerlen.json` opent met `index.html?story=wonen-in-heerlen`.
+
+Een slide is één van vijf soorten: `titel` (grote titel over de kaart), `heerlen` (heel Heerlen met cijfers voor de stad), `buurt` (inzoomen op één buurt), `vergelijk` (twee tot zes buurten naast elkaar) of `tekst`. Buurten staan in het bestand als CBS-buurtcode; zelfgemaakte variabelen gaan mee als formule en worden bij de bezoeker tijdelijk aangemaakt.
 
 ## Databronnen
 
@@ -67,17 +78,19 @@ Heerlen_Atlas/
 │   ├── cbs-historie.js       jaren 2013–2021 uit CBS StatLine
 │   ├── wiskunde.js           zelf een variabele berekenen
 │   ├── importer.js           eigen bestanden inlezen
-│   ├── stories.js            verhalen
+│   ├── stories.js            stories laden en afspelen
+│   ├── storymaker.js         zelf stories maken
 │   ├── intro.js              introductie "De armoedegrens trekken"
 │   ├── tour-introjs.js       rondleiding door de knoppen
 │   └── vendor/d3.v7.min.js
+├── stories/                één .json-bestand per story (plus lijst.json voor GitHub Pages)
 ├── data/
 │   └── gebouwen_heerlen.bin  gebouwen voor de 3D-weergave
 └── tools/
     └── bake-gebouwen.html    maakt gebouwen_heerlen.bin opnieuw aan uit BAG en 3D BAG
 ```
 
-De code is in het Nederlands geschreven en per bestand in duidelijke secties ingedeeld. Instellingen staan bovenaan het bestand in een `..._CONFIG`-object (zoals `APP_CONFIG` en `KAART_CONFIG`) of een constante (zoals `VERHALEN` in `stories.js`).
+De code is in het Nederlands geschreven en per bestand in duidelijke secties ingedeeld. Instellingen staan bovenaan het bestand in een `..._CONFIG`-object (zoals `APP_CONFIG` en `KAART_CONFIG`) of een constante (zoals `SOORTEN` in `stories.js`).
 
 ## Gebruikte bibliotheken
 

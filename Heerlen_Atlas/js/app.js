@@ -73,6 +73,8 @@ const ICONEN = {
   kaart:      '<svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zm0 2.2 6 2v11.6l-6-2V6.2z"/></svg>',
   info:       '<svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h1v2l2.5-2H19V6H5z"/></svg>',
   prullenbak: '<svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 12H7L6 9zm4 2v8h1.5v-8H10zm3 0v8h1.5v-8H13z"/></svg>',
+  exporteren: '<svg viewBox="0 0 24 24"><path d="M11 3h2v9.2l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3V3zM5 18h14v2H5v-2z"/></svg>',
+  kopie:      '<svg viewBox="0 0 24 24"><path d="M8 3h11a2 2 0 0 1 2 2v11h-2V5H8V3zM5 7h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v10h10V9H5z"/></svg>',
 };
 
 
@@ -134,8 +136,9 @@ window.toonCookieMelding = function () {
   melding.innerHTML = `
     <div class="cookie-melding-tekst">
       <h2 id="cookie-melding-titel">Cookies</h2>
-      <p>De atlas gebruikt alleen functionele cookies om je favoriete en zelfgemaakte variabelen en je
-      kaartweergave te onthouden. Er worden geen gegevens gedeeld of voor advertenties gebruikt.</p>
+      <p>De atlas gebruikt alleen functionele cookies en browseropslag om je favoriete en zelfgemaakte
+      variabelen, je kaartweergave en je eigen stories te onthouden. Er worden geen gegevens gedeeld of
+      voor advertenties gebruikt.</p>
     </div>
     <div class="cookie-melding-knoppen">
       <button type="button" data-keuze="geaccepteerd">Accepteren</button>
@@ -150,6 +153,7 @@ window.toonCookieMelding = function () {
       document.cookie.split('; ').map(c => c.split('=')[0])
         .filter(naam => naam.startsWith('atlas_') && naam !== COOKIES.keuze)
         .forEach(naam => { document.cookie = `${naam}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`; });
+      try { Object.keys(localStorage).filter(k => k.startsWith('atlas_')).forEach(k => localStorage.removeItem(k)); } catch (_) { /* geen opslag */ }
     }
     melding.remove();
   });
@@ -427,6 +431,7 @@ if (window.isSplitScreenPane) {
 
 window.herlaadVisualisatie = function () {
   window.vernieuwVeldSelecties();  // velden zonder (gefilterde) data vallen af
+  markeerActieveKeuzes();          // een story kan het palet veranderd hebben
 
   // Het kleurblokje in de kaartrij toont het palet dat nu op de kaart staat
   const stappen = haalKleurSchema(paletSelect.value, 5).map((kleur, i) => `${kleur} ${i * 20}% ${(i + 1) * 20}%`);
@@ -544,6 +549,7 @@ window.addFieldSelector = function (standaardWaarde) {
   const icoon = maak('span', { className: 'rij-icoon' });
   icoon.setAttribute('aria-hidden', 'true');
   const sel = maak('select', { className: 'field-select-item', hidden: true });
+  sel.addEventListener('change', () => window.herlaadVisualisatie());
   const verwijder = maak('button', { type: 'button', className: 'rij-verwijder', innerHTML: ICONEN.prullenbak, title: 'Verwijderen' });
   verwijder.setAttribute('aria-label', 'Variabele verwijderen');
   verwijder.addEventListener('click', () => { rij.remove(); werkRijRollenBij(); window.herlaadVisualisatie(); });
@@ -672,6 +678,20 @@ function vernieuwVeldPickerInhoud(sel, categorieen = veldCategorieen()) {
 
 window.vernieuwVeldPickerInhoud = vernieuwVeldPickerInhoud;
 
+/** Losse variabele-keuze met hetzelfde menu, bijv. voor de story maker. `bijKeuze` krijgt het gekozen veld. */
+window.maakVariabeleKeuze = function (gekozen, bijKeuze) {
+  const categorieen = veldCategorieen();
+  const velden = [...new Set([...categorieen.flatMap(c => c.velden), gekozen].filter(Boolean))];
+  const sel = maak('select', { hidden: true });
+  sel.replaceChildren(new Option('', ''), ...velden.map(v => new Option(window.mooieVeldnaam(v), v)));
+  sel.value = gekozen || '';
+  sel.addEventListener('change', () => bijKeuze(sel.value));
+  const picker = maakVeldPicker(sel);
+  picker.prepend(sel);
+  vernieuwVeldPickerInhoud(sel, categorieen);
+  return picker;
+};
+
 /** Eén variabele in het menu: ster (favoriet), naam en — bij zelfgemaakte — een prullenbak. */
 function maakVeldItem(sel, veld, categorieLabel) {
   const naam = window.mooieVeldnaam(veld);
@@ -687,7 +707,7 @@ function maakVeldItem(sel, veld, categorieLabel) {
 
   const kies = maak('button', { type: 'button', className: 'veld-picker-naam', textContent: naam, title: naam });
   if (categorieLabel) kies.append(maak('small', { textContent: categorieLabel }));
-  kies.addEventListener('click', () => { sel.value = veld; sluitVeldPickers(); window.herlaadVisualisatie(); });
+  kies.addEventListener('click', () => { sel.value = veld; sluitVeldPickers(); sel.dispatchEvent(new Event('change')); });
 
   item.append(ster, kies);
 

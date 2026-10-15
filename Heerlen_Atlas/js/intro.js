@@ -1086,9 +1086,10 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('start-intro')?.addEventListener('click', openIntro);
 
-    // Geen introductie in het splitscherm of bij terugkomst uit splitscherm/3D
+    // Geen introductie in het splitscherm, bij terugkomst uit splitscherm/3D of via een link naar een story
+    const params = new URLSearchParams(location.search);
     const overslaan = document.documentElement.classList.contains('split-pane')
-      || new URLSearchParams(location.search).get('intro') === 'uit';
+      || params.get('intro') === 'uit' || params.has('story');
     const alGezien = window.leesCookie?.(INTRO_CONFIG.gezienCookie) === '1';
     if (!overslaan && (INTRO_CONFIG.altijdTonen || !alGezien)) openIntro();
     else window.toonCookieMelding?.();

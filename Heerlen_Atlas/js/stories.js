@@ -1,6 +1,7 @@
 // ============================================================================
 // STORIES.JS — Heerlen Opportunity Atlas
-// Verhalen: slides met tekst, statistieken en een kaart die inzoomt op één buurt
+// Stories laden (bestanden in de map stories/ en eigen stories in de browser) en
+// afspelen over de kaart. De story maker (storymaker.js) gebruikt dit ook.
 // ============================================================================
 
 (function () {
@@ -10,86 +11,45 @@
   // CONFIGURATIE
   // ==========================================================================
 
-  const GEEN_DATA = 'geen data';
-  const FOCUS_STIJL = { color: '#ffd166', weight: 2.2, fillOpacity: 0.9 };
-  const FOCUS_ZOOM  = { maxZoom: 14, animate: false, padding: [18, 18] };
+  const STORIES_CONFIG = {
+    map:            'stories/',
+    lijst:          'stories/lijst.json',  // online ingevuld door GitHub Pages
+    opslagSleutel:  'atlas_stories',       // eigen stories in de browser (localStorage)
+    versie:         1,
+    standaardKleur: '#0b7285',
+    maxCijfers:     6,
+    maxPunten:      6,
+    // Omlijning van de buurten in beeld (A, B, C, …), met een witte rand eronder zodat hij op elke
+    // vulkleur opvalt. Hij ligt in een eigen laag boven alle buurt- en gemeentegrenzen.
+    // Eén kleur per buurt: ook het hoogste aantal buurten bij vergelijken.
+    focusKleuren: ['#061826', '#0b7285', '#e8590c', '#c2255c', '#2b8a3e', '#6741d9'],
+    focusRand:    { color: '#ffffff', weight: 9, opacity: 0.95 },
+    focusLijn:    { weight: 4, opacity: 1 },
+    focusVulling: 0.9,                     // de buurt zelf iets voller gekleurd
+    vliegen:      { maxZoom: 14, duration: 1.1 },
+    marge:        24,                      // ruimte (px) rond het gebied als de kaart erheen vliegt
+  };
 
-  const GETAL   = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
+  /**
+   * De slidesoorten. kaart: zet variabele, jaar en palet; buurten: aantal te kiezen buurten;
+   * cijfers: cijfers van de buurt(en) of van heel Heerlen; punten: eigen teksten als cijferblokken.
+   */
+  const SOORTEN = {
+    titel:     { naam: 'Titelpagina',              kort: 'Titel',     uitleg: 'Grote titel over de kaart van heel Heerlen.', kaart: true, buurten: 0 },
+    heerlen:   { naam: 'Heel Heerlen',             kort: 'Heerlen',   uitleg: 'De kaart van heel Heerlen, met cijfers voor de hele stad.', kaart: true, buurten: 0, cijfers: true },
+    buurt:     { naam: 'Inzoomen op een buurt',    kort: 'Buurt',     uitleg: 'Eén buurt licht op, met de cijfers van die buurt.', kaart: true, buurten: 1, cijfers: true },
+    vergelijk: { naam: 'Buurten vergelijken',      kort: 'Vergelijk', uitleg: 'Twee of meer buurten lichten op, met hun cijfers naast elkaar.', kaart: true, buurten: 6, cijfers: true },
+    tekst:     { naam: 'Alleen tekst',             kort: 'Tekst',     uitleg: 'Tekst zonder kaartwijziging, bijvoorbeeld als afsluiting.', punten: true },
+  };
+
+  // Tellingen worden voor heel Heerlen opgeteld; van de andere cijfers nemen we het gemiddelde
+  const IS_TELLING = /^(aantal_|woningvoorraad$|mannen$|vrouwen$|geboorte_totaal$|sterfte_totaal$)/;
+  // CBS geeft inkomens, woningwaarde en vermogen in duizenden euro's
+  const IS_DUIZEND_EURO = /^gemiddeld[e]?_(inkomen|woningwaarde)|vermogen/;
+
+  const GETAL    = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
   const DECIMAAL = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 });
-  const EURO    = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-
-  // Let op bij het schrijven van een nieuwe story: niet elk CBS-veld heeft in elk
-  // jaar echte data. Vooral de inkomens- en armoedecijfers ontbreken in de meest
-  // recente PDOK-jaren (2024/2025 zijn hiervoor leeg) maar zijn compleet voor
-  // 2019 t/m 2021. Kies daarom bewust een `year` per slide, en controleer met
-  // `window.debugStoryData()` welke velden er zijn — anders toont de kaart "geen data".
-  //
-  // Slide-soorten: 'voorpagina' (titel met achtergrond), 'map' (kaart met focus-buurt)
-  // en 'summary' (afsluiting). Stat-formaten: integer, decimal, currency, currency1000
-  // (CBS geeft bedragen in duizenden euro's) of suffix '%'.
-  const VERHALEN = [
-    {
-      id: 'armoede-heerlen',
-      title: 'Armoede in Heerlen',
-      summary: 'Een eerlijk en hoopvol verhaal over armoede, veerkracht en de toekomst van onze stad.',
-      colors: ['#1a3a5e', '#e63946', '#f4a261'],
-      slides: [
-        {
-          paginatype: 'voorpagina',
-          overline: 'Verhaal over onze stad',
-          title: 'Armoede in Heerlen',
-          body: 'Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.',
-          subtitle: 'De onzichtbare realiteit achter de cijfers',
-        },
-        {
-          paginatype: 'map',
-          year: 2021,
-          overline: 'De realiteit',
-          title: 'Waar armoede het hardst toeslaat',
-          body: 'In Heksenberg heeft bijna de helft van de huishoudens een laag inkomen. Dit zijn geen cijfers — dit zijn gezinnen, jongeren en ouderen die elke maand moeten rondkomen.',
-          field: 'percentage_huishoudens_met_laag_inkomen',
-          palette: 'oranges',
-          focus: { field: 'buurtnaam', value: 'Heksenberg' },
-          stats: [
-            { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
-            { label: 'Huishoudens', field: 'aantal_huishoudens', format: 'integer' },
-            { label: 'Huishoudens met laag inkomen', field: 'percentage_huishoudens_met_laag_inkomen', suffix: '%' },
-            { label: 'Rond het sociaal minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', suffix: '%' },
-            { label: 'Gemiddeld inkomen per inwoner', field: 'gemiddeld_inkomen_per_inwoner', format: 'currency1000' },
-          ],
-          mapNote: 'Donkerder oranje = een groter deel van de huishoudens met een laag inkomen (2021)',
-        },
-        {
-          paginatype: 'map',
-          year: 2021,
-          overline: 'Kinderen in armoede',
-          title: 'De toekomst mag niet verloren gaan',
-          body: 'In Hoensbroek-Centrum heeft bijna 3 op de 4 huishoudens een laag inkomen, en groeien tientallen kinderen op met jeugdzorg. Wie in armoede opgroeit, heeft minder kansen op een goede opleiding en gezondheid — een opgave voor heel de stad.',
-          field: 'huishoudens_tot_120_percent_van_sociaal_minimum',
-          palette: 'oranges',
-          focus: { field: 'buurtnaam', value: 'Hoensbroek-Centrum' },
-          stats: [
-            { label: 'Inwoners', field: 'aantal_inwoners', format: 'integer' },
-            { label: 'Huishoudens met laag inkomen', field: 'percentage_huishoudens_met_laag_inkomen', suffix: '%' },
-            { label: 'Rond het sociaal minimum', field: 'huishoudens_tot_120_percent_van_sociaal_minimum', suffix: '%' },
-            { label: 'Jongeren met jeugdzorg', field: 'aantal_jongeren_met_jeugdzorg_in_natura', format: 'integer' },
-            { label: 'Netto arbeidsparticipatie', field: 'netto_arbeidsparticipatie', suffix: '%' },
-          ],
-          mapNote: 'Donkerder oranje = een groter deel van de huishoudens rond het sociaal minimum (2021)',
-        },
-        {
-          paginatype: 'summary',
-          overline: 'Hoop en actie',
-          title: 'Heerlen kan het beter',
-          body: 'Armoede is niet overal in Heerlen hetzelfde. Sommige buurten kennen nauwelijks laag inkomen, andere juist heel veel — en dat verschil is precies waarom gerichte hulp werkt. Door samen te werken — gemeente, scholen, bewoners en organisaties — kan de cirkel doorbroken worden.',
-          stats: [
-            { label: 'Sleutels tot verandering', value: 'onderwijs, werk en ondersteuning dichtbij huis' },
-          ],
-        },
-      ],
-    },
-    // Voeg hier andere verhalen toe
-  ];
+  const EURO     = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 
   // ==========================================================================
@@ -97,156 +57,260 @@
   // ==========================================================================
 
   const escapeHtml = (waarde) => String(waarde ?? '').replace(/[&<>"']/g, t => `&#${t.charCodeAt(0)};`);
-  const normaliseer = (waarde) => String(waarde ?? '').trim().toLowerCase();
+  const lijst = (waarde) => Array.isArray(waarde) ? waarde : [];
   const alleData = () => window.multiLoaderState.originalData;
-  const vindVerhaal = (id) => VERHALEN.find(v => v.id === id);
+  const buurtNaam = (feature) => feature?.properties?.buurtnaam || feature?.properties?.buurtcode || 'Buurt';
+  const labelVan = (cijfer) => cijfer.label || window.mooieVeldnaam(cijfer.variabele);
+  const aantalSlides = (verhaal) => verhaal.slides.length === 1 ? '1 slide' : `${verhaal.slides.length} slides`;
 
-  /** Achtergrond voor een titelslide: kleurverloop met cirkels en de titel, als SVG-afbeelding. */
-  function maakAchtergrond(titel, ondertitel, [eerste = '#0b7285', tweede = '#ffb703', derde = '#061826'] = []) {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="${escapeHtml(titel)}">
-        <defs>
-          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="${eerste}"/><stop offset="52%" stop-color="${tweede}"/><stop offset="100%" stop-color="${derde}"/>
-          </linearGradient>
-          <radialGradient id="glow" cx="50%" cy="35%" r="68%">
-            <stop offset="0%" stop-color="#fff" stop-opacity="0.28"/><stop offset="50%" stop-color="#fff" stop-opacity="0.08"/><stop offset="100%" stop-color="#fff" stop-opacity="0"/>
-          </radialGradient>
-        </defs>
-        <rect width="1600" height="900" fill="url(#bg)"/>
-        <rect width="1600" height="900" fill="url(#glow)"/>
-        <g fill="none" stroke="#fff" stroke-opacity="0.18" stroke-width="2">
-          <circle cx="260" cy="220" r="180"/><circle cx="1260" cy="170" r="260"/><circle cx="1190" cy="740" r="220"/>
-          <path d="M70 690 C250 560, 410 620, 560 510 S860 420, 1020 520 S1330 650, 1540 470" stroke-width="10" stroke-linecap="round"/>
-        </g>
-        <g fill="#fff" fill-opacity="0.92" font-family="Segoe UI, Arial, sans-serif">
-          <text x="96" y="170" font-size="34" letter-spacing="6" font-weight="800">HEERLEN STORIES</text>
-          <text x="96" y="300" font-size="88" font-weight="800">${escapeHtml(titel)}</text>
-          <text x="96" y="375" font-size="28" fill-opacity="0.82">${escapeHtml(ondertitel)}</text>
-        </g>
-      </svg>`;
-    return `url("data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}")`;
+  function formatteerCijfer(waarde, veld) {
+    if (isPercentageVeld(veld)) return `${DECIMAAL.format(waarde)}%`;
+    if (IS_DUIZEND_EURO.test(veld)) return EURO.format(waarde * 1000);
+    return (IS_TELLING.test(veld) ? GETAL : DECIMAAL).format(waarde);
   }
 
-  function formatteer(waarde, { format, suffix } = {}) {
-    const getal = Number(waarde);
-    if (!Number.isFinite(getal)) return String(waarde);
-    switch (format) {
-      case 'currency':     return EURO.format(getal);
-      case 'currency1000': return EURO.format(getal * 1000);
-      case 'integer':      return GETAL.format(getal);
-      default:             return DECIMAAL.format(getal) + (suffix === '%' ? '%' : '');
+  /** Buurten van één jaar; zonder jaar die van het getoonde jaar. */
+  function featuresVanJaar(jaar) {
+    if (!jaar || !alleData()) return window.appData.lastFC?.features || [];
+    return alleData().features.filter(f => window.getYearFromFeature(f) === jaar);
+  }
+
+  /**
+   * Geeft een functie die per buurt het getal van `veld` teruggeeft, of null als het ontbreekt of
+   * buiten het actieve filter valt. De waarden voor het filter worden één keer opgehaald.
+   */
+  function waardenVan(features, veld) {
+    const filter = window.appData.filter;
+    const alle = filter ? window.haalNumeriekeWaarden({ features }, veld) : null;
+    return (feature) => {
+      const waarde = feature?.properties?.[veld];
+      if (waarde === null || waarde === undefined || waarde === '' || !Number.isFinite(+waarde)) return null;
+      return !filter || window.waardePasseertFilter(+waarde, alle, filter) ? +waarde : null;
+    };
+  }
+
+  /** Tekst met een lege regel ertussen wordt losse alinea's. */
+  const alineas = (tekst) => tekst.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean).map(t => maak('p', { textContent: t }));
+
+
+  // ==========================================================================
+  // STORY-FORMAAT — Controleren en opschonen (een bestand kan van overal komen)
+  // ==========================================================================
+
+  const tekst = (waarde, max = 3000) => typeof waarde === 'string' ? waarde.trim().slice(0, max) : '';
+
+  /** Een geldige story met alleen bekende velden, of null. */
+  function normaliseerVerhaal(data) {
+    const slides = lijst(data?.slides).map(normaliseerSlide).filter(Boolean);
+    if (!slides.length) return null;
+    return {
+      versie: STORIES_CONFIG.versie,
+      titel: tekst(data.titel, 120) || 'Naamloze story',
+      samenvatting: tekst(data.samenvatting, 300),
+      kleur: /^#[0-9a-f]{6}$/i.test(data.kleur) ? data.kleur : STORIES_CONFIG.standaardKleur,
+      slides,
+      formules: lijst(data.formules)
+        .filter(f => ['veld', 'a', 'b', 'op'].every(k => typeof f?.[k] === 'string'))
+        .map(({ veld, a, b, op }) => ({ veld, a, b, op })),
+    };
+  }
+
+  function normaliseerSlide(bron) {
+    const soort = SOORTEN[bron?.soort];
+    if (!soort) return null;
+    const slide = { soort: bron.soort, kopje: tekst(bron.kopje, 120), titel: tekst(bron.titel, 200), tekst: tekst(bron.tekst) };
+    if (soort.kaart) {
+      Object.assign(slide, {
+        variabele:   tekst(bron.variabele, 200),
+        jaar:        Number.isInteger(bron.jaar) ? bron.jaar : null,
+        palet:       typeof bron.palet === 'string' && bron.palet in KLEURSCHEMAS ? bron.palet : APP_CONFIG.standaardPalet,
+        toelichting: tekst(bron.toelichting, 300),
+      });
+    }
+    if (soort.buurten) slide.buurten = lijst(bron.buurten).filter(c => typeof c === 'string' && c).slice(0, soort.buurten);
+    if (soort.buurten > 1 && bron.buurtenOnderElkaar === true) slide.buurtenOnderElkaar = true;  // tabel omgedraaid
+    if (soort.cijfers) {
+      slide.cijfers = lijst(bron.cijfers)
+        .map(c => typeof c === 'string' ? { variabele: c } : c)
+        .filter(c => typeof c?.variabele === 'string' && c.variabele)
+        .map(c => ({ variabele: c.variabele, label: tekst(c.label, 80) }))
+        .slice(0, STORIES_CONFIG.maxCijfers);
+    }
+    if (soort.punten) {
+      slide.punten = lijst(bron.punten)
+        .map(p => ({ label: tekst(p?.label, 80), tekst: tekst(p?.tekst, 300) }))
+        .filter(p => p.label || p.tekst)
+        .slice(0, STORIES_CONFIG.maxPunten);
+    }
+    return slide;
+  }
+
+  /** Alle variabelen die de story gebruikt (kaart en cijfers). */
+  const gebruikteVelden = (verhaal) =>
+    [...new Set(verhaal.slides.flatMap(s => [s.variabele, ...lijst(s.cijfers).map(c => c.variabele)]).filter(Boolean))];
+
+  /** Neem de formules mee van zelfgemaakte variabelen (en van de variabelen waar die op rusten). */
+  function metFormules(verhaal) {
+    const bekend = new Map(verhaal.formules.map(f => [f.veld, f]));
+    const formules = new Map();
+    const bezocht = new Set();
+    const voegToe = (veld) => {
+      if (bezocht.has(veld)) return;
+      bezocht.add(veld);
+      const f = window.formuleVan?.(veld) || bekend.get(veld);
+      if (!f) return;
+      voegToe(f.a);
+      voegToe(f.b);
+      formules.set(veld, { veld: f.veld, a: f.a, b: f.b, op: f.op });
+    };
+    gebruikteVelden(verhaal).forEach(voegToe);
+    return { ...verhaal, formules: [...formules.values()] };
+  }
+
+  /** Lege teksten, lege lijsten en ontbrekende jaren weglaten: een schoon, leesbaar bestand. */
+  const zonderLeeg = (verhaal) => JSON.parse(JSON.stringify(verhaal, (sleutel, waarde) =>
+    waarde === '' || waarde === null || (Array.isArray(waarde) && !waarde.length && sleutel !== 'slides') ? undefined : waarde));
+
+  /** "Armoede in Heerlen" → "armoede-in-heerlen.json" */
+  const bestandsnaam = (titel) => `${titel.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'story'}.json`;
+
+  /** Download de story als bestand, klaar om in de map stories/ te zetten. */
+  function exporteer(verhaal) {
+    const schoon = metFormules(normaliseerVerhaal(verhaal));
+    const blob = new Blob([`${JSON.stringify(zonderLeeg(schoon), null, 2)}\n`], { type: 'application/json' });
+    const link = maak('a', { href: URL.createObjectURL(blob), download: bestandsnaam(schoon.titel) });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  /** Lees een story uit een gekozen bestand; geeft een foutmelding als het geen story is. */
+  async function leesBestand(bestand) {
+    let data = null;
+    try { data = JSON.parse(await bestand.text()); } catch (_) { /* geen JSON */ }
+    const verhaal = normaliseerVerhaal(data);
+    if (!verhaal) throw new Error(`"${bestand.name}" is geen geldige story.`);
+    return verhaal;
+  }
+
+
+  // ==========================================================================
+  // BIBLIOTHEEK — Stories uit de map en eigen stories in de browser
+  // ==========================================================================
+
+  // Items: { id, bron: 'map' | 'eigen', verhaal, gewijzigd? }
+  const bibliotheek = { map: [], eigen: [], geladen: false };
+
+  const alleStories = () => [...bibliotheek.map, ...bibliotheek.eigen];
+  const zoekStory = (id) => alleStories().find(item => item.id === id) || null;
+
+  /** Bestandsnamen in de storymap: online via lijst.json, lokaal via de mappenlijst van de server. */
+  async function zoekBestandsnamen() {
+    try {
+      const namen = await (await fetch(STORIES_CONFIG.lijst)).json();
+      if (Array.isArray(namen)) return namen.filter(n => /\.json$/i.test(n));
+    } catch (_) { /* lokaal is lijst.json nog een sjabloon */ }
+    try {
+      const html = await (await fetch(STORIES_CONFIG.map)).text();
+      const namen = [...html.matchAll(/href="([^"?#]+\.json)"/gi)].map(([, href]) => decodeURIComponent(href.split('/').pop()));
+      return [...new Set(namen)].filter(n => n !== 'lijst.json');
+    } catch (err) {
+      console.warn('De storymap kon niet gelezen worden:', err);
+      return [];
     }
   }
 
-  /** De buurt uit de focus van een slide; zoekt tolerant (hoofdletters, "Heerlen " ervoor, deelnaam). */
-  function vindFocusBuurt(features, focus) {
-    const doel = normaliseer(focus?.value).replace(/^heerlen\s+/, '');
-    if (!doel) return null;
-    const velden = [focus.field, 'buurtnaam', 'naam', 'buurt', 'wijknaam'];
-    return features.find(f => velden.some(veld => {
-      const waarde = normaliseer(f.properties?.[veld]);
-      return waarde && (waarde === doel || waarde.includes(doel) || doel.includes(waarde));
-    })) || null;
+  async function laadMapStories() {
+    const items = await Promise.all((await zoekBestandsnamen()).map(async naam => {
+      try {
+        const verhaal = normaliseerVerhaal(await (await fetch(STORIES_CONFIG.map + encodeURIComponent(naam))).json());
+        if (!verhaal) throw new Error('geen geldige story');
+        return { id: naam.replace(/\.json$/i, ''), bron: 'map', verhaal };
+      } catch (err) {
+        console.warn(`Story "${naam}" kon niet geladen worden:`, err);
+        return null;
+      }
+    }));
+    bibliotheek.map = items.filter(Boolean).sort((a, b) => a.verhaal.titel.localeCompare(b.verhaal.titel, 'nl'));
   }
 
+  // Eigen stories volgen de cookiekeuze: na "Weigeren" wordt niets bewaard
+  const magOpslaan = () => window.leesCookie(COOKIES.keuze) !== 'geweigerd';
 
-  // ==========================================================================
-  // STATISTIEKEN — Waarden van de focus-buurt (of vaste teksten)
-  // ==========================================================================
-
-  function statistiekenHtml(slide, buurt, fc) {
-    const props = buurt?.properties;
-    const stats = (slide.stats || []).filter(s => s.value !== undefined || props);
-    if (!stats.length) return '<p class="story-stats-leeg">Geen statistieken beschikbaar</p>';
-
-    return stats.map(stat => {
-      const waarde = stat.value ?? props?.[stat.field];
-      const leeg = waarde === undefined || waarde === null || waarde === '';
-      const buitenFilter = !leeg && stat.field && Number.isFinite(+waarde)
-        && !window.waardePasseertFilter(+waarde, window.haalNumeriekeWaarden(fc, stat.field), window.appData.filter);
-      const geenData = leeg || buitenFilter;
-      const noot = [stat.note, buitenFilter && 'buiten actief filter'].filter(Boolean).join(' · ');
-      return `
-        <article class="story-stat${geenData ? ' is-no-data' : ''}">
-          <span class="story-stat-label">${escapeHtml(stat.label || window.mooieVeldnaam(stat.field) || 'Statistiek')}</span>
-          <span class="story-stat-value${geenData ? ' is-no-data' : ''}">${escapeHtml(geenData ? GEEN_DATA : formatteer(waarde, stat))}</span>
-          ${noot ? `<span class="story-stat-note">${escapeHtml(noot)}</span>` : ''}
-        </article>`;
-    }).join('');
-  }
-
-
-  // ==========================================================================
-  // OVERLAY EN MENU'S
-  // ==========================================================================
-
-  const staat = { overlay: null, el: {}, verhaalId: null, slide: 0, gemarkeerd: [] };
-
-  function maakOverlay() {
-    if (staat.overlay) return;
-    const overlay = Object.assign(document.createElement('div'), { className: 'story-overlay', hidden: true });
-    overlay.innerHTML = `
-      <div class="story-backdrop"></div>
-      <div class="story-scrim"></div>
-      <div class="story-shell">
-        <div class="story-topbar"><div class="story-chip"></div></div>
-        <div class="story-progress"><span class="story-progress-bar"></span></div>
-        <div class="story-grid">
-          <article class="story-card">
-            <p class="story-kicker"></p>
-            <h2 class="story-title"></h2>
-            <p class="story-copy"></p>
-            <div class="story-stats"></div>
-            <div class="story-map-note" hidden></div>
-            <div class="story-card-nav">
-              <div class="story-counter"></div>
-              <div class="story-actions">
-                <button type="button" class="story-prev">Vorige</button>
-                <button type="button" class="story-next">Volgende</button>
-                <button type="button" class="story-close">Sluit</button>
-              </div>
-            </div>
-          </article>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    staat.overlay = overlay;
-    for (const naam of ['backdrop', 'chip', 'counter', 'prev', 'next', 'progress-bar', 'card', 'kicker', 'title', 'copy', 'stats', 'map-note']) {
-      staat.el[naam] = overlay.querySelector(`.story-${naam}`);
+  function leesEigen() {
+    try {
+      return lijst(JSON.parse(localStorage.getItem(STORIES_CONFIG.opslagSleutel) || '[]'))
+        .map(({ id, verhaal, gewijzigd } = {}) => ({ id, bron: 'eigen', verhaal: normaliseerVerhaal(verhaal), gewijzigd }))
+        .filter(item => typeof item.id === 'string' && item.verhaal);
+    } catch (_) {
+      return [];
     }
-    staat.el.prev.addEventListener('click', vorigeSlide);
-    staat.el.next.addEventListener('click', volgendeSlide);
-    overlay.querySelector('.story-close').addEventListener('click', sluitVerhaal);
-    overlay.addEventListener('click', (e) => {
-      if (e.target.matches('.story-overlay, .story-backdrop, .story-scrim')) sluitVerhaal();
-    });
   }
 
-  const menuKnopHtml = (verhaal, extra = '') => `
-    <button type="button" class="story-menu-button" data-story-id="${escapeHtml(verhaal.id)}"
-            style="--verhaal-kleur:${escapeHtml(verhaal.colors?.[0] || '#0b7285')}">
-      <span class="story-menu-title">${escapeHtml(verhaal.title)}</span>
-      <span class="story-menu-meta">${escapeHtml(verhaal.summary)} · ${verhaal.slides.length} slides${extra}</span>
+  function schrijfEigen() {
+    if (!magOpslaan()) return false;
+    try {
+      const opslag = bibliotheek.eigen.map(({ id, verhaal, gewijzigd }) => ({ id, verhaal, gewijzigd }));
+      localStorage.setItem(STORIES_CONFIG.opslagSleutel, JSON.stringify(opslag));
+      return true;
+    } catch (err) {
+      console.warn('Eigen stories opslaan mislukt:', err);
+      return false;
+    }
+  }
+
+  /** Bewaar een eigen story (nieuw of bijgewerkt). Geeft true als hij ook echt in de browser staat. */
+  function bewaarEigen(id, verhaal) {
+    const schoon = normaliseerVerhaal(verhaal);
+    if (!schoon) return false;
+    bibliotheek.eigen = [{ id, bron: 'eigen', verhaal: metFormules(schoon), gewijzigd: Date.now() },
+      ...bibliotheek.eigen.filter(item => item.id !== id)];
+    bouwMenu();
+    return schrijfEigen();
+  }
+
+  function verwijderEigen(id) {
+    bibliotheek.eigen = bibliotheek.eigen.filter(item => item.id !== id);
+    bouwMenu();
+    schrijfEigen();
+  }
+
+
+  // ==========================================================================
+  // MENU — Stories-paneel in de zijbalk en het verhalenpaneel na de introductie
+  // ==========================================================================
+
+  const menuKnopHtml = ({ id, bron, verhaal }) => `
+    <button type="button" class="story-menu-button" data-story-id="${escapeHtml(id)}" style="--verhaal-kleur:${verhaal.kleur}">
+      <span class="story-menu-title">${escapeHtml(verhaal.titel)}${bron === 'eigen' ? '<span class="story-menu-eigen">Eigen</span>' : ''}</span>
+      <span class="story-menu-meta">${verhaal.samenvatting ? `${escapeHtml(verhaal.samenvatting)} · ` : ''}${aantalSlides(verhaal)}</span>
     </button>`;
 
   function bouwMenu() {
-    const menu = document.getElementById('stories-menu');
-    menu.innerHTML = VERHALEN.map(v => menuKnopHtml(v, alleData() ? '' : ' · data laden…')).join('');
-    menu.querySelectorAll('[data-story-id]').forEach(knop => knop.addEventListener('click', () => openVerhaal(knop.dataset.storyId)));
+    const items = alleStories();
+    document.getElementById('stories-menu').innerHTML = items.length
+      ? items.map(menuKnopHtml).join('')
+      : `<p class="hint">${bibliotheek.geladen ? 'Nog geen stories. Maak er zelf een via Meer → Story maken.' : 'Stories laden…'}</p>`;
+    markeerMenu();
   }
 
-  /** Paneel midden in beeld met alle verhalen (o.a. via "Ontdek de verhalen" aan het eind van de introductie). */
+  function markeerMenu() {
+    document.querySelectorAll('#stories-menu .story-menu-button')
+      .forEach(knop => knop.classList.toggle('is-active', knop.dataset.storyId === staat.id));
+  }
+
+  /** Paneel midden in beeld met alle stories (via "Ontdek de verhalen" aan het eind van de introductie). */
   function openVerhalenPaneel() {
     document.getElementById('verhalen-paneel')?.remove();
-    const paneel = Object.assign(document.createElement('div'), { id: 'verhalen-paneel', className: 'verhalen-paneel' });
+    const paneel = maak('div', { id: 'verhalen-paneel', className: 'verhalen-paneel' });
     paneel.innerHTML = `
       <div class="verhalen-paneel-kaart" role="dialog" aria-modal="true" aria-labelledby="verhalen-paneel-titel">
         <p class="verhalen-paneel-kicker">Verhalen over Heerlen</p>
         <h2 id="verhalen-paneel-titel">Kies een verhaal</h2>
         <p class="verhalen-paneel-uitleg">Elk verhaal neemt je stap voor stap mee langs de kaart en de cijfers achter één thema.</p>
-        <div class="verhalen-paneel-lijst">${VERHALEN.map(v => menuKnopHtml(v)).join('')}</div>
+        <div class="verhalen-paneel-lijst">${alleStories().map(menuKnopHtml).join('')}</div>
         <div class="verhalen-paneel-acties">
           <button type="button" class="verhalen-paneel-sluit">Verken de kaart zelf</button>
         </div>
@@ -255,130 +319,327 @@
     const opEscape = (e) => { if (e.key === 'Escape') sluit(); };
     const sluit = () => { paneel.remove(); document.removeEventListener('keydown', opEscape); };
     paneel.addEventListener('click', (e) => {
-      const verhaal = e.target.closest('[data-story-id]');
-      if (verhaal) { sluit(); openVerhaal(verhaal.dataset.storyId); }
+      const knop = e.target.closest('[data-story-id]');
+      if (knop) { sluit(); openVerhaal(knop.dataset.storyId); }
       else if (e.target === paneel || e.target.closest('.verhalen-paneel-sluit')) sluit();
     });
     document.addEventListener('keydown', opEscape);
     document.body.appendChild(paneel);
-    paneel.querySelector('.story-menu-button').focus();
+    paneel.querySelector('button').focus();
   }
 
 
   // ==========================================================================
-  // KAART PER SLIDE — Jaar, palet en variabelen instellen, dan inzoomen op de buurt
+  // KAARTJE OVER DE KAART
+  // ==========================================================================
+
+  const staat = {
+    overlay: null, el: {},
+    id: null, verhaal: null, index: 0,
+    voorbeeld: null,                   // { naar(index) } als de story maker de slide toont
+    kaartSleutel: null, focusSleutel: null, getoondeIndex: null,
+    gemarkeerd: [],
+  };
+
+  function maakOverlay() {
+    if (staat.overlay) return;
+    const overlay = maak('div', { className: 'story-overlay', hidden: true });
+    overlay.innerHTML = `
+      <div class="story-scrim"></div>
+      <article class="story-card" aria-live="polite">
+        <div class="story-progress"><span class="story-progress-bar"></span></div>
+        <p class="story-kicker"></p>
+        <h2 class="story-title"></h2>
+        <div class="story-copy"></div>
+        <div class="story-stats"></div>
+        <p class="story-map-note" hidden></p>
+        <div class="story-card-nav">
+          <span class="story-counter"></span>
+          <div class="story-actions">
+            <button type="button" class="story-prev">Vorige</button>
+            <button type="button" class="story-next">Volgende</button>
+            <button type="button" class="story-close">Sluit</button>
+          </div>
+        </div>
+      </article>`;
+    document.getElementById('map').appendChild(overlay);
+
+    staat.overlay = overlay;
+    for (const naam of ['card', 'progress-bar', 'kicker', 'title', 'copy', 'stats', 'map-note', 'counter', 'prev', 'next', 'close']) {
+      staat.el[naam] = overlay.querySelector(`.story-${naam}`);
+    }
+    // Klikken en scrollen in het kaartje mag de kaart niet bewegen
+    L.DomEvent.disableClickPropagation(staat.el.card);
+    L.DomEvent.disableScrollPropagation(staat.el.card);
+    staat.el.prev.addEventListener('click', () => naarSlide(staat.index - 1));
+    staat.el.next.addEventListener('click', () => naarSlide(staat.index + 1));
+    staat.el.close.addEventListener('click', sluitVerhaal);
+  }
+
+  const cijferBlok = (label, waarde, noot = '') => `
+    <article class="story-stat${waarde === null ? ' is-leeg' : ''}">
+      <span class="story-stat-label">${escapeHtml(label)}</span>
+      <span class="story-stat-value">${escapeHtml(waarde ?? 'geen data')}</span>
+      ${noot ? `<span class="story-stat-note">${escapeHtml(noot)}</span>` : ''}
+    </article>`;
+
+  /** Cijfer voor heel Heerlen: totaal (tellingen) of gemiddelde van de buurten, met de hoogste en laagste buurt. */
+  function stadCijfer(cijfer, features) {
+    const veld = cijfer.variabele;
+    const waardeVan = waardenVan(features, veld);
+    const metWaarde = features.map(f => ({ f, w: waardeVan(f) })).filter(x => x.w !== null);
+    if (!metWaarde.length) return cijferBlok(labelVan(cijfer), null);
+
+    const som = metWaarde.reduce((totaal, x) => totaal + x.w, 0);
+    const telling = IS_TELLING.test(veld);
+    const hoog = d3.greatest(metWaarde, x => x.w), laag = d3.least(metWaarde, x => x.w);
+    const noot = `${telling ? 'Totaal van de buurten' : 'Gemiddelde van de buurten'}\n`
+      + `Hoogst: ${buurtNaam(hoog.f)} (${formatteerCijfer(hoog.w, veld)})\nLaagst: ${buurtNaam(laag.f)} (${formatteerCijfer(laag.w, veld)})`;
+    return cijferBlok(labelVan(cijfer), formatteerCijfer(telling ? som : som / metWaarde.length, veld), noot);
+  }
+
+  /**
+   * Tabel met de buurten naast elkaar (een kolom per buurt) of onder elkaar (een rij per buurt).
+   * Bij veel kolommen scrolt hij opzij. `buurten`: [{ f, i }], waarbij i de plek in de slide is (de kleur).
+   */
+  function vergelijkTabel(cijfers, buurten, tekstVan, onderElkaar) {
+    const buurtKop = ({ f, i }, scope) =>
+      `<th scope="${scope}"><i class="story-punt" style="border-color:${STORIES_CONFIG.focusKleuren[i]}"></i>${escapeHtml(buurtNaam(f))}</th>`;
+    const cijferKop = (c, scope) => `<th scope="${scope}">${escapeHtml(labelVan(c))}</th>`;
+    const cel = ({ f }, veld) => {
+      const waarde = tekstVan(f, veld);
+      return `<td${waarde === null ? ' class="is-leeg"' : ''}>${escapeHtml(waarde ?? 'geen data')}</td>`;
+    };
+    const [kolommen, rijen] = onderElkaar
+      ? [cijfers.map(c => cijferKop(c, 'col')), buurten.map(b => buurtKop(b, 'row') + cijfers.map(c => cel(b, c.variabele)).join(''))]
+      : [buurten.map(b => buurtKop(b, 'col')), cijfers.map(c => cijferKop(c, 'row') + buurten.map(b => cel(b, c.variabele)).join(''))];
+    return `
+      <div class="story-vergelijk${onderElkaar ? ' is-onder-elkaar' : ''}">
+        <table>
+          <thead><tr><td></td>${kolommen.join('')}</tr></thead>
+          <tbody>${rijen.map(rij => `<tr>${rij}</tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function cijfersHtml(slide) {
+    const soort = SOORTEN[slide.soort];
+    if (soort.punten) return lijst(slide.punten).map(p => cijferBlok(p.label, p.tekst)).join('');
+    const cijfers = lijst(slide.cijfers).filter(c => c.variabele);
+    if (!soort.cijfers || !cijfers.length) return '';
+
+    const features = featuresVanJaar(slide.jaar);
+    if (slide.soort === 'heerlen') return cijfers.map(c => stadCijfer(c, features)).join('');
+
+    const perVeld = new Map(cijfers.map(c => [c.variabele, waardenVan(features, c.variabele)]));
+    const tekstVan = (feature, veld) => {
+      const waarde = perVeld.get(veld)(feature);
+      return waarde === null ? null : formatteerCijfer(waarde, veld);
+    };
+    // De plek (i) in de slide bepaalt de kleur, ook als een buurt in dit jaar ontbreekt
+    const buurten = lijst(slide.buurten)
+      .map((code, i) => ({ f: features.find(f => f.properties?.buurtcode === code), i }))
+      .filter(b => b.f);
+    if (!buurten.length) return '<p class="story-stats-leeg">Kies een buurt om de cijfers te zien.</p>';
+    if (buurten.length > 1) return vergelijkTabel(cijfers, buurten, tekstVan, slide.buurtenOnderElkaar);
+    return cijfers.map(c => cijferBlok(labelVan(c), tekstVan(buurten[0].f, c.variabele))).join('');
+  }
+
+
+  // ==========================================================================
+  // KAART PER SLIDE — Variabele, jaar en palet; buurten laten oplichten en erheen vliegen
   // ==========================================================================
 
   function wisMarkering() {
-    staat.gemarkeerd.forEach(({ laag, stijl }) => { laag.setStyle(stijl); laag.closePopup(); });
+    staat.gemarkeerd.forEach(({ laag, fillOpacity, omlijning }) => {
+      laag.setStyle({ fillOpacity });
+      laag.unbindTooltip();
+      omlijning.remove();
+    });
     staat.gemarkeerd = [];
   }
 
-  function toonKaart(slide) {
-    wisMarkering();
-    if (slide.paginatype !== 'map' || !slide.field) return;
-
-    // De kaartvariabele eerst, daarna de statistieken in het info-venster (via de gewone rijen)
-    const velden = [...new Set([slide.field, ...(slide.stats || []).map(s => s.field)])]
+  /** Kaartrijen, palet en jaar zoals de slide wil; daarna kleurt de kaart opnieuw. */
+  function tekenKaart(slide) {
+    const velden = [...new Set([slide.variabele, ...lijst(slide.cijfers).map(c => c.variabele)])]
       .filter(v => v && window.availableFields.includes(v));
-    if (velden.length) {
+    if (velden[0] && velden[0] === slide.variabele) {
       document.getElementById('selectors-div').innerHTML = '';
       velden.forEach(v => window.addFieldSelector(v));
     }
-    if (slide.palette) document.getElementById('palette-select').value = slide.palette;
+    document.getElementById('palette-select').value = slide.palet;
 
-    // Een ander jaar kleurt de kaart via de tijdlijn opnieuw (ook buiten de gekozen periode); anders zelf
     const jaarSlider = document.getElementById('year-slider');
-    if (slide.year !== undefined && jaarSlider.value !== String(slide.year)) {
-      jaarSlider.value = slide.year;
-      jaarSlider.dispatchEvent(new Event('input'));
+    if (slide.jaar && jaarSlider.value !== String(slide.jaar)) {
+      jaarSlider.value = slide.jaar;
+      jaarSlider.dispatchEvent(new Event('input'));  // kleurt opnieuw, ook buiten de gekozen periode
     } else {
       window.herlaadVisualisatie();
     }
+  }
 
+  /** Eigen laag voor de omlijning: boven de gemeentegrens (475), onder het info-venster; de muis gaat erdoor. */
+  function omlijningPane() {
+    const kaart = window.appData.map;
+    if (!kaart.getPane('storyFocusPane')) {
+      Object.assign(kaart.createPane('storyFocusPane').style, { zIndex: 480, pointerEvents: 'none' });
+    }
+    return 'storyFocusPane';
+  }
+
+  function markeerBuurten(slide) {
+    wisMarkering();
+    const { focusKleuren, focusRand, focusLijn, focusVulling } = STORIES_CONFIG;
     const lagen = window.appData.choroplethLayer?.getLayers() || [];
-    const buurt = vindFocusBuurt(lagen.map(l => l.feature), slide.focus);
-    const laag = lagen.find(l => l.feature === buurt);
-    if (!laag) return;
+    const lijnStijl = (stijl) => ({ pane: omlijningPane(), interactive: false, style: { fill: false, lineJoin: 'round', ...stijl } });
+    lijst(slide.buurten).forEach((code, i) => {
+      const laag = lagen.find(l => l.feature?.properties?.buurtcode === code);
+      if (!laag) return;
+      // Eerst de witte rand, daarbovenop de gekleurde lijn
+      const omlijning = L.layerGroup([
+        L.geoJSON(laag.feature, lijnStijl(focusRand)),
+        L.geoJSON(laag.feature, lijnStijl({ ...focusLijn, color: focusKleuren[i] })),
+      ]).addTo(window.appData.map);
+      staat.gemarkeerd.push({ laag, fillOpacity: laag.options.fillOpacity, omlijning });
+      laag.setStyle({ fillOpacity: focusVulling });
+      laag.bindTooltip(buurtNaam(laag.feature), { permanent: true, direction: 'center', className: 'story-label' }).openTooltip();
+      laag.getTooltip().getElement().style.background = focusKleuren[i];
+    });
+  }
 
-    window.appData.map.fitBounds(laag.getBounds(), FOCUS_ZOOM);
-    const { color, weight, fillOpacity, fillColor } = laag.options;
-    staat.gemarkeerd.push({ laag, stijl: { color, weight, fillOpacity, fillColor } });
-    laag.setStyle(FOCUS_STIJL);
-    laag.openPopup();
-    toonTrendgrafiek(buurt, slide.field);
+  /** Vlieg naar de buurten van de slide (of naar heel Heerlen): naast het kaartje en boven de tijdlijn. */
+  function vliegNaar() {
+    const lagen = staat.gemarkeerd.length ? staat.gemarkeerd.map(g => g.laag) : window.appData.choroplethLayer?.getLayers() || [];
+    if (!lagen.length) return;
+    const gebied = lagen.reduce((grenzen, laag) => grenzen.extend(laag.getBounds()), L.latLngBounds([]));
+
+    const kaart = window.appData.map;
+    kaart.invalidateSize({ pan: false });  // de zijbalk of het venster kan van breedte veranderd zijn
+    const { marge, vliegen } = STORIES_CONFIG;
+    const k = kaart.getContainer().getBoundingClientRect();
+    const kaartje = staat.el.card.getBoundingClientRect();
+    const tijdlijn = document.getElementById('year-filter-area').getBoundingClientRect();
+    const naastKaartje = kaartje.right - k.left + marge;
+    const opties = {
+      paddingTopLeft:     [k.width - naastKaartje - marge >= 160 ? naastKaartje : marge, marge],  // te weinig ruimte: dan maar achter het kaartje
+      paddingBottomRight: [marge, tijdlijn.height ? k.bottom - tijdlijn.top + marge : marge],
+      maxZoom:            vliegen.maxZoom,
+    };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) kaart.fitBounds(gebied, { ...opties, animate: false });
+    else kaart.flyToBounds(gebied, { ...opties, duration: vliegen.duration });
+  }
+
+  /** Alleen opnieuw kleuren of vliegen als dat voor deze slide echt nodig is (de maker tekent bij elke toets). */
+  function zetKaart(slide) {
+    if (!SOORTEN[slide.soort].kaart) {
+      wisMarkering();
+      staat.focusSleutel = null;
+      return;
+    }
+    const kaartSleutel = JSON.stringify([slide.variabele, slide.jaar, slide.palet, lijst(slide.cijfers).map(c => c.variabele)]);
+    const focusSleutel = JSON.stringify([slide.soort, lijst(slide.buurten)]);
+    const opnieuwGekleurd = kaartSleutel !== staat.kaartSleutel;
+    if (opnieuwGekleurd) {
+      staat.kaartSleutel = kaartSleutel;
+      tekenKaart(slide);
+    }
+    if (opnieuwGekleurd || focusSleutel !== staat.focusSleutel) markeerBuurten(slide);
+    if (focusSleutel !== staat.focusSleutel) vliegNaar();
+    staat.focusSleutel = focusSleutel;
   }
 
 
   // ==========================================================================
-  // NAVIGATIE
+  // AFSPELEN
   // ==========================================================================
 
   function toonSlide() {
-    const verhaal = vindVerhaal(staat.verhaalId);
-    const slide = verhaal?.slides[staat.slide];
-    if (!slide) return;
-    const { el } = staat;
-    const isVoorpagina = slide.paginatype === 'voorpagina';
+    const { verhaal, index, el, voorbeeld } = staat;
+    const slide = verhaal.slides[index];
+    const laatste = index === verhaal.slides.length - 1;
 
     staat.overlay.hidden = false;
-    staat.overlay.dataset.paginatype = slide.paginatype;
-    el.backdrop.style.backgroundImage = isVoorpagina ? maakAchtergrond(slide.title, slide.subtitle, verhaal.colors) : 'none';
-    el.backdrop.style.opacity = isVoorpagina ? '1' : '0.14';
+    staat.overlay.dataset.soort = slide.soort;
+    el.card.setAttribute('aria-live', voorbeeld ? 'off' : 'polite');  // niet voorlezen tijdens het typen in de maker
+    el.card.style.setProperty('--verhaal-kleur', verhaal.kleur);
 
-    el.chip.textContent = el.kicker.textContent = slide.overline || verhaal.title;
-    el.title.textContent = slide.title || verhaal.title;
-    el.copy.textContent = slide.body || '';
-    el.counter.textContent = `${staat.slide + 1} / ${verhaal.slides.length}`;
-    el['progress-bar'].style.width = `${(staat.slide + 1) / verhaal.slides.length * 100}%`;
-    el.prev.disabled = staat.slide === 0;
-    el.next.textContent = staat.slide === verhaal.slides.length - 1 ? 'Sluit verhaal' : 'Volgende';
+    el.kicker.textContent = slide.kopje || verhaal.titel;
+    el.title.textContent = slide.titel || (slide.soort === 'titel' ? verhaal.titel : '');
+    el.title.hidden = !el.title.textContent;
+    el.copy.replaceChildren(...alineas(slide.tekst || ''));
+    el.stats.innerHTML = cijfersHtml(slide);
+    el['map-note'].textContent = slide.toelichting || '';
+    el['map-note'].hidden = !slide.toelichting;
 
-    // Het kaartje staat vast: de titelslide linksonder, alle andere linksboven
-    el.card.dataset.anchor = isVoorpagina ? 'bottom-left' : 'top-left';
-    ['voorpagina', 'map', 'summary'].forEach(soort => el.card.classList.toggle(`is-${soort}`, slide.paginatype === soort));
-    el.card.scrollTop = 0;
+    el.counter.textContent = `${index + 1} / ${verhaal.slides.length}`;
+    el['progress-bar'].style.width = `${(index + 1) / verhaal.slides.length * 100}%`;
+    el.prev.disabled = index === 0;
+    el.next.disabled = Boolean(voorbeeld) && laatste;
+    el.next.textContent = laatste && !voorbeeld ? 'Sluit story' : 'Volgende';
+    el.close.hidden = Boolean(voorbeeld);
+    if (staat.getoondeIndex !== index) {
+      el.card.scrollTop = 0;
+      staat.getoondeIndex = index;
+    }
 
-    toonKaart(slide);
-    const fc = window.appData.lastFC;
-    el.stats.innerHTML = statistiekenHtml(slide, slide.focus && vindFocusBuurt(fc.features, slide.focus), fc);
-    el['map-note'].hidden = !slide.mapNote;
-    el['map-note'].textContent = slide.mapNote || '';
+    zetKaart(slide);
+    markeerMenu();
+  }
 
-    document.querySelectorAll('#stories-menu .story-menu-button')
-      .forEach(knop => knop.classList.toggle('is-active', knop.dataset.storyId === staat.verhaalId));
+  function start(verhaal, index, voorbeeld) {
+    if (!alleData()) {
+      window.toonMelding('De data wordt nog geladen. Probeer het zo nog eens.');
+      return false;
+    }
+    maakOverlay();
+    window.zorgVoorFormules?.(verhaal.formules);
+    Object.assign(staat, { verhaal, index: Math.min(index, verhaal.slides.length - 1), voorbeeld });
+    document.body.classList.add('story-open');
+    toonSlide();
+    return true;
   }
 
   function openVerhaal(id) {
-    if (!alleData()) { window.toonMelding('De data wordt nog geladen. Probeer het zo nog eens.'); return; }
-    maakOverlay();
-    staat.verhaalId = (vindVerhaal(id) || VERHALEN[0]).id;
-    staat.slide = 0;
-    document.body.classList.add('story-open');
-    toonSlide();
+    const item = zoekStory(id);
+    if (!item) return window.toonMelding('Deze story bestaat niet (meer).');
+    if (start(item.verhaal, 0, null)) {
+      staat.id = id;
+      zetLink(id);
+      markeerMenu();
+    }
+  }
+
+  /** Voor de story maker: toon één slide live. `voorbeeld.naar(i)` laat de maker een andere slide kiezen. */
+  function toonVoorbeeld(verhaal, index, voorbeeld) {
+    staat.id = null;
+    start(verhaal, index, voorbeeld);
   }
 
   function sluitVerhaal() {
-    if (!staat.verhaalId) return;
+    if (!staat.verhaal) return;
     wisMarkering();
     staat.overlay.hidden = true;
     document.body.classList.remove('story-open');
-    staat.verhaalId = null;
-    document.querySelectorAll('#stories-menu .story-menu-button').forEach(knop => knop.classList.remove('is-active'));
+    Object.assign(staat, { id: null, verhaal: null, voorbeeld: null, kaartSleutel: null, focusSleutel: null, getoondeIndex: null });
+    zetLink(null);
+    markeerMenu();
   }
 
-  function volgendeSlide() {
-    const verhaal = vindVerhaal(staat.verhaalId);
-    if (!verhaal) return;
-    if (staat.slide >= verhaal.slides.length - 1) return sluitVerhaal();
-    staat.slide++;
+  function naarSlide(index) {
+    const { verhaal, voorbeeld } = staat;
+    if (!verhaal || index < 0) return;
+    if (voorbeeld) return voorbeeld.naar(Math.min(index, verhaal.slides.length - 1));
+    if (index >= verhaal.slides.length) return sluitVerhaal();
+    staat.index = index;
     toonSlide();
   }
 
-  function vorigeSlide() {
-    if (staat.slide <= 0) return;
-    staat.slide--;
-    toonSlide();
+  /** De open story staat in de adresbalk (?story=...), zodat je de link kunt delen. */
+  function zetLink(id) {
+    const url = new URL(location.href);
+    if (id) url.searchParams.set('story', id);
+    else url.searchParams.delete('story');
+    history.replaceState(null, '', url);
   }
 
 
@@ -386,30 +647,64 @@
   // INITIALISATIE
   // ==========================================================================
 
-  document.addEventListener('DOMContentLoaded', () => {
-    bouwMenu();
-    window.addEventListener('atlas:data-geladen', bouwMenu);
+  // Een link naar een story (?story=...) opent die story zodra de stories én de data er zijn
+  let wachtendeLink = new URLSearchParams(location.search).get('story');
 
-    document.addEventListener('keydown', (e) => {
-      if (!staat.verhaalId) return;
-      if (e.key === 'Escape') sluitVerhaal();
-      if (e.key === 'ArrowRight') volgendeSlide();
-      if (e.key === 'ArrowLeft') vorigeSlide();
+  function openWachtendeLink() {
+    if (!wachtendeLink || !bibliotheek.geladen || !alleData()) return;
+    const id = wachtendeLink;
+    wachtendeLink = null;
+    openVerhaal(id);
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    bibliotheek.eigen = leesEigen();
+    bouwMenu();
+    document.getElementById('stories-menu').addEventListener('click', (e) => {
+      const knop = e.target.closest('[data-story-id]');
+      if (knop) openVerhaal(knop.dataset.storyId);
     });
 
-    // Een ander filter verandert de statistieken: open slide opnieuw tonen
+    window.addEventListener('atlas:data-geladen', () => {
+      if (staat.verhaal) {  // nieuwe jaren binnen (CBS): de open slide opnieuw tekenen
+        staat.kaartSleutel = staat.focusSleutel = null;
+        toonSlide();
+      }
+      openWachtendeLink();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!staat.verhaal || staat.voorbeeld || e.target.closest?.('input, textarea, select')) return;
+      if (e.key === 'Escape') sluitVerhaal();
+      if (e.key === 'ArrowRight') naarSlide(staat.index + 1);
+      if (e.key === 'ArrowLeft') naarSlide(staat.index - 1);
+    });
+
+    // Een ander filter verandert de cijfers: de open slide opnieuw tonen
     ['apply-filter', 'clear-filter', 'filter-negative'].forEach(id =>
-      document.getElementById(id).addEventListener('click', () => { if (staat.verhaalId) toonSlide(); }));
+      document.getElementById(id).addEventListener('click', () => { if (staat.verhaal) toonSlide(); }));
+
+    await laadMapStories();
+    bibliotheek.geladen = true;
+    bouwMenu();
+    openWachtendeLink();
   });
 
-  window.startStory = openVerhaal;
   window.openVerhalenPaneel = openVerhalenPaneel;
-  window.closeStory = sluitVerhaal;
-
-  /** Hulp bij het schrijven van verhalen: toont welke velden er per jaar zijn. */
-  window.debugStoryData = () => {
-    const fc = alleData();
-    console.log('Features:', fc?.features.length || 0, '· jaren:', window.multiLoaderState.availableYears.join(', '));
-    console.log('Velden:', Object.keys(fc?.features[0]?.properties || {}));
+  window.AtlasStories = {
+    SOORTEN,
+    config: STORIES_CONFIG,
+    alle: alleStories,
+    open: openVerhaal,
+    toonVoorbeeld,
+    sluit: sluitVerhaal,
+    bewaarEigen,
+    verwijderEigen,
+    magOpslaan,
+    normaliseer: normaliseerVerhaal,
+    exporteer,
+    leesBestand,
+    featuresVanJaar,
+    aantalSlides,
   };
 })();

@@ -43,7 +43,8 @@ const TRENDGRAFIEK_CONFIG = {
 // WAARDEN EN FILTER
 // ============================================================================
 
-const isPercentageVeld = (veld) => /(percentage|perc\b|_pct|pct_|aandeel|%)/i.test(veld || '');
+// Ook CBS-velden die een percentage zijn zonder dat in hun naam (sociaal minimum, arbeidsparticipatie)
+const isPercentageVeld = (veld) => /(percentage|perc\b|_pct|pct_|aandeel|%|_percent_van_|arbeidsparticipatie)/i.test(veld || '');
 
 /** Nederlandse notatie met hoogstens `decimalen` cijfers achter de komma; percentages krijgen een %-teken. */
 function formatteerGetal(getal, veld, decimalen = 2) {

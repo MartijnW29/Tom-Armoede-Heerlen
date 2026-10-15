@@ -1,0 +1,62 @@
+{
+  "versie": 1,
+  "titel": "Armoede in Heerlen",
+  "samenvatting": "Een eerlijk en hoopvol verhaal over armoede, veerkracht en de toekomst van onze stad.",
+  "kleur": "#1a3a5e",
+  "slides": [
+    {
+      "soort": "titel",
+      "kopje": "Verhaal over onze stad",
+      "titel": "Armoede in Heerlen",
+      "tekst": "Achter de statistieken gaan mensen schuil. Mensen met dromen, zorgen en veerkracht.",
+      "variabele": "percentage_huishoudens_met_laag_inkomen",
+      "jaar": 2021,
+      "palet": "oranges"
+    },
+    {
+      "soort": "buurt",
+      "kopje": "De realiteit",
+      "titel": "Waar armoede het hardst toeslaat",
+      "tekst": "In Heksenberg heeft bijna de helft van de huishoudens een laag inkomen. Dit zijn geen cijfers — dit zijn gezinnen, jongeren en ouderen die elke maand moeten rondkomen.",
+      "variabele": "percentage_huishoudens_met_laag_inkomen",
+      "jaar": 2021,
+      "palet": "oranges",
+      "toelichting": "Donkerder oranje = een groter deel van de huishoudens met een laag inkomen (2021)",
+      "buurten": ["BU09172200"],
+      "cijfers": [
+        { "variabele": "aantal_inwoners", "label": "Inwoners" },
+        { "variabele": "aantal_huishoudens", "label": "Huishoudens" },
+        { "variabele": "percentage_huishoudens_met_laag_inkomen", "label": "Huishoudens met laag inkomen" },
+        { "variabele": "huishoudens_tot_120_percent_van_sociaal_minimum", "label": "Rond het sociaal minimum" },
+        { "variabele": "gemiddeld_inkomen_per_inwoner", "label": "Gemiddeld inkomen per inwoner" }
+      ]
+    },
+    {
+      "soort": "buurt",
+      "kopje": "Kinderen in armoede",
+      "titel": "De toekomst mag niet verloren gaan",
+      "tekst": "In Hoensbroek-Centrum heeft bijna 3 op de 4 huishoudens een laag inkomen, en groeien tientallen kinderen op met jeugdzorg. Wie in armoede opgroeit, heeft minder kansen op een goede opleiding en gezondheid — een opgave voor heel de stad.",
+      "variabele": "huishoudens_tot_120_percent_van_sociaal_minimum",
+      "jaar": 2021,
+      "palet": "oranges",
+      "toelichting": "Donkerder oranje = een groter deel van de huishoudens rond het sociaal minimum (2021)",
+      "buurten": ["BU09171200"],
+      "cijfers": [
+        { "variabele": "aantal_inwoners", "label": "Inwoners" },
+        { "variabele": "percentage_huishoudens_met_laag_inkomen", "label": "Huishoudens met laag inkomen" },
+        { "variabele": "huishoudens_tot_120_percent_van_sociaal_minimum", "label": "Rond het sociaal minimum" },
+        { "variabele": "aantal_jongeren_met_jeugdzorg_in_natura", "label": "Jongeren met jeugdzorg" },
+        { "variabele": "netto_arbeidsparticipatie", "label": "Netto arbeidsparticipatie" }
+      ]
+    },
+    {
+      "soort": "tekst",
+      "kopje": "Hoop en actie",
+      "titel": "Heerlen kan het beter",
+      "tekst": "Armoede is niet overal in Heerlen hetzelfde. Sommige buurten kennen nauwelijks laag inkomen, andere juist heel veel — en dat verschil is precies waarom gerichte hulp werkt. Door samen te werken — gemeente, scholen, bewoners en organisaties — kan de cirkel doorbroken worden.",
+      "punten": [
+        { "label": "Sleutels tot verandering", "tekst": "onderwijs, werk en ondersteuning dichtbij huis" }
+      ]
+    }
+  ]
+}

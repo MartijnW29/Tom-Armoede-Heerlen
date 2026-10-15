@@ -1,0 +1,8 @@
+---
+layout: null
+---
+{% comment %}
+  Lijst van alle story-bestanden in deze map. GitHub Pages (Jekyll) vult hem bij elk
+  bouwen zelf, dus een nieuwe story is alleen een .json-bestand in deze map erbij zetten.
+  Lokaal wordt dit sjabloon niet ingevuld; dan leest stories.js de mappenlijst van de server.
+{% endcomment %}[{% assign eerste = true %}{% for bestand in site.static_files %}{% assign pad = page.dir | append: bestand.name %}{% if bestand.path == pad and bestand.extname == ".json" %}{% unless eerste %},{% endunless %}{{ bestand.name | jsonify }}{% assign eerste = false %}{% endif %}{% endfor %}]

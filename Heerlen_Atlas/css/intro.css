@@ -634,34 +634,41 @@ body.intro-open {
   visibility: hidden;
 }
 
-/* ========== Vergelijking: drie kaarten naast elkaar (stap 5) ========== */
+/* ========== Vergelijking: drie kaarten naast elkaar over het hele kaartgebied (stap 5) ========== */
 .intro-vergelijking {
   position: absolute;
   z-index: 700;
-  top: 50%;
+  top: 24px;
+  bottom: 24px;
   left: calc(24px + var(--intro-paneel-breedte) + 24px);
   right: 24px;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 20px 22px 16px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 26px 18px;
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 28px 80px rgba(8, 24, 48, 0.2);
-  transform: translateY(-50%);
 }
 
 .intro-vergelijking[hidden] {
   display: none;
 }
 
+/* De kaarten krijgen alle hoogte die over is; de legenda staat eronder */
 .intro-vergelijking-kaarten {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 14px;
+  gap: 24px;
+  margin-bottom: 16px;
 }
 
 .intro-mini {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
   margin: 0;
   animation: intro-mini-in 0.5s ease both;
   animation-delay: var(--vertraging, 0ms);
@@ -679,35 +686,39 @@ body.intro-open {
 }
 
 .intro-mini-titel {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
 }
 
 .intro-mini-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--kleur-tekst-zacht);
 }
 
+/* De kaart is zo breed als de kolom en krimpt alleen als de hoogte op is (zonder vervorming) */
 .intro-mini svg {
   display: block;
+  flex: 0 1 auto;
+  min-height: 0;
   width: 100%;
   height: auto;
 }
 
 .intro-mini svg path {
   stroke: #fff;
-  stroke-width: 0.6;
+  stroke-width: 0.8px;
+  vector-effect: non-scaling-stroke;
 }
 
 .intro-mini-stad {
-  margin: 6px 0 0;
-  font-size: 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
   color: var(--kleur-tekst-zacht);
 }
 
 .intro-mini-stad strong {
-  font-size: 16px;
+  font-size: 20px;
   color: #061826;
 }
 
@@ -749,13 +760,14 @@ body.intro-open {
     max-height: 44vh;
   }
 
+  /* Boven het tekstpaneel (dat hier hoogstens 44vh hoog is) */
   .intro-vergelijking {
     top: 10px;
+    bottom: calc(44vh + 20px);
     left: 10px;
     right: 10px;
     padding: 12px 12px 8px;
     border-radius: 20px;
-    transform: none;
   }
 
   .intro-vergelijking-kaarten {

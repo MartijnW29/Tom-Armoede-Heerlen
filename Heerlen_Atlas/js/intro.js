@@ -257,7 +257,7 @@
     labels: [],
     gemeentegrensGetekend: false,
     spoorGetekend: false,
-    miniKaartPaden: null,
+    miniKaart: null,  // { viewBox, paden } van de drie kaarten in stap 5
   };
 
   // Elke nieuwe kaartovergang verhoogt dit token; lopende animaties stoppen dan
@@ -863,18 +863,19 @@
     regelAutoDraai();
   }
 
-  /** Drie kleine kaarten naast elkaar (stap 5), zonder achtergrond en niet zoombaar. */
+  /** Drie kaarten naast elkaar over het hele kaartgebied (stap 5), zonder achtergrond en niet zoombaar. */
   function vergelijkingHtml(m) {
     if (!m) return ladenHtml();
-    const breedte = 240, hoogte = 200;
 
-    if (!staat.miniKaartPaden) {
-      // Vlakke projectie: lengtegraad schalen met cos(breedtegraad), dan in het vak passen
+    if (!staat.miniKaart) {
+      // Vlakke projectie: lengtegraad schalen met cos(breedtegraad). De viewBox ligt precies om
+      // de vorm van Heerlen, zodat de kaart in elk vak zo groot mogelijk wordt.
       const schaal = (c) => (typeof c[0] === 'number' ? [c[0] * COS_BREEDTE, c[1]] : c.map(schaal));
       const vlak = m.buurten.map(b => ({ type: 'Feature', geometry: { type: b.feature.geometry.type, coordinates: schaal(b.feature.geometry.coordinates) } }));
-      const projectie = d3.geoIdentity().reflectY(true).fitSize([breedte, hoogte], { type: 'FeatureCollection', features: vlak });
-      const pad = d3.geoPath(projectie);
-      staat.miniKaartPaden = vlak.map(f => pad(f));
+      const geheel = { type: 'FeatureCollection', features: vlak };
+      const pad = d3.geoPath(d3.geoIdentity().reflectY(true).fitSize([1000, 1000], geheel));
+      const [[x0, y0], [x1, y1]] = pad.bounds(geheel);
+      staat.miniKaart = { viewBox: `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, paden: vlak.map(f => pad(f)) };
     }
 
     const kaartjes = DEFINITIES.map((def, i) => `
@@ -883,8 +884,8 @@
           <span class="intro-mini-titel">${def.titel}</span>
           <span class="intro-mini-sub">${def.kort}</span>
         </figcaption>
-        <svg viewBox="0 0 ${breedte} ${hoogte}" role="img" aria-label="Kaart van Heerlen volgens de ${def.titel.toLowerCase()}">
-          ${m.buurten.map((b, j) => `<path d="${staat.miniKaartPaden[j]}" fill="${kleurVoor(def.waarde(b))}"><title>${escapeHtml(b.naam)}: ${escapeHtml(def.tooltip(b))}</title></path>`).join('')}
+        <svg viewBox="${staat.miniKaart.viewBox}" role="img" aria-label="Kaart van Heerlen volgens de ${def.titel.toLowerCase()}">
+          ${m.buurten.map((b, j) => `<path d="${staat.miniKaart.paden[j]}" fill="${kleurVoor(def.waarde(b))}"><title>${escapeHtml(b.naam)}: ${escapeHtml(def.tooltip(b))}</title></path>`).join('')}
         </svg>
         <p class="intro-mini-stad"><strong>${pct(def.stad(m), true)}</strong> van Heerlen telt als arm</p>
       </figure>`).join('');

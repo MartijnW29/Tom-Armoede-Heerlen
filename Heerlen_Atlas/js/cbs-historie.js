@@ -1,8 +1,8 @@
 // ============================================================================
 // CBS-HISTORIE.JS — Heerlen Opportunity Atlas
-// Vult de jaren vóór 2022 aan met CBS "Kerncijfers wijken en buurten" (StatLine).
+// Vult de jaren vóór 2023 aan met CBS "Kerncijfers wijken en buurten" (StatLine).
 //
-// PDOK levert alleen 2022 t/m 2025. Voor 2013 t/m 2021 halen we de cijfers uit
+// PDOK levert alleen 2023 t/m 2025 (2022 is daar in 2026 verdwenen). Voor 2013 t/m 2022 halen we de cijfers uit
 // de CBS OData-tabellen en hangen we ze aan de kaartvormen van het vroegste
 // PDOK-jaar (gekoppeld op buurt-/wijkcode). De CBS-veldnamen (bijv.
 // "AantalInwoners_5") worden vertaald naar de PDOK-namen (bijv. "aantal_inwoners"),
@@ -20,7 +20,7 @@
   const CBS_TABELLEN = {
     2013: '82339NED', 2014: '82931NED', 2015: '83220NED', 2016: '83487NED',
     2017: '83765NED', 2018: '84286NED', 2019: '84583NED', 2020: '84799NED',
-    2021: '85039NED',
+    2021: '85039NED', 2022: '85318NED',
   };
 
   const CBS_BASIS_URL      = 'https://opendata.cbs.nl/ODataApi/OData';
@@ -272,7 +272,7 @@
   // ==========================================================================
 
   /**
-   * Voeg de jaren 2013–2021 toe aan de FeatureCollection: de kaartvormen van het
+   * Voeg de jaren 2013–2022 toe aan de FeatureCollection: de kaartvormen van het
    * vroegste jaar in `fc` worden per jaar gekopieerd en gevuld met CBS-cijfers.
    * Geeft het aantal toegevoegde jaren terug.
    */

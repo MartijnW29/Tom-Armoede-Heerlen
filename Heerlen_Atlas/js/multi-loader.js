@@ -9,13 +9,13 @@
 // ============================================================================
 
 const MULTI_LOADER_CONFIG = {
-  // Jaren op de tijdlijn; 2013–2021 komen uit CBS StatLine (cbs-historie.js)
+  // Jaren op de tijdlijn; 2013–2022 komen uit CBS StatLine (cbs-historie.js)
   minYear:       2013,
   maxYear:       2050,
   standaardJaar: 2024,
 
   // De PDOK OGC API (kaartvormen + cijfers) bestaat alleen voor deze jaren
-  pdokMinYear: 2022,
+  pdokMinYear: 2023,  // 2022 is in 2026 van PDOK verdwenen en komt nu uit CBS StatLine
   pdokMaxYear: 2025,
 
   yearFields:    ['jaar', 'year', 'Jaar', 'Year', 'JAAR'],  // in volgorde van voorkeur
@@ -205,7 +205,7 @@ async function loadAllAPIs() {
   }
 }
 
-/** Vul de jaren vóór 2022 aan uit CBS StatLine; de knoptekst laat zien hoe het ging. */
+/** Vul de jaren vóór 2023 aan uit CBS StatLine; de knoptekst laat zien hoe het ging. */
 async function laadEnKoppelCbs() {
   const knop = document.getElementById('load-cbs-data');
   const fc = window.multiLoaderState.originalData;

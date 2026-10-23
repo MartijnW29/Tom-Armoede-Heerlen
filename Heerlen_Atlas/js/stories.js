@@ -13,7 +13,7 @@
 
   const STORIES_CONFIG = {
     map:            'stories/',
-    lijst:          'stories/lijst.json',  // online ingevuld door GitHub Pages
+    lijst:          'stories/lijst.json',  // online ingevuld bij het bouwen (GitHub Pages of Cloudflare Pages)
     opslagSleutel:  'atlas_stories',       // eigen stories in de browser (localStorage)
     versie:         1,
     standaardKleur: '#0b7285',

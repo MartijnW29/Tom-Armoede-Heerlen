@@ -1,0 +1,35 @@
+Opportunity Atlas Heerlen
+Copyright (c) 2026 de makers van Opportunity Atlas Heerlen. Alle rechten voorbehouden.
+
+In short (English): this project is NOT open source. You may view the website and
+read the code, but you may not copy, modify, distribute or use it in any other way
+without prior written permission.
+
+
+GEBRUIKSVOORWAARDEN
+
+Deze voorwaarden gelden voor alles in deze repository dat door de makers is gemaakt:
+de broncode, het ontwerp, de teksten, de stories en de afbeeldingen ("het project").
+
+1. Het project is geen open source. Alle rechten blijven bij de makers.
+
+2. Wel toegestaan:
+   - de website bekijken en gebruiken zoals hij online staat;
+   - de code bekijken op GitHub. Omdat de repository openbaar is, mogen GitHub-
+     gebruikers hem daar ook bekijken en forken volgens de voorwaarden van GitHub;
+     dat geeft geen recht op enig ander gebruik.
+
+3. Niet toegestaan zonder voorafgaande schriftelijke toestemming van de makers:
+   - het project of delen ervan kopiëren, aanpassen of op een andere website,
+     in een app of in een ander project gebruiken;
+   - het project of afgeleide werken verspreiden, publiceren of verkopen;
+   - het project commercieel gebruiken.
+
+4. Onderdelen van anderen vallen niet onder deze voorwaarden; daarvoor gelden hun
+   eigen licenties:
+   - bibliotheken: Leaflet (BSD-2-Clause), D3 (ISC), proj4js (MIT), Three.js (MIT);
+   - data en kaartmateriaal: CBS, PDOK, BAG/3D BAG en AHN (open data, met
+     bronvermelding) en OpenStreetMap (ODbL).
+
+5. Het project wordt geleverd zoals het is, zonder enige garantie. De makers zijn
+   niet aansprakelijk voor schade door het gebruik ervan.

@@ -1,6 +1,7 @@
 De buurtcijfers zelf komen live van PDOK (2022–2025) en CBS StatLine (2013–2021); daarvoor hoeft hier niets te staan.
 
-- `gebouwen_heerlen.bin` — alle gebouwen van Heerlen voor `huisjes-3d.html`, gemaakt met `tools/bake-gebouwen.html`
+- `gebouwen_heerlen.bin` — alle gebouwen van Heerlen voor `huisjes-3d.html` en de 2D-kaart, gemaakt met `tools/bake-gebouwen.html`
+- `gebouwen-voorbeeld.svg` — de panden uit dat bestand op kaarttegel 17/67715/43938 (Kasteellaan), voor het voorbeeldje 'Gebouwen aan' in de kaartweergave
 - `heerlen_buurten.geojson`, `economic_indicators.csv`, `test-data-jaren.csv` — voorbeeldbestanden om de import te testen
 
 PDOK-bron per jaar, bijvoorbeeld:

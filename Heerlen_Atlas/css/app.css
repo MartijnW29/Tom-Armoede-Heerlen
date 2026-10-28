@@ -427,9 +427,38 @@ html.split-pane #open-3d {
   background: #e6ebf0;
 }
 
+/* Gebouwen uit/aan: kaarttegel, blauw buurtvlak en (bij aan) de echte panden, op elkaar gestapeld */
+.gebouwen-voorbeeld {
+  position: relative;
+  display: block;
+  aspect-ratio: 2;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #e6ebf0;
+}
+
+.gebouwen-voorbeeld > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Zelfde dekking als de kaart: standaard 65%, met gebouwen een derde daarvan (zie map.js) */
+.gebouwen-voorbeeld .vlak {
+  background: #6baed6;
+  opacity: 0.65;
+}
+
+.gebouwen-voorbeeld.is-aan .vlak {
+  opacity: 0.23;
+}
+
 /* Lichte ondergrond: dezelfde rustige grijze kaart als in de introductie */
 #map[data-ondergrond="licht"] .leaflet-tile-pane,
-.ondergrond-voorbeeld.is-licht {
+.ondergrond-voorbeeld.is-licht,
+.gebouwen-voorbeeld .tegel {
   filter: grayscale(1) contrast(0.9) brightness(1.06);
   opacity: 0.55;
 }
@@ -565,6 +594,16 @@ html.split-pane #open-3d {
   padding-top: 6px;
   border-top: 1px solid var(--kleur-rand);
   font-style: italic;
+}
+
+/* Uitleg over de gebouwen onder de klassen (map.js) */
+.legenda-gebouwen {
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--kleur-rand);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--kleur-tekst-zacht);
 }
 
 

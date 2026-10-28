@@ -22,6 +22,17 @@ const KAART_CONFIG = {
 
   // Info-venster: deze velden staan bovenaan (als ze bestaan)
   voorkeurvelden: ['naam', 'name', 'buurtnaam', 'id', 'code'],
+
+  // Gebouwen als bovenaanzicht (aan/uit via het tandwiel)
+  gebouwen: {
+    vanafZoom:  14,      // daaronder zijn panden kleiner dan een pixel
+    vlakFactor: 0.35,    // de buurtvlakken worden zoveel lichter, zodat de gebouwen opvallen
+    tekenMarge: 0.3,     // minder dan de vlakken: één groot canvas kost veel geheugen
+    dekking:    0.95,
+    wit:        '#ffffff',
+    rand:       'rgba(51, 65, 85, 0.5)',
+    aanwijsLijn: { color: '#061826', weight: 2, fill: false, interactive: false },
+  },
 };
 
 const TRENDGRAFIEK_CONFIG = {
@@ -32,9 +43,9 @@ const TRENDGRAFIEK_CONFIG = {
   identiteitsvelden: ['code', 'id', 'buurtcode', 'wijkcode', 'buurtnaam', 'wijknaam', 'naam', 'name'],
 };
 
-// Lagen boven elkaar: ondergrond (200) < kleuren < gemeentegrens < info-venster (700).
-// De grens laat de muis door naar de buurten eronder.
-[['choroplethPane', 460, true], ['grensPane', 475, false]].forEach(([naam, z, muis]) => {
+// Lagen boven elkaar: ondergrond (200) < kleuren < gebouwen < gemeentegrens < info-venster (700).
+// Gebouwen en grens laten de muis door naar de buurten eronder.
+[['choroplethPane', 460, true], ['gebouwenPane', 468, false], ['grensPane', 475, false]].forEach(([naam, z, muis]) => {
   Object.assign(map.createPane(naam).style, { zIndex: z, pointerEvents: muis ? '' : 'none' });
 });
 
@@ -375,15 +386,20 @@ window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'bl
   const wijkenFC = window.multiLoaderState.wijkenFC;
   if (wijkenFC && !fc.features.some(f => f.properties?.overlapping_wijken?.length)) addWijkenToBuurten(fc, wijkenFC);
 
+  /** Kleur van de klasse waar een buurt in valt; null zonder waarde of buiten het filter. */
+  const kleurVan = (feature) => {
+    const waarde = feature.properties?.[veld];
+    if (!waardePasseertFilter(waarde, alleWaarden, filter) || waarde === null || waarde === '' || isNaN(+waarde)) return null;
+    const klasse = breuken.slice(1, -1).findIndex(grens => +waarde < grens);
+    return kleuren[klasse === -1 ? kleuren.length - 1 : klasse];
+  };
+
   const stijl = (feature) => {
     const waarde = feature.properties?.[veld];
-    if (!waardePasseertFilter(waarde, alleWaarden, filter)) return KAART_CONFIG.buitenFilterStijl;
-    if (waarde === null || waarde === '' || isNaN(+waarde)) return KAART_CONFIG.geenDataStijl;
-    const klasse = breuken.slice(1, -1).findIndex(grens => +waarde < grens);
-    return {
-      color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.randBreedte, fillOpacity: opacity,
-      fillColor: kleuren[klasse === -1 ? kleuren.length - 1 : klasse],
-    };
+    const basis = !waardePasseertFilter(waarde, alleWaarden, filter) ? KAART_CONFIG.buitenFilterStijl
+      : waarde === null || waarde === '' || isNaN(+waarde) ? KAART_CONFIG.geenDataStijl
+      : { color: KAART_CONFIG.randKleur, weight: KAART_CONFIG.randBreedte, fillOpacity: opacity, fillColor: kleurVan(feature) };
+    return { ...basis, fillOpacity: basis.fillOpacity * gebouwenKaart.vlakFactor() };
   };
 
   appData.choroplethLayer = L.geoJSON(fc, {
@@ -410,6 +426,7 @@ window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'bl
   // Kleuren verandert nooit de kaartuitsnede; inzoomen gebeurt alleen bij het laden van data
   gemeentegrens.toon(fc);
   tekenLegenda(breuken, kleuren, veld, klassenWaarden.length ? klassenWaarden : alleWaarden);
+  gebouwenKaart.werkBij(fc, veld, kleurVan);
 };
 
 
@@ -493,6 +510,283 @@ const gemeentegrens = (function () {
     },
   };
 })();
+
+
+// ============================================================================
+// GEBOUWEN — De BAG-panden als bovenaanzicht, in de kleur van hun buurt.
+// Alleen de panden waar de variabele over gaat krijgen kleur (regels in
+// js/gebouwen.js), bij een percentage dat aandeel ervan; de rest is wit.
+// ============================================================================
+
+/**
+ * Canvas voor tienduizenden panden. L.Renderer schaalt de tekening mee tijdens het
+ * zoomen; na elke beweging tekent _update de panden in beeld opnieuw (zoals L.Canvas).
+ */
+const GebouwenLaag = L.Renderer.extend({
+  _initContainer() {
+    this._container = document.createElement('canvas');
+    this._ctx = this._container.getContext('2d');
+  },
+
+  _destroyContainer() {
+    this._container.remove();
+    delete this._container;
+  },
+
+  _update() {
+    if (this._map._animatingZoom && this._bounds) return;
+    L.Renderer.prototype._update.call(this);
+    const { min, max } = this._bounds, breedte = max.x - min.x, hoogte = max.y - min.y;
+    const r = Math.min(2, window.devicePixelRatio || 1), canvas = this._container;
+    L.DomUtil.setPosition(canvas, min);
+    Object.assign(canvas, { width: Math.round(breedte * r), height: Math.round(hoogte * r) });
+    Object.assign(canvas.style, { width: `${breedte}px`, height: `${hoogte}px` });
+    this._ctx.setTransform(r, 0, 0, r, 0, 0);
+    this.options.teken(this._ctx, min, breedte, hoogte);
+  },
+});
+
+/** Ligt (x, y) binnen een ring van [x, y]-punten? (even-oneven-regel) */
+function binnenRing(x, y, ring) {
+  let binnen = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) binnen = !binnen;
+  }
+  return binnen;
+}
+
+const gebouwenKaart = (function () {
+  const cfg = KAART_CONFIG.gebouwen;
+  const st = {
+    aan: false,
+    g: null, wereld: null, kader: null, getekend: [],  // panden, hoekpunten en kaders in wereldpixels (zoom 0)
+    fc: null, veld: null, kleurVan: null,              // de laatst getoonde kaartkleuren
+    buurtFC: null, buurtSleutel: null, pandenPerBuurt: [], buurtVan: null,
+    kleur: [],                                         // vulkleur per pand; leeg = wit
+    pand: -1,                                          // het aangewezen pand
+  };
+  const laag = new GebouwenLaag({ pane: 'gebouwenPane', padding: cfg.tekenMarge, teken });
+  const aanwijsLijn = L.polygon([], { pane: 'grensPane', ...cfg.aanwijsLijn });  // boven het canvas
+
+  const zichtbaar = () => st.aan && !!st.g && map.getZoom() >= cfg.vanafZoom;
+  const naarWereld = (lon, lat) => [256 * (0.5 + lon / 360), 256 * (0.5 - Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / (2 * Math.PI))];
+
+  // ── Voorbereiden en koppelen ────────────────────────────────────────────
+
+  /** Hoekpunten naar wereldpixels op zoom 0 (zoals map.project(…, 0)), met een kader per pand. */
+  function bereidVoor(g) {
+    const wereld = new Float64Array(g.V * 2), kader = new Float64Array(g.N * 4);
+    for (let i = 0; i < g.N; i++) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let v = g.vStart[i], eind = v + g.vCnt[i]; v < eind; v++) {
+        const [x, y] = naarWereld(...Gebouwen.naarLonLat(g, g.x0 + g.X[v] * g.Q, g.z0 + g.Z[v] * g.Q));
+        wereld[v * 2] = x; wereld[v * 2 + 1] = y;
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+      kader.set([x0, y0, x1, y1], i * 4);
+    }
+    // Net als in 3D: schuurtjes en garages niet
+    const getekend = [];
+    for (let i = 0; i < g.N; i++) if (g.opp[i] >= Gebouwen.config.minOppervlak) getekend.push(i);
+    Object.assign(st, { g, wereld, kader, getekend });
+  }
+
+  /** Bij welke buurt hoort elk pand (zwaartepunt in de buurt)? Alleen opnieuw als er andere buurten staan. */
+  function wijsBuurtenToe(fc) {
+    const sleutel = fc.features.map(f => f.properties?.buurtcode ?? '').join();
+    if (fc === st.buurtFC || (sleutel.replace(/,/g, '') && sleutel === st.buurtSleutel)) return;
+
+    const buurten = fc.features.map(f => {
+      const geom = f.geometry || {};
+      const polygonen = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+      const punten = polygonen.flat(2);
+      return {
+        polygonen,
+        kader: [d3.min(punten, p => p[0]), d3.min(punten, p => p[1]), d3.max(punten, p => p[0]), d3.max(punten, p => p[1])],
+      };
+    });
+    const binnen = (lon, lat, b) => lon >= b.kader[0] && lon <= b.kader[2] && lat >= b.kader[1] && lat <= b.kader[3]
+      && b.polygonen.some(ringen => ringen.reduce((erin, ring) => binnenRing(lon, lat, ring) ? !erin : erin, false));
+
+    const g = st.g;
+    st.buurtVan = new Int16Array(g.N).fill(-1);
+    st.pandenPerBuurt = fc.features.map(() => []);
+    for (const i of st.getekend) {
+      const [lon, lat] = Gebouwen.naarLonLat(g, g.cx[i], g.cz[i]);
+      const k = buurten.findIndex(b => binnen(lon, lat, b));
+      if (k >= 0) { st.buurtVan[i] = k; st.pandenPerBuurt[k].push(i); }
+    }
+    Object.assign(st, { buurtFC: fc, buurtSleutel: sleutel });
+  }
+
+  function kleurPanden() {
+    const { g, fc, veld, kleurVan } = st;
+    if (!st.aan || !g || !fc) return;
+    wijsBuurtenToe(fc);
+    const buurtkleuren = fc.features.map(kleurVan);
+    const buurten = fc.features.map((f, k) => ({ panden: st.pandenPerBuurt[k], waarde: buurtkleuren[k] ? f.properties[veld] : null }));
+    const gekleurd = Gebouwen.kiesGekleurd(g, buurten, veld, isPercentageVeld(veld));
+    st.kleur = new Array(g.N);
+    for (const i of st.getekend) if (gekleurd[i]) st.kleur[i] = buurtkleuren[st.buurtVan[i]];
+    if (map.hasLayer(laag)) laag._update();
+  }
+
+  // ── Tekenen ─────────────────────────────────────────────────────────────
+
+  function tekenPand(ctx, i, schaal, dx, dy) {
+    const { g, wereld: w } = st;
+    let v = g.vStart[i];
+    for (let k = 0; k < g.ringen[i]; k++) {
+      const n = g.len[g.rStart[i] + k];
+      ctx.moveTo(w[v * 2] * schaal - dx, w[v * 2 + 1] * schaal - dy);
+      for (let m = 1; m < n; m++) ctx.lineTo(w[(v + m) * 2] * schaal - dx, w[(v + m) * 2 + 1] * schaal - dy);
+      ctx.closePath();
+      v += n;
+    }
+  }
+
+  function teken(ctx, min, breedte, hoogte) {
+    ctx.clearRect(0, 0, breedte, hoogte);
+    if (!zichtbaar()) return;
+    const zoom = map.getZoom(), schaal = 2 ** zoom, oorsprong = map.getPixelOrigin();
+    const dx = oorsprong.x + min.x, dy = oorsprong.y + min.y;  // canvaspixel = wereldpixel × schaal − (dx, dy)
+
+    // De panden in beeld per kleur gegroepeerd (wit eerst), zodat de vulkleur zelden wisselt
+    const perKleur = new Map([[cfg.wit, []]]);
+    for (const i of st.getekend) {
+      const k = i * 4;
+      if (st.kader[k + 2] * schaal - dx < 0 || st.kader[k] * schaal - dx > breedte
+       || st.kader[k + 3] * schaal - dy < 0 || st.kader[k + 1] * schaal - dy > hoogte) continue;
+      const kleur = st.kleur[i] || cfg.wit;
+      if (!perKleur.has(kleur)) perKleur.set(kleur, []);
+      perKleur.get(kleur).push(i);
+    }
+
+    // Elk pand een eigen pad: één groot pad met duizenden panden is in Chrome juist heel traag
+    Object.assign(ctx, { globalAlpha: cfg.dekking, strokeStyle: cfg.rand, lineWidth: zoom >= 17 ? 1 : zoom >= 16 ? 0.7 : 0.5, lineJoin: 'round' });
+    for (const [kleur, panden] of perKleur) {
+      ctx.fillStyle = kleur;
+      for (const i of panden) {
+        const k = i * 4, x = st.kader[k] * schaal - dx, y = st.kader[k + 1] * schaal - dy;
+        const b = (st.kader[k + 2] - st.kader[k]) * schaal, h = (st.kader[k + 3] - st.kader[k + 1]) * schaal;
+        // Een pand van een paar pixels als blokje: ziet er hetzelfde uit en is veel sneller
+        if (b < 2 && h < 2) { ctx.fillRect(x, y, Math.max(b, 0.5), Math.max(h, 0.5)); continue; }
+        ctx.beginPath();
+        tekenPand(ctx, i, schaal, dx, dy);
+        ctx.fill('evenodd');
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Aanwijzen: een donkere lijn om het pand onder de muis ───────────────
+
+  function pandOp(latlng) {
+    const [x, y] = naarWereld(latlng.lng, latlng.lat), { g, wereld: w } = st;
+    for (const i of st.getekend) {
+      const k = i * 4;
+      if (x < st.kader[k] || x > st.kader[k + 2] || y < st.kader[k + 1] || y > st.kader[k + 3]) continue;
+      let binnen = false, v = g.vStart[i];
+      for (let r = 0; r < g.ringen[i]; r++) {
+        const n = g.len[g.rStart[i] + r], ring = [];
+        for (let m = 0; m < n; m++) ring.push([w[(v + m) * 2], w[(v + m) * 2 + 1]]);
+        if (binnenRing(x, y, ring)) binnen = !binnen;
+        v += n;
+      }
+      if (binnen) return i;
+    }
+    return -1;
+  }
+
+  function wijsAan(i) {
+    if (i === st.pand) return;
+    st.pand = i;
+    if (i < 0) aanwijsLijn.remove();
+    else {
+      const { g } = st, ringen = [];
+      let v = g.vStart[i];
+      for (let r = 0; r < g.ringen[i]; r++) {
+        const n = g.len[g.rStart[i] + r], ring = [];
+        for (let m = 0; m < n; m++) {
+          const [lon, lat] = Gebouwen.naarLonLat(g, g.x0 + g.X[v + m] * g.Q, g.z0 + g.Z[v + m] * g.Q);
+          ring.push([lat, lon]);
+        }
+        ringen.push(ring);
+        v += n;
+      }
+      aanwijsLijn.setLatLngs(ringen);
+      if (!map.hasLayer(aanwijsLijn)) aanwijsLijn.addTo(map);
+    }
+  }
+
+  let muisBeeldje = null;
+  map.on('mousemove', (e) => {
+    if (!zichtbaar()) return wijsAan(-1);
+    cancelAnimationFrame(muisBeeldje);
+    muisBeeldje = requestAnimationFrame(() => wijsAan(pandOp(e.latlng)));
+  });
+  map.on('mouseout', () => { cancelAnimationFrame(muisBeeldje); wijsAan(-1); });
+
+  // ── Legenda en buurtvlakken ─────────────────────────────────────────────
+
+  function werkLegendaBij() {
+    const legenda = document.getElementById('legend');
+    legenda.querySelector('.legenda-gebouwen')?.remove();
+    if (!st.aan || !st.veld) return;
+    const { naam } = Gebouwen.doelgroep(st.veld);
+    const tekst = map.getZoom() < cfg.vanafZoom ? 'Zoom in om de gebouwen te zien.'
+      : !naam ? 'Deze variabele hoort niet bij een soort gebouw, dus alle gebouwen zijn wit.'
+      : isPercentageVeld(st.veld)
+        ? `Per buurt is zo'n deel van de ${naam} gekleurd als het percentage, geteld per adres. Welke dat zijn is willekeurig gekozen: het zijn geen echte adressen.`
+        : naam === 'gebouwen' ? 'Alle gebouwen hebben de kleur van hun buurt.'
+        : `Alleen ${naam} hebben de kleur van hun buurt; de andere gebouwen zijn wit.`;
+    legenda.append(maak('p', { className: 'legenda-gebouwen', innerHTML: `<b>Gebouwen:</b> ${tekst}` }));
+  }
+
+  let wasZichtbaar = false;
+  function werkWeergaveBij() {
+    wasZichtbaar = zichtbaar();
+    window.appData.choroplethLayer?.resetStyle();  // de vlakken worden lichter of weer gewoon
+    werkLegendaBij();
+    if (!wasZichtbaar) wijsAan(-1);
+  }
+  map.on('zoomend', () => { if (zichtbaar() !== wasZichtbaar) werkWeergaveBij(); else werkLegendaBij(); });
+
+  // ── Bediening ───────────────────────────────────────────────────────────
+
+  return {
+    isAan: () => st.aan,
+    vlakFactor: () => zichtbaar() ? cfg.vlakFactor : 1,
+
+    /** Na elke nieuwe kaartkleuring: zelfde jaar, variabele en klassekleuren voor de gebouwen. */
+    werkBij(fc, veld, kleurVan) {
+      Object.assign(st, { fc, veld, kleurVan });
+      kleurPanden();
+      werkLegendaBij();
+    },
+
+    async zetAan(aan) {
+      st.aan = aan;
+      if (aan && !st.g) {
+        try {
+          bereidVoor(await Gebouwen.laad());
+        } catch (fout) {
+          console.error(fout);
+          st.aan = false;
+          window.toonMelding('De gebouwen konden niet geladen worden.');
+          return;
+        }
+        if (!st.aan) return;  // tijdens het laden weer uitgezet
+      }
+      if (aan) { kleurPanden(); laag.addTo(map); } else laag.remove();
+      werkWeergaveBij();
+      if (aan && map.getZoom() < cfg.vanafZoom) window.toonMelding('Zoom in om de gebouwen te zien.');
+    },
+  };
+})();
+window.gebouwenKaart = gebouwenKaart;
 
 
 // ============================================================================

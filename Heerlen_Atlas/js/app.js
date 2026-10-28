@@ -26,6 +26,9 @@ const APP_CONFIG = {
     luchtfoto: { naam: 'Luchtfoto', url: 'https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_ortho25/EPSG:3857/{z}/{x}/{y}.jpeg', attributie: '© Beeldmateriaal.nl / PDOK' },
   },
   voorbeeldTegel: { z: 13, x: 4232, y: 2746 },  // tegel van Heerlen-centrum voor de voorbeeldplaatjes
+  // Ingezoomde tegel (Kasteellaan) onder de voorbeeldjes van de gebouwen; de panden erop staan in
+  // data/gebouwen-voorbeeld.svg en horen bij precies deze tegel
+  gebouwenVoorbeeld: { tegel: { z: 17, x: 67715, y: 43938 }, panden: 'data/gebouwen-voorbeeld.svg' },
 
   // --- Visualisatie ---
   standaardMethode:       'quantile',  // 'quantile' of 'equal'
@@ -67,13 +70,13 @@ const COOKIES = {
   keuze:      'atlas_cookie_keuze',   // 'geaccepteerd' of 'geweigerd'; deze mag altijd
   favorieten: 'atlas_favoriete_velden',
   ondergrond: 'atlas_ondergrond',
+  gebouwen:   'atlas_gebouwen',        // 'aan' als de gebouwen op de kaart staan
 };
 
 const ICONEN = {
   kaart:      '<svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zm0 2.2 6 2v11.6l-6-2V6.2z"/></svg>',
   info:       '<svg viewBox="0 0 24 24"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h1v2l2.5-2H19V6H5z"/></svg>',
-  prullenbak: '<svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 12H7L6 9zm4 2v8h1.5v-8H10zm3 0v8h1.5v-8H13z"/></svg>',
-  exporteren: '<svg viewBox="0 0 24 24"><path d="M11 3h2v9.2l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3V3zM5 18h14v2H5v-2z"/></svg>',
+  prullenbak: '<svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 12H7L6 9zm4 2v8h1.5v-8H10zm3 0v8h1.5v-8H13z"/></svg>',  exporteren: '<svg viewBox="0 0 24 24"><path d="M11 3h2v9.2l3.3-3.3 1.4 1.4-5.7 5.7-5.7-5.7 1.4-1.4 3.3 3.3V3zM5 18h14v2H5v-2z"/></svg>',
   kopie:      '<svg viewBox="0 0 24 24"><path d="M8 3h11a2 2 0 0 1 2 2v11h-2V5H8V3zM5 7h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm0 2v10h10V9H5z"/></svg>',
 };
 
@@ -117,7 +120,7 @@ window.toonMelding = function (tekst, duurMs = 4500, actie = null) {
 
 
 // ============================================================================
-// COOKIES — Voorkeuren onthouden (favorieten, zelfgemaakte variabelen, ondergrond)
+// COOKIES — Voorkeuren onthouden (favorieten, zelfgemaakte variabelen, ondergrond, gebouwen)
 // ============================================================================
 
 /** Zet een cookie; na "Weigeren" wordt niets meer opgeslagen. Geeft terug of het cookie gezet is. */
@@ -335,12 +338,13 @@ function kiesOndergrond(sleutel) {
 
 kiesOndergrond(window.leesCookie(COOKIES.ondergrond));
 
-/** Markeer de actieve kleurstaal en ondergrond (ook als een story het palet heeft veranderd). */
+/** Markeer de actieve kleurstaal, ondergrond en gebouwenstand (ook als een story het palet heeft veranderd). */
 function markeerActieveKeuzes() {
   const markeer = (id, actief) => document.querySelectorAll(`#${id} .keuze-knop`)
     .forEach(k => k.setAttribute('aria-checked', String(k.dataset.waarde === actief)));
   markeer('palet-keuze', paletSelect.value);
   markeer('ondergrond-keuze', huidigeOndergrond);
+  markeer('gebouwen-keuze', window.gebouwenKaart?.isAan() ? 'aan' : 'uit');
 }
 
 function maakKeuzeKnop(waarde, label, inhoud, kiezen) {
@@ -384,22 +388,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
   }
 
-  const { z, x, y } = APP_CONFIG.voorbeeldTegel;
+  const tegelUrl = (url, { z, x, y }) => url.replace('{s}', 'a').replace('{z}', z).replace('{x}', x).replace('{y}', y);
   for (const [sleutel, { naam, url }] of Object.entries(APP_CONFIG.ondergronden)) {
-    const tegel = url.replace('{s}', 'a').replace('{z}', z).replace('{x}', x).replace('{y}', y);
     document.getElementById('ondergrond-keuze').appendChild(maakKeuzeKnop(sleutel, naam,
-      `<img class="ondergrond-voorbeeld is-${sleutel}" src="${tegel}" alt="" loading="lazy"><span>${naam}</span>`, () => {
+      `<img class="ondergrond-voorbeeld is-${sleutel}" src="${tegelUrl(url, APP_CONFIG.voorbeeldTegel)}" alt="" loading="lazy"><span>${naam}</span>`, () => {
         kiesOndergrond(sleutel);
         if (!window.zetCookie(COOKIES.ondergrond, sleutel)) window.meldNietBewaard();
       }));
   }
 
+  // Gebouwen staan standaard uit; 'aan' wordt onthouden (zonder cookies alleen nu).
+  // Voorbeeld: hetzelfde stukje Heerlen met alleen het buurtvlak, of lichter met de echte panden erop.
+  const { tegel, panden } = APP_CONFIG.gebouwenVoorbeeld;
+  for (const [waarde, naam] of [['uit', 'Uit'], ['aan', 'Aan']]) {
+    const voorbeeld = `<img class="tegel" src="${tegelUrl(APP_CONFIG.ondergronden.licht.url, tegel)}" alt="" loading="lazy"><i class="vlak"></i>`
+      + (waarde === 'aan' ? `<img class="panden" src="${panden}" alt="" loading="lazy">` : '');
+    document.getElementById('gebouwen-keuze').appendChild(maakKeuzeKnop(waarde, `Gebouwen ${naam.toLowerCase()}`,
+      `<span class="gebouwen-voorbeeld is-${waarde}" aria-hidden="true">${voorbeeld}</span><span>${naam}</span>`, () => {
+        window.gebouwenKaart.zetAan(waarde === 'aan');
+        if (!window.zetCookie(COOKIES.gebouwen, waarde) && waarde === 'aan') window.meldNietBewaard();
+      }));
+  }
+  if (window.leesCookie(COOKIES.gebouwen) === 'aan') window.gebouwenKaart.zetAan(true);
+
   markeerActieveKeuzes();
 });
 
-// Alsnog geaccepteerd: een eerder gekozen ondergrond nu bewaren
+// Alsnog geaccepteerd: een eerder gekozen ondergrond en de gebouwen nu bewaren
 window.addEventListener('atlas:cookies-geaccepteerd', () => {
   if (huidigeOndergrond !== APP_CONFIG.standaardOndergrond) window.zetCookie(COOKIES.ondergrond, huidigeOndergrond);
+  if (window.gebouwenKaart.isAan()) window.zetCookie(COOKIES.gebouwen, 'aan');
 });
 
 

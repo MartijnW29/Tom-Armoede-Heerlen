@@ -8,6 +8,7 @@
   <!-- Three.js (UMD-build, werkt ook zonder lokale server) -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
   <script src="js/cbs-historie.js"></script>  <!-- CBS vult aan wat PDOK leeg laat (window.vulCbsAan) -->
+  <script src="js/gebouwen.js"></script>      <!-- gebouwenbestand en welke panden bij een variabele horen -->
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -173,7 +174,7 @@
   <aside id="sidebar">
     <div class="kop">
       <h1>Heerlen 3D</h1>
-      <p>Alle gebouwen van Heerlen op echt terrein. De buurtstatistiek kleurt de gebouwen: bij een percentage licht dat aandeel van de woningen op.</p>
+      <p>Alle gebouwen van Heerlen op echt terrein. De buurtstatistiek kleurt de gebouwen waar hij over gaat (bij armoede de woningen); bij een percentage licht dat aandeel ervan op.</p>
     </div>
 
     <div class="paneel">
@@ -319,7 +320,7 @@ const LAGEN = {
   pastel: (z, x, y) => `https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/pastel/EPSG:3857/${z}/${x}/${y}.png`,
   lucht:  (z, x, y) => `https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/${z}/${x}/${y}.jpeg`,
 };
-const MIN_OPP = 20;                                          // gebouwen kleiner dan dit (m²) worden niet getekend
+const MIN_OPP = Gebouwen.config.minOppervlak;                // gebouwen kleiner dan dit (m²) worden niet getekend
 let terreinStap = 1;                                       // terrein-detail: 1 = fijn, 2 = grover, 4 = grofst
 const ZOOM_LAAG = 14;                                      // ondergrond-niveaus per chunk (scherp niveau: zie kwaliteit)
 let zoomHoog = 16;
@@ -331,22 +332,10 @@ const PALETTEN = {
   blues:   ['#c6dbef', '#6baed6', '#3182bd', '#08519c', '#08306b'],
 };
 
-// De 11 officiële BAG-gebruiksfuncties, elk met een vaste, goed te onderscheiden kleur.
-// Volgorde en index moeten gelijk zijn aan TYPES in tools/bake-gebouwen.html (het gebakken
-// getal per gebouw, g.typ, verwijst naar deze index).
-const GEBOUWTYPEN = [
-  { label: 'Woning',                                   kleur: '#4E79A7' },
-  { label: 'Winkel',                                    kleur: '#F28E2B' },
-  { label: 'Kantoor',                                   kleur: '#E15759' },
-  { label: 'Industrie / bedrijf',                       kleur: '#76B7B2' },
-  { label: 'Bijeenkomst (horeca, kerk, theater)',       kleur: '#59A14F' },
-  { label: 'Onderwijs',                                 kleur: '#EDC948' },
-  { label: 'Gezondheidszorg',                           kleur: '#B07AA1' },
-  { label: 'Sport',                                     kleur: '#FF9DA7' },
-  { label: 'Logies (hotel, pension)',                   kleur: '#9C755F' },
-  { label: 'Cel',                                       kleur: '#17BECF' },
-  { label: 'Overig / onbekend',                         kleur: '#9AA5B1' },
-];
+// De 11 officiële BAG-gebruiksfuncties (namen en volgorde uit js/gebouwen.js), elk met een
+// vaste, goed te onderscheiden kleur. Het gebakken getal per gebouw (g.typ) is de index.
+const TYPEKLEUREN = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#17BECF', '#9AA5B1'];
+const GEBOUWTYPEN = Gebouwen.config.typen.map((label, i) => ({ label, kleur: TYPEKLEUREN[i] }));
 // Zelfde linear→sRGB-conversie als palLUT, zodat de typekleuren even levendig zijn als de paletten
 // (de shader rekent met pow(.,2.2) weer terug).
 const GEBOUWTYPEN_RGB = GEBOUWTYPEN.map(t => { const c = new THREE.Color(t.kleur).convertLinearToSRGB(); return [c.r * 255, c.g * 255, c.b * 255]; });
@@ -937,43 +926,16 @@ function verwerkFeatures(features) {
       cx: cx / (buiten || 1), cz: cz / (buiten || 1),
       naam: p.buurtnaam || p.buurt || p.naam || 'Onbekend', wijk: p.wijknaam || p.wijkcode || '',
       kleur: new THREE.Color(0x777777),
-      nBouw: 0, nWoon: 0, v: null, t: null, frac: 0,
+      nBouw: 0, nWoon: 0, v: null, t: null,
     };
   });
 }
 
-// ── Gebouwen: binair bestand inlezen en mesh per chunk bouwen ──────────────
+// ── Gebouwen: binair bestand inlezen (js/gebouwen.js) en mesh per chunk bouwen ──
 function leesGebouwen(buf) {
-  const dv = new DataView(buf);
-  const magic = dv.getUint32(0, true);
-  if (magic === 0x31424748) throw new Error('gebouwenbestand is nog het oude formaat (zonder gebouwtypen) — bak opnieuw met tools/bake-gebouwen.html');
-  if (magic !== 0x32424748) throw new Error('onbekend gebouwenbestand');
-  const N = dv.getUint32(4, true), R = dv.getUint32(8, true), V = dv.getUint32(12, true);
-  const x0 = dv.getFloat32(32, true), z0 = dv.getFloat32(36, true), Q = dv.getFloat32(40, true);
-  let p = 48;
-  const neem = (T, n) => { const a = new T(buf, p, n); p += (n * T.BYTES_PER_ELEMENT + 3) & ~3; return a; };
-  const g = { N, R, V, x0, z0, Q };
-  g.ringen = neem(Uint8Array, N); g.len = neem(Uint16Array, R); g.X = neem(Uint16Array, V); g.Z = neem(Uint16Array, V);
-  g.H = neem(Uint16Array, N); g.G = neem(Int16Array, N); g.BJ = neem(Uint16Array, N); g.VO = neem(Uint16Array, N); g.vlag = neem(Uint8Array, N);
-  g.typ = neem(Uint8Array, N);
-  g.rStart = new Uint32Array(N); g.vStart = new Uint32Array(N); g.vCnt = new Uint32Array(N);
-  g.cx = new Float32Array(N); g.cz = new Float32Array(N); g.opp = new Float32Array(N); g.buurt = new Int16Array(N).fill(-1);
-  g.chunk = new Array(N); g.vOff = new Uint32Array(N); g.elev = new Float32Array(N);
-  let r = 0, v = 0;
-  for (let i = 0; i < N; i++) {
-    g.rStart[i] = r; g.vStart[i] = v;
-    let tot = 0, sx = 0, sz = 0, a = 0;
-    const n0 = g.len[r];
-    for (let k = 0; k < g.ringen[i]; k++) tot += g.len[r + k];
-    for (let k = 0; k < n0; k++) {
-      const j = v + (k + 1) % n0;
-      sx += g.X[v + k]; sz += g.Z[v + k]; a += g.X[v + k] * g.Z[j] - g.X[j] * g.Z[v + k];
-    }
-    g.vCnt[i] = tot; g.cx[i] = x0 + (sx / n0) * Q; g.cz[i] = z0 + (sz / n0) * Q;
-    g.opp[i] = Math.abs(a) / 2 * Q * Q;                      // voetafdruk in m²
-    r += g.ringen[i]; v += tot;
-  }
-  return g;
+  const g = Gebouwen.lees(buf), N = g.N;
+  // Alleen voor 3D: buurt, terrein-chunk, plek in de mesh en terreinhoogte per gebouw
+  return Object.assign(g, { buurt: new Int16Array(N).fill(-1), chunk: new Array(N), vOff: new Uint32Array(N), elev: new Float32Array(N) });
 }
 
 async function bouwGebouwMeshes() {
@@ -1077,7 +1039,6 @@ function wijsBuurtenToe() {
       break;
     }
   }
-  for (const b of S.buurten) b.lijst.sort((p, q) => g.opp[q] - g.opp[p]);      // groot → klein
 }
 
 // kleur-LUT (sRGB-bytes) per palet
@@ -1114,16 +1075,9 @@ function kleurGebouwen() {
     return;
   }
 
-  const lut = palLUT(S.palet), lit = new Uint8Array(g.N), pct = isPct(S.kleurVar);
-  // Gebouwen van een buurt staan op grootte gesorteerd (groot → klein).
-  for (const b of S.buurten) {
-    if (b.v == null) continue;
-    if (!pct) { for (const i of b.lijst) lit[i] = 1; continue; }
-    // Foutdiffusie op oppervlak, van groot naar klein: elk gebouw wordt gekleurd als dat het gekleurde oppervlak dichter bij
-    // het doelpercentage brengt. Zo klopt het aandeel qua oppervlak én (omdat gelijke groottes op elkaar volgen) qua aantal.
-    let cum = 0, gekleurd = 0;
-    for (const i of b.lijst) { const a = g.opp[i]; cum += a; if (b.frac * cum - gekleurd >= a / 2) { lit[i] = 1; gekleurd += a; } }
-  }
+  // Zelfde regels als de 2D-kaart: alleen de gebouwen waar de variabele over gaat, bij een percentage dat aandeel
+  const lut = palLUT(S.palet);
+  const lit = Gebouwen.kiesGekleurd(g, S.buurten.map(b => ({ panden: b.lijst, waarde: b.v })), S.kleurVar, isPct(S.kleurVar));
   for (const ch of S.chunks.values()) {
     if (!ch.gebouwMesh) continue;
     const col = ch.gebouwMesh.geometry.attributes.aCol.array;
@@ -1203,7 +1157,6 @@ function updateVisualisatie() {
     const v = num(b, kv);
     b.v = v;
     b.t = v == null ? null : klem((v - kr.lo) / (kr.hi - kr.lo));
-    b.frac = v == null ? 0 : isPct(kv) ? klem(v / 100) : 1;
     if (v == null) b.kleur.set(0x6b7280); else paletKleur(S.palet, b.t, b.kleur);
   }
   kleurGebouwen();
@@ -1228,12 +1181,14 @@ function tekenGebouwtypenLegenda() {
 function tekenLegenda(kr) {
   $('typeLegenda').hidden = !S.typeModus;
   if (S.typeModus) tekenGebouwtypenLegenda();
-  const kv = S.kleurVar, stops = PALETTEN[S.palet].join(',');
+  const kv = S.kleurVar, stops = PALETTEN[S.palet].join(','), { naam } = Gebouwen.doelgroep(kv);
   const uitleg = S.typeModus
     ? 'De grond kleurt per buurt naar deze variabele. De gebouwen hebben de kleur van hun gebouwtype (zie rechtsboven).'
+    : !naam ? 'Deze variabele hoort niet bij een soort gebouw, dus alle gebouwen zijn wit.'
     : isPct(kv)
-      ? `<span class="lamp" style="background:${PALETTEN[S.palet][3]}"></span>Gekleurd gebouw = onderdeel van dit percentage. Alle gebouwen tellen mee. Bij <b>${fmt(kv, 55)}</b> is ruim de helft van de gebouwen gekleurd, gelijk verdeeld over kleine en grote gebouwen.<br><span class="lamp" style="background:#eee9e0"></span>Wit = rest.`
-      : 'Alle gebouwen krijgen de kleur van hun buurt.';
+      ? `<span class="lamp" style="background:${PALETTEN[S.palet][3]}"></span>Gekleurd gebouw = onderdeel van dit percentage. Alleen ${naam} tellen mee, per adres. Bij <b>${fmt(kv, 55)}</b> is ruim de helft ervan gekleurd. Welke dat zijn is willekeurig gekozen: het zijn geen echte adressen.<br><span class="lamp" style="background:#eee9e0"></span>Wit = rest en andere gebouwen.`
+      : naam === 'gebouwen' ? 'Alle gebouwen krijgen de kleur van hun buurt.'
+      : `Alleen ${naam} krijgen de kleur van hun buurt; de andere gebouwen zijn wit.`;
   $('legenda').innerHTML = `
     <div class="verloop" style="background:linear-gradient(90deg,${stops})"></div>
     <div class="verloop-labels"><span>${fmt(kv, kr.lo)}</span><span>${leesbaar(kv)}</span><span>${fmt(kv, kr.hi)}</span></div>

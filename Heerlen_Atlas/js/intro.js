@@ -73,7 +73,7 @@
     legendaWaarden: [0, 20, 40, 60, 80],
     geenDataKleur:  '#c4c7cc',
 
-    // Stap 4: de armoedegrens-schuif loopt vanzelf door de definities tot je hem aanraakt
+    // Stap 4: de keuze loopt vanzelf door de definities tot je de knoppen aanraakt
     autoDraaiMs:     4000,
 
     // --- Kaart ---
@@ -275,7 +275,7 @@
     definitie: 0,
     bekekenDefinities: new Set([0]),
     autoDraaiTimer: null,
-    autoDraaiGestopt: false,   // na de eerste aanraking blijft de schuif voorgoed stil
+    autoDraaiGestopt: false,   // na de eerste aanraking blijft de keuze voorgoed staan
     model: null,
     laadFout: null,
     laadBelofte: null,
@@ -643,8 +643,7 @@
       lijn({ color: '#061826', weight: 2.2, opacity: 0.85, lineJoin: 'round' }),
     ];
 
-    // Het spoor zoals op een topografische kaart: zwart met witte blokjes, met een witte rand.
-    // Dezelfde look keert terug als schuifknop van de armoedegrens in stap 4.
+    // Het spoor zoals op een topografische kaart: zwart met witte blokjes, met een witte rand
     staat.spoorLagen = [
       lijn({ color: '#ffffff', weight: 10, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }),
       lijn({ color: '#061826', weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'butt' }),
@@ -876,17 +875,9 @@
     if (!m) return ladenHtml();
     return `
       <div class="intro-drempel">
-        <p class="intro-drempel-label">Kies een armoedegrens</p>
+        <p class="intro-drempel-label" id="intro-drempel-label">Kies een armoedegrens</p>
         <p class="intro-drempel-gekozen sr-only" aria-live="polite"></p>
-        <div class="intro-drempel-baan">
-          <div class="intro-drempel-spoor" aria-hidden="true">
-            ${DEFINITIES.map((d, i) => `<span class="intro-drempel-punt" style="--f:${i / (DEFINITIES.length - 1)}"></span>`).join('')}
-          </div>
-          <div class="intro-drempel-lijn" aria-hidden="true"></div>
-          <input class="intro-drempel-invoer" type="range" min="0" max="${DEFINITIES.length - 1}" step="1"
-                 value="${staat.definitie}" aria-label="Kies waar de armoedegrens ligt" />
-        </div>
-        <div class="intro-drempel-stops">
+        <div class="intro-drempel-stops" role="group" aria-labelledby="intro-drempel-label">
           ${DEFINITIES.map((d, i) => `
             <button type="button" class="intro-drempel-stop" data-definitie="${i}">
               <span>${d.naam}</span><small>${d.kort}</small>
@@ -898,16 +889,12 @@
       <p class="intro-bron">${BRON} Grijs: te weinig inwoners voor cijfers.</p>`;
   }
 
-  /** Werk de armoedegrens-schuif en de kaartjes op de kaart bij (zonder opnieuw op te bouwen). */
+  /** Werk de keuzeknoppen en de kaartjes op de kaart bij (zonder opnieuw op te bouwen). */
   function werkDrempelBij(metOvergang = false) {
     const blok = staat.inhoud.querySelector('.intro-drempel');
     if (!blok || !staat.model) return;
     const def = DEFINITIES[staat.definitie];
 
-    blok.style.setProperty('--pos', String(staat.definitie / (DEFINITIES.length - 1)));
-    const invoer = blok.querySelector('.intro-drempel-invoer');
-    invoer.value = String(staat.definitie);
-    invoer.setAttribute('aria-valuetext', `${def.titel}: ${def.kort}`);
     blok.querySelectorAll('.intro-drempel-stop').forEach((knop, i) => {
       knop.classList.toggle('is-actief', i === staat.definitie);
       knop.setAttribute('aria-pressed', String(i === staat.definitie));
@@ -929,7 +916,7 @@
     kleurDefinitie(index, 750);
   }
 
-  /** Laat de schuif vanzelf door de definities lopen zolang stap 4 open is en niemand hem heeft aangeraakt. */
+  /** Laat de keuze vanzelf door de definities lopen zolang stap 4 open is en niemand de knoppen heeft aangeraakt. */
   function regelAutoDraai() {
     clearInterval(staat.autoDraaiTimer);
     staat.autoDraaiTimer = null;
@@ -1089,9 +1076,6 @@
     ['pointerdown', 'keydown'].forEach(type => staat.paneel.addEventListener(type, (e) => {
       if (e.target.closest('.intro-drempel')) stopAutoDraai();
     }));
-    staat.paneel.addEventListener('input', (e) => {
-      if (e.target.matches('.intro-drempel-invoer')) kiesDefinitie(Number(e.target.value));
-    });
 
     let resizeTimer = null;
     window.addEventListener('resize', () => {

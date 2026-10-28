@@ -2,14 +2,11 @@
 /* INTRO.CSS — Introductieverhaal "De armoedegrens trekken" (js/intro.js)      */
 /* ========================================================================== */
 /*
-  Gebruikt de thema-variabelen uit app.css (:root). De vaste kleuren van het
-  spoor (zwart met witte blokjes) staan hieronder in --intro-grens-*; het blauw
-  van de kaart in --intro-accent.
+  Gebruikt de thema-variabelen uit app.css (:root). Het blauw van de kaart
+  staat hieronder in --intro-accent.
 */
 
 .intro {
-  --intro-grens-lijn: #061826;
-  --intro-grens-spoor: #ffffff;
   --intro-accent: #2171b5;
   --intro-paneel-breedte: min(420px, calc(100vw - 48px));
 
@@ -399,89 +396,26 @@ body.intro-open {
   font-variant-numeric: tabular-nums;
 }
 
-/* ========== Armoedegrens-schuif (stap 4) ========== */
+/* ========== Keuze van de armoedegrens (stap 4) ========== */
 .intro-drempel {
-  --pos: 0;
   margin-bottom: 14px;
-  padding: 12px 12px 12px;
+  padding: 12px;
   border-radius: 20px;
   background: var(--kleur-paneel-zacht);
   border: 1px solid rgba(8, 24, 48, 0.08);
 }
 
 .intro-drempel-label {
-  margin: 0 0 4px;
+  margin: 0 0 10px;
   font-size: 15px;
   font-weight: 800;
   color: #061826;
 }
 
-/* De schuif loopt boven de drie opties: de punten staan midden boven elke optie (--rand = halve kolom) */
-.intro-drempel-baan {
-  --rand: calc(100% / 6);
-  position: relative;
-  height: 40px;
-  border-radius: 12px;
-}
-
-.intro-drempel-baan:has(.intro-drempel-invoer:focus-visible) {
-  box-shadow: 0 0 0 3px var(--kleur-focus);
-}
-
-.intro-drempel-spoor {
-  position: absolute;
-  left: var(--rand);
-  right: var(--rand);
-  top: 50%;
-  height: 2px;
-  margin-top: -1px;
-  background: #bcccdc;
-  border-radius: 999px;
-}
-
-.intro-drempel-punt {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--f) * 100%);
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: inset 0 0 0 2px #9fb3c8;
-}
-
-/* De schuifknop ziet eruit als het spoor op de kaart: zwart met witte blokjes */
-.intro-drempel-lijn {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: calc(var(--rand) + var(--pos) * (100% - 2 * var(--rand)));
-  width: 7px;
-  margin-left: -3.5px;
-  border-radius: 4px;
-  background:
-    repeating-linear-gradient(to bottom, var(--intro-grens-spoor) 0 6px, transparent 6px 12px) center / 2px 100% no-repeat,
-    var(--intro-grens-lijn);
-  box-shadow: 0 0 0 2.5px #fff, 0 6px 14px rgba(8, 24, 48, 0.28);
-  transition: left 0.5s cubic-bezier(0.22, 0.9, 0.24, 1);
-  pointer-events: none;
-}
-
-.intro-drempel-invoer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-/* De drie opties als duidelijke knoppen; de gekozen optie is blauw omrand */
+/* De drie opties als duidelijke knoppen, even breed; de gekozen optie is blauw omrand */
 .intro-drempel-stops {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));  /* even breed, zodat de schuifpunten erboven blijven staan */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

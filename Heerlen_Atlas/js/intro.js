@@ -12,6 +12,7 @@
 //   - kaartvormen van de buurten: PDOK wijken-en-buurten-2024
 //   - cijfers: CBS StatLine 85984NED (Kerncijfers wijken en buurten 2024);
 //     PDOK heeft de inkomenscijfers voor 2024 niet gevuld (-99997).
+//   - het spoor: OpenStreetMap (vaste lijn in INTRO_CONFIG)
 // ============================================================================
 
 (function () {
@@ -52,16 +53,25 @@
       'BU09173201', 'BU09173202', 'BU09173203', 'BU09173500',
     ],
 
-    // Mondiale extreme-armoedegrens: $1,90 per persoon per dag
-    mondialeGrensDollar: 1.90,
-    dollarNaarEuro:      0.92,
+    // Mondiale extreme-armoedegrens per persoon per dag, afgerond (Wereldbank sinds 2025: $3,00)
+    mondialeGrensEuro: 3,
+
+    // Het spoor door Heerlen (OpenStreetMap, [lat, lon]). Het steekt aan beide kanten even ver (± 1,8 km)
+    // buiten de gemeente uit: in het westen tot voorbij Voerendaal, in het oosten tot de splitsing bij Strijthagen.
+    spoorlijn: [
+      [50.88236, 5.91695], [50.89059, 5.93985], [50.89242, 5.94485], [50.89573, 5.95134], [50.89617, 5.95278], [50.89637, 5.95427],
+      [50.89633, 5.95620], [50.89592, 5.95820], [50.89539, 5.95969], [50.89359, 5.96380], [50.89210, 5.96813],
+      [50.89160, 5.96996], [50.89119, 5.97347], [50.88987, 5.98025], [50.88977, 5.98689], [50.89001, 5.99171],
+      [50.89018, 5.99339], [50.89049, 5.99529], [50.89144, 5.99923], [50.89569, 6.01269], [50.89655, 6.01916],
+      [50.89682, 6.02308],
+    ],
 
     // Vaste, lineaire kleurschaal voor álle stappen (aandeel inwoners in %):
-    // zelfde kleur = zelfde waarde. Geel-oranje-rood geeft ook tussen 40 en 50%
-    // (noord/zuid) een duidelijk zichtbaar verschil.
+    // zelfde kleur = zelfde waarde. Blauw, net als de atlas; "geen cijfers" is
+    // neutraal grijs zodat het niet op lichtblauw lijkt.
     kleurMax:       80,
     legendaWaarden: [0, 20, 40, 60, 80],
-    geenDataKleur:  '#d9e2ec',
+    geenDataKleur:  '#c4c7cc',
 
     // Stap 4: de armoedegrens-schuif loopt vanzelf door de definities tot je hem aanraakt
     autoDraaiMs:     4000,
@@ -75,10 +85,9 @@
   const NF_HEEL    = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 0 });
   const NF_DECIMAL = new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 });
   const NF_EURO    = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-  const NF_EURO_2  = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 });
 
   const rustig = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  const mondialeGrensEuro = INTRO_CONFIG.mondialeGrensDollar * INTRO_CONFIG.dollarNaarEuro;
+  const { mondialeGrensEuro } = INTRO_CONFIG;
 
 
   // ==========================================================================
@@ -90,9 +99,20 @@
   // Lengtegraden liggen op deze breedte dichter bij elkaar: afstanden in graden hiermee corrigeren
   const COS_BREEDTE = Math.cos(50.89 * Math.PI / 180);
 
+  /** Kortste afstand van een punt [x, y] tot de lijnstukken van een of meer lijnen ([[x, y], …]). */
+  function afstandTotLijnen([x, y], lijnen) {
+    let min = Infinity;
+    for (const lijn of lijnen) for (let i = 1; i < lijn.length; i++) {
+      const [x1, y1] = lijn[i - 1], dx = lijn[i][0] - x1, dy = lijn[i][1] - y1;
+      const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy || 1)));
+      min = Math.min(min, Math.hypot(x - x1 - t * dx, y - y1 - t * dy));
+    }
+    return min;
+  }
+
   const pct = (v, decimaal = false) => v == null ? 'geen cijfers' : `${(decimaal ? NF_DECIMAL : NF_HEEL).format(v)}%`;
 
-  const paletKleur = (t) => d3.interpolateYlOrRd(0.03 + 0.97 * t);
+  const paletKleur = (t) => d3.interpolateBlues(0.08 + 0.92 * t);
 
   /** Kleur bij een aandeel (0–100%) op de vaste, lineaire schaal. */
   function kleurVoor(waarde) {
@@ -118,18 +138,26 @@
   // ARMOEDEDEFINITIES — Stap 4 en 5
   // ==========================================================================
 
+  // Gebieden met te weinig inwoners hebben bij CBS geen cijfers; die blijven op elke kaart grijs
+  const heeftCijfers = (b) => b.armoede != null || b.laagInkomen != null;
+
+  // Herkomst van het gemiddelde inkomen in de tooltip (het eigen cijfer is vaak geheim)
+  const INKOMEN_BRON = { buurt: '', wijk: ' (wijkgemiddelde)', gemeente: ' (gemiddelde van Heerlen)' };
+
   const DEFINITIES = [
     {
       id:    'mondiaal',
       naam:  'Mondiaal',
       titel: 'Mondiale armoedegrens',
-      kort:  '$1,90 per dag',
-      uitleg: m => `Arm is wie van minder dan $1,90 (± ${NF_EURO_2.format(mondialeGrensEuro)}) per dag moet rondkomen.
-        Zelfs in de buurt met het laagste gemiddelde inkomen heeft een inwoner zo'n ${NF_EURO.format(m.minInkomenPerDag)} per dag.`,
-      // Buurt telt als arm als het gemiddelde inkomen per inwoner onder de grens ligt
-      waarde:  b => b.inkomenPerDag == null ? null : (b.inkomenPerDag < mondialeGrensEuro ? 100 : 0),
-      tooltip: b => b.inkomenPerDag == null ? 'geen cijfers'
-        : `${pct(b.inkomenPerDag < mondialeGrensEuro ? 100 : 0)} · gem. ${NF_EURO.format(b.inkomenPerDag)} per dag`,
+      kort:  `${NF_EURO.format(mondialeGrensEuro)} per dag`,
+      maatstaf: `Minder dan ${NF_EURO.format(mondialeGrensEuro)} per dag`,
+      uitleg: m => `Ongeveer de extreme armoedegrens van de Wereldbank. Zelfs in de buurt met het laagste gemiddelde
+        inkomen heeft een inwoner zo'n ${NF_EURO.format(m.minInkomenPerDag)} per dag.`,
+      // Een gebied telt als arm als het gemiddelde inkomen per inwoner onder de grens ligt
+      waarde:  b => heeftCijfers(b) && b.inkomenPerDag != null ? (b.inkomenPerDag < mondialeGrensEuro ? 100 : 0) : null,
+      tooltip: b => heeftCijfers(b) && b.inkomenPerDag != null
+        ? `${pct(b.inkomenPerDag < mondialeGrensEuro ? 100 : 0)} · gem. ${NF_EURO.format(b.inkomenPerDag)} per dag${INKOMEN_BRON[b.inkomenBron]}`
+        : 'geen cijfers',
       stad: m => m.stad.mondiaal,
     },
     {
@@ -137,7 +165,8 @@
       naam:  'Nationaal',
       titel: 'Nationale armoedegrens',
       kort:  'personen in armoede',
-      uitleg: () => 'Het aandeel inwoners met een inkomen onder de Nederlandse armoedegrens, zoals het CBS die vaststelt.',
+      maatstaf: 'Inkomen onder de Nederlandse armoedegrens',
+      uitleg: () => 'De armoedegrens zoals het CBS die voor Nederland vaststelt.',
       waarde:  b => b.armoede,
       tooltip: b => pct(b.armoede, true),
       stad: m => m.stad.nationaal,
@@ -147,7 +176,9 @@
       naam:  'Laag inkomen',
       titel: 'Laag-inkomensmaatstaf',
       kort:  '40% laagste inkomens',
-      uitleg: () => 'Het aandeel inwoners dat tot de 40% laagste inkomens van Nederland behoort — dezelfde maat als op de vorige kaarten.',
+      maatstaf: 'Bij de 40% laagste inkomens van Nederland',
+      uitleg: () => `Zet je alle inkomens van Nederland op een rij, dan is dit het aandeel inwoners bij de laagste 40%.
+        Het zegt wie minder verdient dan anderen, niet wie te weinig heeft.`,
       waarde:  b => b.laagInkomen,
       tooltip: b => pct(b.laagInkomen, true),
       stad: m => m.stad.laag,
@@ -250,9 +281,11 @@
     laadBelofte: null,
 
     overlay: null, paneel: null, inhoud: null, status: null, vergelijking: null,
+    kaartUitleg: null,    // de kaartjes bij de gekozen armoedegrens (stap 4)
+    getoondCijfer: null,  // het aandeel dat het grote cijfer nu laat zien (telt mee bij een wissel)
     kaart: null,
     grensLagen: [],       // gemeentegrens (halo + lijn)
-    spoorLagen: [],       // noord/zuid-grens in spoorstijl (halo + dwarsliggers + rails)
+    spoorLagen: [],       // het spoor (witte rand, zwarte lijn, witte blokjes)
     spoorZicht: 0,
     labels: [],
     gemeentegrensGetekend: false,
@@ -350,17 +383,23 @@
   }
 
 
+  /**
+   * Gemiddeld inkomen per inwoner per dag. Het eigen cijfer is vaak geheim (te weinig
+   * inkomensontvangers): dan het eerstvolgende niveau, bijv. [['buurt', c], ['wijk', w], ['gemeente', g]].
+   */
+  function inkomenPerDag(...niveaus) {
+    const [bron, c] = niveaus.find(([, cijfers]) => cijfers?.inkomenPerInwoner != null) || [];
+    return { inkomenPerDag: c ? (c.inkomenPerInwoner * 1000) / 365 : null, inkomenBron: bron ?? null };
+  }
+
   function bouwModel(features, cijfers) {
     const noordSet = new Set(INTRO_CONFIG.noordBuurten);
     const gemeente = cijfers[`GM${INTRO_CONFIG.gemeenteCode}`] || {};
+    const wijkcode = (buurtcode) => `WK${buurtcode.slice(2, 8)}`;
 
     const buurten = features.map(f => {
       const code = String(f.properties.buurtcode || '').trim();
       const c    = cijfers[code] || {};
-      const wijk = cijfers[`WK${code.slice(2, 8)}`] || {};
-      // Gemiddeld inkomen per inwoner is voor veel buurten geheim (te weinig
-      // inkomensontvangers): dan het wijkgemiddelde, anders het gemeentegemiddelde.
-      const inkomen = c.inkomenPerInwoner ?? wijk.inkomenPerInwoner ?? gemeente.inkomenPerInwoner ?? null;
       const { punt, oppervlak } = zwaartepunt(f.geometry);
       return {
         code,
@@ -369,7 +408,7 @@
         inwoners:      c.inwoners ?? getal(f.properties.aantal_inwoners) ?? 0,
         laagInkomen:   c.laagInkomen ?? null,
         armoede:       c.armoede ?? null,
-        inkomenPerDag: inkomen == null ? null : (inkomen * 1000) / 365,
+        ...inkomenPerDag(['buurt', c], ['wijk', cijfers[wijkcode(code)]], ['gemeente', gemeente]),
         zwaartepunt:   punt,
         oppervlak,
         feature:       f,
@@ -402,24 +441,18 @@
     const zuid  = maakHelft('Zuid',  buurten.filter(b => !b.noord));
     buurten.forEach(b => { b.helft = b.noord ? noord : zuid; });
 
-    // Grenzen uit de gedeelde randen: 1× = gemeentegrens, Noord↔Zuid = de spoorgrens
-    // randSegmenten en maakKetens staan in map.js (ook gebruikt voor de gemeentegrens op de kaart)
-    const segmenten = randSegmenten(buurten, b => b.feature.geometry);
-    const gemeentegrens = maakKetens(segmenten.filter(s => s.buurten.length === 1));
-    const spoorgrens = maakKetens(segmenten.filter(s => s.buurten.length === 2 && s.buurten[0].noord !== s.buurten[1].noord))
-      .map(k => (k[0][1] > k.at(-1)[1] ? k.reverse() : k))   // van west naar oost tekenen
-      .sort((a, b) => a[0][1] - b[0][1]);
+    // De gemeentegrens: randen die bij maar één buurt horen (randSegmenten en maakKetens staan in map.js)
+    const gemeentegrens = maakKetens(randSegmenten(buurten, b => b.feature.geometry).filter(s => s.buurten.length === 1));
 
     // Afstand van elke buurt tot het spoor (0–1): de buurtkaart "valt uiteen" vanaf de lijn
-    const spoorPunten = spoorgrens.flat();
+    const spoorVlak = [INTRO_CONFIG.spoorlijn.map(([lat, lon]) => [lon * COS_BREEDTE, lat])];
     buurten.forEach(b => {
       const [lon, lat] = b.zwaartepunt;
-      b.afstandTotSpoor = Math.min(...spoorPunten.map(([la, lo]) => Math.hypot((lo - lon) * COS_BREEDTE, la - lat)));
+      b.afstandTotSpoor = afstandTotLijnen([lon * COS_BREEDTE, lat], spoorVlak);
     });
     const maxAfstand = Math.max(...buurten.map(b => b.afstandTotSpoor)) || 1;
     buurten.forEach(b => { b.afstandTotSpoor /= maxAfstand; });
 
-    const met = (veld) => buurten.filter(b => b[veld] != null);
     const uitersten = (lijst) => {
       const metWaarde = lijst.filter(b => b.laagInkomen != null).sort((a, b) => a.laagInkomen - b.laagInkomen);
       return { laagste: metWaarde[0], hoogste: metWaarde.at(-1) };
@@ -431,8 +464,8 @@
       noord, zuid,
       spreiding: { noord: uitersten(noord.buurten), zuid: uitersten(zuid.buurten) },
       gemeentegrens,
-      spoorgrens,
-      minInkomenPerDag: Math.min(...met('inkomenPerDag').map(b => b.inkomenPerDag)),
+      spoorlijn: [INTRO_CONFIG.spoorlijn],
+      minInkomenPerDag: Math.min(...buurten.filter(b => b.inkomenBron === 'buurt').map(b => b.inkomenPerDag)),
       stad: {
         mondiaal:  gewogenGemiddelde(buurten, DEFINITIES[0].waarde),
         nationaal: gemeente.armoede ?? gewogenGemiddelde(buurten, b => b.armoede),
@@ -536,7 +569,7 @@
     lagen.forEach(l => l.setLatLngs(ketens));
   }
 
-  /** Zichtbaarheid (0–1) van de spoorgrens geleidelijk aanpassen. */
+  /** Zichtbaarheid (0–1) van het spoor geleidelijk aanpassen. */
   function spoorZichtbaarheid(doel, duur, klaar) {
     const van = staat.spoorZicht;
     animeer(duur, (t) => {
@@ -610,12 +643,12 @@
       lijn({ color: '#061826', weight: 2.2, opacity: 0.85, lineJoin: 'round' }),
     ];
 
-    // De grens: witte halo, zwarte lijn en de spoorlijn (rood gestippeld) er middendoor.
+    // Het spoor zoals op een topografische kaart: zwart met witte blokjes, met een witte rand.
     // Dezelfde look keert terug als schuifknop van de armoedegrens in stap 4.
     staat.spoorLagen = [
-      lijn({ color: '#ffffff', weight: 10, opacity: 0.75, lineJoin: 'round', lineCap: 'round' }),
-      lijn({ color: '#061826', weight: 5.5, opacity: 1, lineJoin: 'round', lineCap: 'round' }),
-      lijn({ color: '#e11d48', weight: 2, opacity: 1, dashArray: '6 6', lineJoin: 'round', lineCap: 'butt' }),
+      lijn({ color: '#ffffff', weight: 10, opacity: 0.85, lineJoin: 'round', lineCap: 'round' }),
+      lijn({ color: '#061826', weight: 6, opacity: 1, lineJoin: 'round', lineCap: 'butt' }),
+      lijn({ color: '#ffffff', weight: 3, opacity: 1, dashArray: '9 9', lineJoin: 'round', lineCap: 'butt' }),
     ];
     [...staat.grensLagen, ...staat.spoorLagen].forEach(l => l.addTo(kaart));
     staat.spoorLagen.forEach(l => l.setStyle({ opacity: 0 }));
@@ -642,9 +675,11 @@
     if (!staat.kaart || !staat.bounds || !staat.paneel) return;
     const r = staat.paneel.getBoundingClientRect();
     const smal = window.innerWidth < 760;
+    const uitleg = staat.kaartUitleg.hidden ? null : staat.kaartUitleg.getBoundingClientRect();
     const opties = smal
-      ? { paddingTopLeft: [16, 16], paddingBottomRight: [16, Math.max(16, window.innerHeight - r.top + 12)] }
+      ? { paddingTopLeft: [16, (uitleg?.bottom ?? 0) + 16], paddingBottomRight: [16, Math.max(16, window.innerHeight - r.top + 12)] }
       : { paddingTopLeft: [r.right + 24, 24], paddingBottomRight: [56, 24] };
+    if (uitleg && !smal) maakRuimteVoorUitleg(opties, uitleg);
     staat.kaart.fitBounds(staat.bounds, { ...opties, animate: animeren && !rustig });
   }
 
@@ -698,7 +733,7 @@
 
       if (vanStap != null && vanStap >= 2) {
         // Terug van de buurten: buurten lossen op in hun helft
-        zetLijnenVolledig(staat.spoorLagen, m.spoorgrens);
+        zetLijnenVolledig(staat.spoorLagen, m.spoorlijn);
         spoorZichtbaarheid(1, D);
         stijlOvergang(m.buurten, b => ({ fillColor: helftKleur(b.helft), color: helftKleur(b.helft), opacity: 0 }), D, null, () => {
           zetStijl(m.helften, h => ({ fillColor: helftKleur(h), fillOpacity: 0.85 }));
@@ -708,9 +743,9 @@
       } else if (anim && !staat.spoorGetekend) {
         // Eerst de lijn door de stad trekken, dan kleuren de twee helften in
         spoorZichtbaarheid(1, 0);
-        tekenGeleidelijk(staat.spoorLagen, m.spoorgrens, 1600, () => { staat.spoorGetekend = true; kleurHelften(); });
+        tekenGeleidelijk(staat.spoorLagen, m.spoorlijn, 1600, () => { staat.spoorGetekend = true; kleurHelften(); });
       } else {
-        zetLijnenVolledig(staat.spoorLagen, m.spoorgrens);
+        zetLijnenVolledig(staat.spoorLagen, m.spoorlijn);
         staat.spoorGetekend = true;
         spoorZichtbaarheid(1, D);
         zetStijl(m.buurten, { fillOpacity: 0, opacity: 0 });
@@ -720,7 +755,7 @@
     }
 
     // Vanaf hier: buurten, spoor volledig getekend
-    zetLijnenVolledig(staat.spoorLagen, m.spoorgrens);
+    zetLijnenVolledig(staat.spoorLagen, m.spoorlijn);
     staat.spoorGetekend = true;
 
     if (stap === 2) {
@@ -742,6 +777,54 @@
     spoorZichtbaarheid(0, D);
     zetStijl(m.helften, { fillOpacity: 0 });
     kleurDefinitie(staat.definitie, stap === 3 ? D : 0);
+  }
+
+
+  // ==========================================================================
+  // KAART — Uitleg bij de gekozen armoedegrens (stap 4)
+  // ==========================================================================
+
+  /** De kaartjes links naast Heerlen: naam, maatstaf en uitleg van de grens, en het aandeel van Heerlen. */
+  function werkKaartUitlegBij(def, metOvergang) {
+    const uitleg = staat.kaartUitleg;
+    uitleg.querySelector('.intro-uitleg-titel').textContent = def.titel;
+    uitleg.querySelector('.intro-uitleg-maatstaf').textContent = def.maatstaf;
+    uitleg.querySelector('.intro-uitleg-tekst').textContent = def.uitleg(staat.model).replace(/\s+/g, ' ');
+    if (metOvergang && !rustig) {
+      uitleg.querySelector('.intro-uitleg-grens').animate([{ opacity: 0.2 }, { opacity: 1 }], { duration: 450, easing: 'ease-out' });
+    }
+
+    // Het grote cijfer telt geleidelijk naar de nieuwe waarde
+    const getal = uitleg.querySelector('.intro-uitleg-cijfer strong');
+    const van = staat.getoondCijfer ?? 0, naar = def.stad(staat.model);
+    if (naar == null) { getal.textContent = pct(null); return; }
+    animeer(metOvergang ? 700 : 0, (t) => {
+      staat.getoondCijfer = lerp(van, naar, easeInOut(t));
+      getal.textContent = pct(staat.getoondCijfer, true);
+    });
+  }
+
+  /** Schermpunt van een [lat, lon] als de kaart Heerlen met deze padding toont (zelfde rekenwerk als fitBounds). */
+  function schermpuntBij({ paddingTopLeft, paddingBottomRight }) {
+    const kaart = staat.kaart, linksboven = L.point(paddingTopLeft), rechtsonder = L.point(paddingBottomRight);
+    const zoom = kaart.getBoundsZoom(staat.bounds, false, linksboven.add(rechtsonder));
+    const midden = kaart.project(staat.bounds.getSouthWest(), zoom).add(kaart.project(staat.bounds.getNorthEast(), zoom))
+      .divideBy(2).add(rechtsonder.subtract(linksboven).divideBy(2));
+    const helft = kaart.getSize().divideBy(2);
+    return (punt) => kaart.project(punt, zoom).subtract(midden).add(helft);
+  }
+
+  /** Schuif Heerlen naar rechts tot de gemeentegrens nergens achter de kaartjes van stap 4 ligt. */
+  function maakRuimteVoorUitleg(opties, vak) {
+    const grens = staat.model.gemeentegrens.flat();
+    for (let poging = 0; poging < 4; poging++) {
+      const scherm = schermpuntBij(opties);
+      const teVer = Math.max(0, ...grens.map(scherm)
+        .filter(p => p.y > vak.top - 12 && p.y < vak.bottom + 12)
+        .map(p => vak.right + 24 - p.x));
+      if (!teVer) return;
+      opties.paddingTopLeft[0] += teVer;
+    }
   }
 
 
@@ -793,10 +876,8 @@
     if (!m) return ladenHtml();
     return `
       <div class="intro-drempel">
-        <div class="intro-drempel-kop">
-          <span class="intro-drempel-label">Armoedegrens</span>
-          <span class="intro-drempel-gekozen" aria-live="polite"></span>
-        </div>
+        <p class="intro-drempel-label">Kies een armoedegrens</p>
+        <p class="intro-drempel-gekozen sr-only" aria-live="polite"></p>
         <div class="intro-drempel-baan">
           <div class="intro-drempel-spoor" aria-hidden="true">
             ${DEFINITIES.map((d, i) => `<span class="intro-drempel-punt" style="--f:${i / (DEFINITIES.length - 1)}"></span>`).join('')}
@@ -811,16 +892,14 @@
               <span>${d.naam}</span><small>${d.kort}</small>
             </button>`).join('')}
         </div>
-        <p class="intro-drempel-uitleg"></p>
-        <p class="intro-drempel-stad"></p>
         <p class="intro-drempel-boodschap">Dezelfde stad. Dezelfde mensen. Een andere armoedegrens.</p>
       </div>
       ${legendaHtml('Aandeel inwoners dat als arm telt')}
-      <p class="intro-bron">${BRON}</p>`;
+      <p class="intro-bron">${BRON} Grijs: te weinig inwoners voor cijfers.</p>`;
   }
 
-  /** Werk de armoedegrens-schuif en de teksten eromheen bij (zonder opnieuw op te bouwen). */
-  function werkDrempelBij() {
+  /** Werk de armoedegrens-schuif en de kaartjes op de kaart bij (zonder opnieuw op te bouwen). */
+  function werkDrempelBij(metOvergang = false) {
     const blok = staat.inhoud.querySelector('.intro-drempel');
     if (!blok || !staat.model) return;
     const def = DEFINITIES[staat.definitie];
@@ -833,19 +912,20 @@
       knop.classList.toggle('is-actief', i === staat.definitie);
       knop.setAttribute('aria-pressed', String(i === staat.definitie));
     });
-    blok.querySelector('.intro-drempel-gekozen').textContent = `${def.titel} · ${def.kort}`;
-    blok.querySelector('.intro-drempel-uitleg').textContent = def.uitleg(staat.model).replace(/\s+/g, ' ');
-    blok.querySelector('.intro-drempel-stad').innerHTML =
-      `<strong>${pct(def.stad(staat.model), true)}</strong> van de inwoners van Heerlen telt zo als arm`;
+    // De uitleg staat op de kaart (kaartjes); voor schermlezers ook hier, want het paneel is de dialoog
+    blok.querySelector('.intro-drempel-gekozen').textContent =
+      `${def.titel}: ${def.maatstaf}. ${pct(def.stad(staat.model), true)} van de personen in Heerlen telt zo als arm.`;
     blok.querySelector('.intro-drempel-boodschap').classList.toggle('is-zichtbaar', staat.bekekenDefinities.size > 1);
+    werkKaartUitlegBij(def, metOvergang);
   }
 
   function kiesDefinitie(index) {
     if (index === staat.definitie || staat.stap !== 3) return;
     staat.definitie = index;
     staat.bekekenDefinities.add(index);
-    werkDrempelBij();
-    animatieToken++;
+    animatieToken++;           // stopt de vorige overgang van kleuren en cijfer
+    spoorZichtbaarheid(0, 0);  // en een nog lopende vervaging van het spoor
+    werkDrempelBij(true);
     kleurDefinitie(index, 750);
   }
 
@@ -928,6 +1008,7 @@
       staat.inhoud.innerHTML = paneelHtml(staat.stap);
       staat.paneel.scrollTop = 0;
       if (staat.stap === 3) werkDrempelBij();
+      staat.kaartUitleg.hidden = staat.stap !== 3 || !staat.model;
       regelAutoDraai();
 
       staat.vergelijking.hidden = staat.stap !== 4;
@@ -971,6 +1052,14 @@
       <div class="intro-kaart" aria-hidden="true"></div>
       <div class="intro-scrim" aria-hidden="true"></div>
       <section class="intro-vergelijking" aria-label="Drie armoedekaarten van Heerlen naast elkaar" hidden></section>
+      <div class="intro-kaartuitleg" aria-hidden="true" hidden>
+        <div class="intro-uitleg-kaart intro-uitleg-grens">
+          <p class="intro-uitleg-titel"></p>
+          <p class="intro-uitleg-maatstaf"></p>
+          <p class="intro-uitleg-tekst"></p>
+        </div>
+        <p class="intro-uitleg-kaart intro-uitleg-cijfer"><strong></strong><span>van de personen in Heerlen</span></p>
+      </div>
       <section class="intro-paneel" role="dialog" aria-modal="true" aria-labelledby="intro-titel">
         <div class="intro-inhoud"></div>
       </section>
@@ -981,6 +1070,7 @@
     staat.paneel       = overlay.querySelector('.intro-paneel');
     staat.inhoud       = overlay.querySelector('.intro-inhoud');
     staat.vergelijking = overlay.querySelector('.intro-vergelijking');
+    staat.kaartUitleg  = overlay.querySelector('.intro-kaartuitleg');
     staat.status       = overlay.querySelector('.intro-status');
 
     staat.paneel.addEventListener('click', (e) => {

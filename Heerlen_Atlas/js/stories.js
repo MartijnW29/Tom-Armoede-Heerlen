@@ -271,6 +271,9 @@
     return schrijfEigen();
   }
 
+  // Cookies alsnog geaccepteerd: de eigen stories van dit bezoek alsnog in de browser zetten
+  window.addEventListener('atlas:cookies-geaccepteerd', schrijfEigen);
+
   function verwijderEigen(id) {
     bibliotheek.eigen = bibliotheek.eigen.filter(item => item.id !== id);
     bouwMenu();

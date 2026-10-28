@@ -165,7 +165,7 @@ function expandUrlsForYearRange(urls) {
   }))];
 }
 
-/** Laad alle API-URL's, koppel wijken aan buurten en vul daarna de oudere jaren aan uit CBS. */
+/** Laad alle API-URL's, koppel wijken aan buurten en vul daarna aan uit CBS (oudere jaren en lege velden). */
 async function loadAllAPIs() {
   const urls = [...document.querySelectorAll('.api-url-input')].map(i => i.value.trim()).filter(Boolean);
   if (!urls.length) { alert('Voer minstens één API-URL in'); return; }
@@ -205,7 +205,7 @@ async function loadAllAPIs() {
   }
 }
 
-/** Vul de jaren vóór 2023 aan uit CBS StatLine; de knoptekst laat zien hoe het ging. */
+/** Vul aan uit CBS StatLine: de jaren vóór 2023 en de lege PDOK-velden. De knoptekst laat zien hoe het ging. */
 async function laadEnKoppelCbs() {
   const knop = document.getElementById('load-cbs-data');
   const fc = window.multiLoaderState.originalData;
@@ -214,14 +214,14 @@ async function laadEnKoppelCbs() {
   knop.dataset.origTekst ??= knop.textContent;
   Object.assign(knop, { disabled: true, textContent: 'CBS data laden…' });
   try {
-    const aantal = await window.laadCbsHistorie(fc);
+    const aantal = await window.laadCbsCijfers(fc);
     if (aantal) {
       window.vulAangemaakteVariabelenAan(fc);
       updateYearSlider(fc);
       window.populateFieldSelect(fc);
       window.dispatchEvent(new Event('atlas:data-geladen'));
     }
-    knop.textContent = aantal ? `✓ CBS-jaren toegevoegd (${aantal})` : 'Geen extra CBS-jaren nodig';
+    knop.textContent = aantal ? `✓ CBS-cijfers gekoppeld (${aantal} jaren)` : 'Geen CBS-cijfers nodig';
   } catch (err) {
     console.error('CBS laden mislukt:', err);
     alert('Fout bij laden CBS-data: ' + err.message);

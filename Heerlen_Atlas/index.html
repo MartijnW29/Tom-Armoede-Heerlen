@@ -50,8 +50,8 @@
           <!-- Bron van waarheid voor het palet; de kleurstalen sturen deze aan -->
           <select id="palette-select" hidden>
             <option value="viridis">Viridis</option>
-            <option value="rdylgn" selected>Rood-geel-groen</option>
-            <option value="blues">Blauw</option>
+            <option value="rdylgn">Rood-geel-groen</option>
+            <option value="blues" selected>Blauw</option>
             <option value="oranges">Oranje</option>
           </select>
           <div id="palet-keuze" class="keuze-raster" role="radiogroup" aria-label="Kleurenpalet"></div>
@@ -132,6 +132,7 @@
           <button id="open-storymaker" type="button">Story maken</button>
           <button id="open-split-screen" type="button">Splitscherm</button>
           <button id="open-3d" type="button">3D-kaart</button>
+          <button id="cookie-instellingen" type="button">Cookie-instellingen</button>
         </div>
 
         <!-- Classificatiemethode: verborgen — staat standaard op 'quantile' -->
@@ -198,7 +199,7 @@
             <div class="actie-rij">
               <button id="add-api-url">Voeg API URL toe</button>
               <button id="load-all-apis">Laad alle API's</button>
-              <!-- Vult de jaren 2013-2021 aan met CBS StatLine-kerncijfers -->
+              <!-- Vult aan met CBS StatLine-kerncijfers: de jaren 2013–2022 en de lege PDOK-velden -->
               <button id="load-cbs-data">CBS kerncijfers laden</button>
             </div>
           </div>
@@ -263,7 +264,7 @@
   <script src="js/rondleiding.js"></script>   <!-- rondleiding langs de bediening -->
   <script src="js/map.js"></script>           <!-- kleuren, legenda, info-venster -->
   <script src="js/importer.js"></script>      <!-- eigen bestanden inlezen -->
-  <script src="js/cbs-historie.js"></script>  <!-- jaren 2013–2022 uit CBS StatLine -->
+  <script src="js/cbs-historie.js"></script>  <!-- CBS StatLine: jaren 2013–2022 en lege PDOK-velden -->
   <script src="js/multi-loader.js"></script>  <!-- data laden en tijdlijn -->
   <script src="js/stories.js"></script>       <!-- stories laden en afspelen (map stories/) -->
   <script src="js/storymaker.js"></script>    <!-- zelf stories maken -->

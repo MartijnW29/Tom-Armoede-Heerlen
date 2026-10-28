@@ -29,7 +29,7 @@ const APP_CONFIG = {
 
   // --- Visualisatie ---
   standaardMethode:       'quantile',  // 'quantile' of 'equal'
-  standaardPalet:         'rdylgn',
+  standaardPalet:         'blues',
   standaardDekking:       0.65,
   standaardAantalKlassen: 5,
 
@@ -44,7 +44,7 @@ const VARIABELEN_CONFIG = {
 
   // Categorieën in het keuzemenu; de eerste passende regel wint, dus volgorde is belangrijk
   categorieen: [
-    ['Inkomen en armoede',                   /inkomen|koopkracht|sociaal_minimum|vermogen/],
+    ['Inkomen en armoede',                   /inkomen|koopkracht|sociaal_minimum|vermogen|armoede/],
     ['Werk en uitkeringen',                  /uitkering|arbeidsparticipatie|werknemers|zelfstandigen/],
     ['Zorg en welzijn',                      /wmo|jeugdzorg/],
     ['Opleiding',                            /opleidingsniveau/],
@@ -93,8 +93,11 @@ window.mooieVeldnaam = function (veld) {
   return tekst ? tekst[0].toUpperCase() + tekst.slice(1) : veld;
 };
 
-/** Korte melding onderin beeld die vanzelf verdwijnt (in plaats van alert). Dezelfde tekst komt er niet dubbel bij. */
-window.toonMelding = function (tekst, duurMs = 4500) {
+/**
+ * Korte melding onderin beeld die vanzelf verdwijnt (in plaats van alert). Dezelfde tekst komt er niet dubbel bij.
+ * Met `actie` ({ tekst, bijKlik }) krijgt de melding een knop; een klik op de melding sluit hem.
+ */
+window.toonMelding = function (tekst, duurMs = 4500, actie = null) {
   let houder = document.getElementById('melding-houder');
   if (!houder) {
     houder = maak('div', { id: 'melding-houder' });
@@ -104,6 +107,9 @@ window.toonMelding = function (tekst, duurMs = 4500) {
   }
   const melding = [...houder.children].find(el => el.dataset.tekst === tekst)
     || houder.appendChild(maak('div', { className: 'melding', textContent: tekst, onclick() { this.remove(); } }));
+  if (actie && !melding.querySelector('.melding-actie')) {
+    melding.append(maak('button', { type: 'button', className: 'melding-actie', textContent: actie.tekst, onclick: actie.bijKlik }));
+  }
   melding.dataset.tekst = tekst;
   clearTimeout(melding._timer);
   melding._timer = setTimeout(() => melding.remove(), duurMs);
@@ -114,11 +120,12 @@ window.toonMelding = function (tekst, duurMs = 4500) {
 // COOKIES — Voorkeuren onthouden (favorieten, zelfgemaakte variabelen, ondergrond)
 // ============================================================================
 
-/** Zet een cookie; na "Weigeren" wordt niets meer opgeslagen. */
+/** Zet een cookie; na "Weigeren" wordt niets meer opgeslagen. Geeft terug of het cookie gezet is. */
 window.zetCookie = function (naam, waarde, dagen = 365) {
-  if (naam !== COOKIES.keuze && window.leesCookie(COOKIES.keuze) === 'geweigerd') return;
+  if (naam !== COOKIES.keuze && window.leesCookie(COOKIES.keuze) === 'geweigerd') return false;
   const verloopt = new Date(Date.now() + dagen * 864e5).toUTCString();
   document.cookie = `${naam}=${encodeURIComponent(waarde)};expires=${verloopt};path=/;SameSite=Lax`;
+  return true;
 };
 
 window.leesCookie = function (naam) {
@@ -126,9 +133,41 @@ window.leesCookie = function (naam) {
   return waarde ? decodeURIComponent(waarde.slice(naam.length + 1)) : null;
 };
 
-/** Cookiemelding onderin beeld, eenmalig (na de introductie). Bij weigeren gaan bestaande voorkeuren weg. */
-window.toonCookieMelding = function () {
-  if (window.leesCookie(COOKIES.keuze) || document.getElementById('cookie-melding')) return;
+/**
+ * Leg de cookiekeuze vast. Bij weigeren gaan bestaande voorkeuren weg; bij accepteren krijgen de
+ * onderdelen het event 'atlas:cookies-geaccepteerd' en bewaren ze wat ze nu in het geheugen hebben.
+ */
+function legCookieKeuzeVast(keuze) {
+  window.zetCookie(COOKIES.keuze, keuze);
+  document.getElementById('cookie-melding')?.remove();
+  if (keuze === 'geaccepteerd') {
+    window.dispatchEvent(new Event('atlas:cookies-geaccepteerd'));
+    return;
+  }
+  document.cookie.split('; ').map(c => c.split('=')[0])
+    .filter(naam => naam.startsWith('atlas_') && naam !== COOKIES.keuze)
+    .forEach(naam => { document.cookie = `${naam}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`; });
+  try { Object.keys(localStorage).filter(k => k.startsWith('atlas_')).forEach(k => localStorage.removeItem(k)); } catch (_) { /* geen opslag */ }
+}
+
+/** Na "Weigeren" alsnog accepteren (knop in een melding). */
+window.accepteerCookies = function () {
+  legCookieKeuzeVast('geaccepteerd');
+  window.toonMelding('Cookies geaccepteerd: je voorkeuren worden weer bewaard.');
+};
+
+/** Melding dat een voorkeur niet bewaard is, met een knop om cookies alsnog te accepteren. */
+window.meldNietBewaard = function (tekst = 'Niet bewaard: je hebt cookies geweigerd.') {
+  window.toonMelding(tekst, 8000, { tekst: 'Cookies accepteren', bijKlik: window.accepteerCookies });
+};
+
+/**
+ * Cookiemelding onderin beeld: eenmalig na de introductie, of `opnieuw` via "Cookie-instellingen"
+ * (dan met de huidige keuze erbij).
+ */
+window.toonCookieMelding = function ({ opnieuw = false } = {}) {
+  const huidig = window.leesCookie(COOKIES.keuze);
+  if ((huidig && !opnieuw) || document.getElementById('cookie-melding')) return;
 
   const melding = maak('section', { id: 'cookie-melding', className: 'cookie-melding' });
   melding.setAttribute('role', 'dialog');
@@ -138,7 +177,7 @@ window.toonCookieMelding = function () {
       <h2 id="cookie-melding-titel">Cookies</h2>
       <p>De atlas gebruikt alleen functionele cookies en browseropslag om je favoriete en zelfgemaakte
       variabelen, je kaartweergave en je eigen stories te onthouden. Er worden geen gegevens gedeeld of
-      voor advertenties gebruikt.</p>
+      voor advertenties gebruikt.${huidig ? ` <strong>Je hebt cookies nu ${huidig}.</strong>` : ''}</p>
     </div>
     <div class="cookie-melding-knoppen">
       <button type="button" data-keuze="geaccepteerd">Accepteren</button>
@@ -147,15 +186,7 @@ window.toonCookieMelding = function () {
 
   melding.addEventListener('click', (e) => {
     const keuze = e.target.closest('[data-keuze]')?.dataset.keuze;
-    if (!keuze) return;
-    window.zetCookie(COOKIES.keuze, keuze);
-    if (keuze === 'geweigerd') {
-      document.cookie.split('; ').map(c => c.split('=')[0])
-        .filter(naam => naam.startsWith('atlas_') && naam !== COOKIES.keuze)
-        .forEach(naam => { document.cookie = `${naam}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`; });
-      try { Object.keys(localStorage).filter(k => k.startsWith('atlas_')).forEach(k => localStorage.removeItem(k)); } catch (_) { /* geen opslag */ }
-    }
-    melding.remove();
+    if (keuze) legCookieKeuzeVast(keuze);
   });
 
   document.body.appendChild(melding);
@@ -168,12 +199,16 @@ window.toonCookieMelding = function () {
 
 window.favorieteVelden = new Set((window.leesCookie(COOKIES.favorieten) || '').split(',').filter(Boolean));
 
+const bewaarFavorieten = () => window.zetCookie(COOKIES.favorieten, [...window.favorieteVelden].join(','));
+
 window.toggleFavorietVeld = function (veld) {
   const favorieten = window.favorieteVelden;
   favorieten.has(veld) ? favorieten.delete(veld) : favorieten.add(veld);
-  window.zetCookie(COOKIES.favorieten, [...favorieten].join(','));
+  if (!bewaarFavorieten()) window.meldNietBewaard();
   window.vernieuwVeldSelecties();
 };
+
+window.addEventListener('atlas:cookies-geaccepteerd', () => { if (window.favorieteVelden.size) bewaarFavorieten(); });
 
 
 // ============================================================================
@@ -355,11 +390,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('ondergrond-keuze').appendChild(maakKeuzeKnop(sleutel, naam,
       `<img class="ondergrond-voorbeeld is-${sleutel}" src="${tegel}" alt="" loading="lazy"><span>${naam}</span>`, () => {
         kiesOndergrond(sleutel);
-        window.zetCookie(COOKIES.ondergrond, sleutel);
+        if (!window.zetCookie(COOKIES.ondergrond, sleutel)) window.meldNietBewaard();
       }));
   }
 
   markeerActieveKeuzes();
+});
+
+// Alsnog geaccepteerd: een eerder gekozen ondergrond nu bewaren
+window.addEventListener('atlas:cookies-geaccepteerd', () => {
+  if (huidigeOndergrond !== APP_CONFIG.standaardOndergrond) window.zetCookie(COOKIES.ondergrond, huidigeOndergrond);
 });
 
 
@@ -477,12 +517,15 @@ window.getFieldGroupsForUi = function () {
 /** Numerieke velden uit de dataset worden de variabelen; daarna worden de rijen opgebouwd. */
 window.populateFieldSelect = function (fc) {
   if (!fc?.features?.length) return;
-  const steekproef = fc.features.slice(0, 20).map(f => f.properties || {});
-  // Een veld telt als numeriek als de eerste ingevulde waarde in de steekproef een getal is
-  window.availableFields = Object.keys(steekproef[0]).filter(veld => {
-    const waarde = steekproef.map(p => p[veld]).find(v => v !== null && v !== undefined);
-    return waarde !== undefined && !isNaN(+waarde);
-  });
+  // Velden uit álle jaren: sommige bestaan maar in een paar jaren (zoals personen in armoede, 2024).
+  // Een veld telt als numeriek als de eerste ingevulde waarde een getal is.
+  const eersteWaarde = new Map();
+  for (const f of fc.features) {
+    for (const [veld, waarde] of Object.entries(f.properties || {})) {
+      if (!eersteWaarde.has(veld) && waarde !== null && waarde !== undefined) eersteWaarde.set(veld, waarde);
+    }
+  }
+  window.availableFields = [...eersteWaarde].filter(([, waarde]) => !isNaN(+waarde)).map(([veld]) => veld);
   window.herstelAangemaakteVariabelen?.();  // zelfgemaakte variabelen uit de cookie terugzetten
   window.initFieldSelectors(window.availableFields);
 };
@@ -789,6 +832,8 @@ document.getElementById('verken-info-toggle').addEventListener('click', (e) => {
   info.hidden = !info.hidden;
   e.currentTarget.setAttribute('aria-expanded', String(!info.hidden));
 });
+
+document.getElementById('cookie-instellingen').addEventListener('click', () => window.toonCookieMelding({ opnieuw: true }));
 
 // Naar splitscherm of 3D; wie daarna terugkomt (ook met de terugknop) krijgt geen introductie
 [['open-split-screen', 'split-screen.html'], ['open-3d', 'huisjes-3d.html']].forEach(([id, pagina]) =>

@@ -22,7 +22,8 @@
   const COOKIE_NAAM = 'atlas_aangemaakte_variabelen';
   const $ = (id) => document.getElementById(id);
   let operator = '+';
-  const tijdelijk = new Map();  // formules uit een story: alleen voor dit bezoek, niet in de cookie
+  const tijdelijk = new Map();    // formules uit een story: alleen voor dit bezoek, niet in de cookie
+  const nietBewaard = new Map();  // eigen formules na "Weigeren": bewaard zodra cookies alsnog geaccepteerd worden
 
 
   // ==========================================================================
@@ -63,6 +64,12 @@
 
   const schrijfFormules = (lijst) => window.zetCookie(COOKIE_NAAM, JSON.stringify(lijst));
   const zonderFormule = (veld) => leesFormules().filter(f => f.veld !== veld);
+
+  window.addEventListener('atlas:cookies-geaccepteerd', () => {
+    if (!nietBewaard.size) return;
+    schrijfFormules([...leesFormules().filter(f => !nietBewaard.has(f.veld)), ...nietBewaard.values()]);
+    nietBewaard.clear();
+  });
 
 
   // ==========================================================================
@@ -105,7 +112,11 @@
     const ongeldig = berekenEnRegistreer(veldA, veldB, operator, veld);
     if (ongeldig === null) return zetStatus('Laad eerst een dataset voordat je een berekende variabele maakt.', 'error');
 
-    schrijfFormules([...zonderFormule(veld), { veld, a: veldA, b: veldB, op: operator }]);
+    const formule = { veld, a: veldA, b: veldB, op: operator };
+    if (!schrijfFormules([...zonderFormule(veld), formule])) {
+      nietBewaard.set(veld, formule);
+      window.meldNietBewaard();
+    }
 
     // De nieuwe variabele meteen op de kaart
     window.initFieldSelectors(window.availableFields);
@@ -122,7 +133,7 @@
 
   /** Vul zelfgemaakte variabelen aan voor features die het veld nog missen (bijv. later geladen CBS-jaren). */
   window.vulAangemaakteVariabelenAan = function (fc) {
-    [...leesFormules(), ...tijdelijk.values()]
+    [...leesFormules(), ...nietBewaard.values(), ...tijdelijk.values()]
       .filter(({ veld }) => window.customFieldNames.includes(veld))
       .forEach(({ veld, a, b, op }) => fc.features.forEach(f => {
         f.properties ??= {};
@@ -139,7 +150,7 @@
   };
 
   /** Formule { veld, a, b, op } van een zelfgemaakte variabele (uit de cookie of uit een story), anders null. */
-  window.formuleVan = (veld) => leesFormules().find(f => f.veld === veld) || tijdelijk.get(veld) || null;
+  window.formuleVan = (veld) => leesFormules().find(f => f.veld === veld) || nietBewaard.get(veld) || tijdelijk.get(veld) || null;
 
   /**
    * Zelfgemaakte variabelen uit een story aanmaken die deze bezoeker nog niet heeft, alleen
@@ -159,6 +170,7 @@
 
   window.verwijderAangemaakteVariabele = function (veld) {
     tijdelijk.delete(veld);
+    nietBewaard.delete(veld);
     window.customFieldNames = window.customFieldNames.filter(v => v !== veld);
     window.availableFields  = window.availableFields.filter(v => v !== veld);
     if (window.favorieteVelden.delete(veld)) window.zetCookie(COOKIES.favorieten, [...window.favorieteVelden].join(','));

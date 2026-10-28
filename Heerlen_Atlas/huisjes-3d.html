@@ -7,6 +7,7 @@
 
   <!-- Three.js (UMD-build, werkt ook zonder lokale server) -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script src="js/cbs-historie.js"></script>  <!-- CBS vult aan wat PDOK leeg laat (window.vulCbsAan) -->
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -177,7 +178,7 @@
 
     <div class="paneel">
       <h3>Data</h3>
-      <label for="jaar">Buurtcijfers (CBS via PDOK)</label>
+      <label for="jaar">Buurtcijfers (CBS, via PDOK en StatLine)</label>
       <select id="jaar"></select>
       <label for="kleurVar">Variabele</label>
       <select id="kleurVar"></select>
@@ -189,7 +190,7 @@
         <option value="blues">Blauw</option>
       </select>
       <div class="knoppen">
-        <button id="typeModus" class="sec" title="Elk van de 11 BAG-gebruiksfuncties (woning, winkel, kantoor, ...) krijgt een eigen kleur, in plaats van de buurtvariabele">🏘 Toon 11 gebouwtypen</button>
+        <button id="typeModus" class="sec" title="Elk van de 11 BAG-gebruiksfuncties (woning, winkel, kantoor, ...) krijgt een eigen kleur; de grond blijft de buurtvariabele tonen">🏘 Toon 11 gebouwtypen</button>
       </div>
     </div>
 
@@ -201,8 +202,8 @@
         <option value="pastel">Pastel (groen &amp; water)</option>
         <option value="lucht">Luchtfoto</option>
       </select>
-      <div class="slider-kop"><label for="ovAlpha">Opacity van buurten</label><b id="ovAlphaW">25%</b></div>
-      <input type="range" id="ovAlpha" min="0" max="100" step="5" value="25" />
+      <div class="slider-kop"><label for="ovAlpha">Opacity van buurten</label><b id="ovAlphaW">70%</b></div>
+      <input type="range" id="ovAlpha" min="0" max="100" step="5" value="70" />
       <!-- Hoogte-overdrijving (terrein): standaard 1× en verborgen in het paneel; de waarde blijft instelbaar in de code -->
       <div id="exagBlok" hidden>
         <div class="slider-kop"><label for="exag">Hoogte-overdrijving</label><b id="exagW">1,0×</b></div>
@@ -306,7 +307,7 @@
 // ── Configuratie ────────────────────────────────────────────────────────────
 const LON0 = 5.9750, LAT0 = 50.8890;                    // moet gelijk zijn aan tools/bake-gebouwen.html
 const KX = 111320 * Math.cos(LAT0 * Math.PI / 180), KZ = 110574;
-const JAREN    = [2025, 2024, 2023, 2022];
+const JAREN    = [2025, 2024, 2023];                     // de jaren die PDOK nog heeft
 const pdokUrl  = j => `https://api.pdok.nl/cbs/wijken-en-buurten-${j}/ogc/v1/collections/buurten/items?gemeentecode=GM0917&limit=1000&f=json`;
 const ONGELDIG = -99990;
 const ZC = 13;                                           // terrein-chunks = z13-tegels (±3 km)
@@ -367,6 +368,8 @@ const NAMEN = {
   percentage_aardgaswoningen: 'Woningen op aardgas', percentage_aardgasvrije_woningen: 'Aardgasvrije woningen',
   percentage_onbewoond: 'Onbewoonde woningen', percentage_met_herkomstland_buiten_europa: 'Herkomst buiten Europa',
   percentage_met_herkomstland_nederland: 'Herkomst Nederland', percentage_gehuwd: 'Gehuwd', percentage_ongehuwd: 'Ongehuwd',
+  percentage_personen_in_armoede: 'Personen in armoede',
+  percentage_personen_tot_25_procent_boven_armoedegrens: 'Tot 25% boven de armoedegrens',
 };
 
 const DETAIL = [
@@ -430,6 +433,8 @@ async function haalOp(url) {
   }
   throw fout;
 }
+// cbs-historie.js (gedeeld met de atlas) haalt hiermee zijn CBS-tabellen op
+window.fetchJsonMetRetry = url => haalOp(url).then(r => r.json());
 
 // ── Projecties ──────────────────────────────────────────────────────────────
 const naarWereld = (lon, lat) => [(lon - LON0) * KX, -(lat - LAT0) * KZ];      // x = oost, z = -noord
@@ -441,9 +446,9 @@ const llVanMerc = (mx, my) => [mx * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 
 // ── Toestand ────────────────────────────────────────────────────────────────
 const S = {
   jaar: 2024, cache: {}, buurten: [], vars: [],
-  kleurVar: 'percentage_koopwoningen', palet: 'rdylgn', laag: 'lucht',
-  exag: 1, hmul: 2, ovAlpha: 0.25,
-  geselecteerd: -1, hover: -1, typeModus: false,
+  kleurVar: 'percentage_koopwoningen', palet: 'blues', laag: 'lucht',
+  exag: 1, hmul: 2, ovAlpha: 0.7,
+  geselecteerd: -1, hover: -1, typeModus: true,
   dag: 1, dagDoel: 1, autoDraai: false, rondvlucht: false,
   centrum: { x: 0, z: 0 }, straal: 6000,
   chunks: new Map(), gebouwen: null,
@@ -1212,27 +1217,27 @@ function tekenGebouwtypenLegenda() {
   const g = S.gebouwen, telling = new Array(GEBOUWTYPEN.length).fill(0);
   if (g) for (let i = 0; i < g.N; i++) if (g.chunk[i]) telling[g.typ[i]]++;
   // Zweeft rechtsboven in beeld, zodat hij ook zichtbaar blijft met ingeklapte zijbalk
-  $('typeLegenda').hidden = false;
   $('typeLegenda').innerHTML = `
     <h4>11 gebouwtypen</h4>
     <div class="uitleg" style="margin-top:0">Elk pand gekleurd naar zijn officiële BAG-gebruiksfunctie, ongeacht buurt of variabele.</div>
     <div class="type-lijst">
       ${GEBOUWTYPEN.map((t, i) => `<div class="type-rij"><i style="background:${t.kleur}"></i><b>${t.label}</b>${telling[i].toLocaleString('nl-NL')}</div>`).join('')}
     </div>`;
-  $('legenda').innerHTML = `<div class="uitleg" style="margin-top:0">Zie rechtsboven in beeld.</div>`;
 }
+/** De kleurschaal hoort altijd bij de grond (buurtvlakken); bij de gebouwtypen staat de typelegenda er rechtsboven bij. */
 function tekenLegenda(kr) {
-  if (S.typeModus) return tekenGebouwtypenLegenda();
-  $('typeLegenda').hidden = true;
+  $('typeLegenda').hidden = !S.typeModus;
+  if (S.typeModus) tekenGebouwtypenLegenda();
   const kv = S.kleurVar, stops = PALETTEN[S.palet].join(',');
+  const uitleg = S.typeModus
+    ? 'De grond kleurt per buurt naar deze variabele. De gebouwen hebben de kleur van hun gebouwtype (zie rechtsboven).'
+    : isPct(kv)
+      ? `<span class="lamp" style="background:${PALETTEN[S.palet][3]}"></span>Gekleurd gebouw = onderdeel van dit percentage. Alle gebouwen tellen mee. Bij <b>${fmt(kv, 55)}</b> is ruim de helft van de gebouwen gekleurd, gelijk verdeeld over kleine en grote gebouwen.<br><span class="lamp" style="background:#eee9e0"></span>Wit = rest.`
+      : 'Alle gebouwen krijgen de kleur van hun buurt.';
   $('legenda').innerHTML = `
     <div class="verloop" style="background:linear-gradient(90deg,${stops})"></div>
     <div class="verloop-labels"><span>${fmt(kv, kr.lo)}</span><span>${leesbaar(kv)}</span><span>${fmt(kv, kr.hi)}</span></div>
-    <div class="uitleg">
-      ${isPct(kv)
-        ? `<span class="lamp" style="background:#f89540"></span>Gekleurd gebouw = onderdeel van dit percentage. Alle gebouwen tellen mee. Bij <b>${fmt(kv, 55)}</b> is ruim de helft van de gebouwen gekleurd, gelijk verdeeld over kleine en grote gebouwen.<br><span class="lamp" style="background:#eee9e0"></span>Wit = rest.`
-        : `Alle gebouwen krijgen de kleur van hun buurt.`}
-    </div>`;
+    <div class="uitleg">${uitleg}</div>`;
 }
 function tekenRanglijst() {
   const lijst = S.buurten.filter(b => b.v != null).sort((a, b) => b.v - a.v);
@@ -1415,6 +1420,8 @@ async function laadFeatures(jaar) {
   const j = await (await haalOp(pdokUrl(jaar))).json();
   const f = (j.features || []).filter(x => x.geometry && x.properties?.water !== 'JA');
   if (!f.length) throw new Error('geen buurten ontvangen');
+  // CBS vult aan wat PDOK leeg laat (o.a. personen in armoede, inkomens 2024); lukt dat niet, dan alleen PDOK
+  try { await window.vulCbsAan(f, jaar); } catch (err) { console.warn(`CBS ${jaar} aanvullen mislukt:`, err); }
   return (S.cache[jaar] = f);
 }
 
@@ -1488,19 +1495,19 @@ $('jaar').onchange     = () => { stopRondvlucht(); laadJaar(+$('jaar').value); }
 $('kleurVar').onchange = e => { S.kleurVar = e.target.value; updateVisualisatie(); };
 $('palet').onchange    = e => { S.palet = e.target.value; updateVisualisatie(); };
 $('palet').value = S.palet;
-$('typeModus').onclick = () => {
-  S.typeModus = !S.typeModus;
-  $('typeModus').classList.toggle('aan', S.typeModus);
-  $('typeModus').textContent = S.typeModus ? '↩ Terug naar buurtvariabele' : '🏘 Toon 11 gebouwtypen';
-  // Variabele/palet hebben geen effect zolang de gebouwtypen-kleuring aan staat
-  $('kleurVar').disabled = $('palet').disabled = S.typeModus;
+/** Gebouwen naar hun BAG-gebruiksfunctie kleuren (aan) of naar de buurtvariabele; de grond volgt altijd de variabele. */
+function zetTypeModus(aan) {
+  S.typeModus = aan;
+  $('typeModus').classList.toggle('aan', aan);
+  $('typeModus').textContent = aan ? '🎨 Gebouwen naar buurtvariabele' : '🏘 Toon 11 gebouwtypen';
   // Buurtlabels horen niet bij de gebouwtypen; bij terugschakelen de oude stand herstellen
   const labelSel = $('labelModus');
-  if (S.typeModus) { S.labelModusVoorType = labelSel.value; labelSel.value = 'uit'; }
+  if (aan) { S.labelModusVoorType = labelSel.value; labelSel.value = 'uit'; }
   else if (S.labelModusVoorType) labelSel.value = S.labelModusVoorType;
-  labelSel.disabled = S.typeModus;
-  updateVisualisatie();
-};
+  labelSel.disabled = aan;
+}
+zetTypeModus(S.typeModus);
+$('typeModus').onclick = () => { zetTypeModus(!S.typeModus); updateVisualisatie(); };
 $('laag').value = S.laag;
 $('laag').onchange = e => { S.laag = e.target.value; for (const ch of S.chunks.values()) { ch.laagNu = null; ch.niveau = -1; } ondergrondBeheer(); };
 $('ovAlpha').oninput = e => { S.ovAlpha = +e.target.value / 100; $('ovAlphaW').textContent = e.target.value + '%'; clearTimeout(S.ovT); S.ovT = setTimeout(tekenAlleOverlays, 60); };

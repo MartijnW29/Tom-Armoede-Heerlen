@@ -2,13 +2,15 @@
 /* INTRO.CSS — Introductieverhaal "De armoedegrens trekken" (js/intro.js)      */
 /* ========================================================================== */
 /*
-  Gebruikt de thema-variabelen uit app.css (:root). De vaste kleuren van de
-  grens (zwart met rode stippellijn) staan hieronder in --intro-grens-*.
+  Gebruikt de thema-variabelen uit app.css (:root). De vaste kleuren van het
+  spoor (zwart met witte blokjes) staan hieronder in --intro-grens-*; het blauw
+  van de kaart in --intro-accent.
 */
 
 .intro {
   --intro-grens-lijn: #061826;
-  --intro-grens-spoor: #e11d48;
+  --intro-grens-spoor: #ffffff;
+  --intro-accent: #2171b5;
   --intro-paneel-breedte: min(420px, calc(100vw - 48px));
 
   position: fixed;
@@ -192,7 +194,7 @@ body.intro-open {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #0b7285, #ffb703);
+  background: linear-gradient(90deg, #6baed6, #08519c);
   transition: width 0.3s ease;
 }
 
@@ -242,7 +244,7 @@ body.intro-open {
 .intro-tekst .intro-nadruk {
   margin: 14px 0;
   padding-left: 12px;
-  border-left: 4px solid var(--intro-grens-spoor);
+  border-left: 4px solid var(--intro-accent);
   font-size: 18px;
   font-weight: 800;
   line-height: 1.3;
@@ -254,7 +256,7 @@ body.intro-open {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 18px;
-  background: linear-gradient(135deg, rgba(11, 114, 133, 0.09), rgba(255, 183, 3, 0.10));
+  background: linear-gradient(135deg, rgba(33, 113, 181, 0.08), rgba(107, 174, 214, 0.14));
 }
 
 .intro-teaser p:last-child {
@@ -401,37 +403,24 @@ body.intro-open {
 .intro-drempel {
   --pos: 0;
   margin-bottom: 14px;
-  padding: 14px 16px 12px;
+  padding: 12px 12px 12px;
   border-radius: 20px;
   background: var(--kleur-paneel-zacht);
   border: 1px solid rgba(8, 24, 48, 0.08);
 }
 
-.intro-drempel-kop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 10px;
-  margin-bottom: 8px;
-}
-
 .intro-drempel-label {
-  font-size: 11px;
+  margin: 0 0 4px;
+  font-size: 15px;
   font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--kleur-primair);
+  color: #061826;
 }
 
-.intro-drempel-gekozen {
-  font-size: 13px;
-  font-weight: 700;
-}
-
+/* De schuif loopt boven de drie opties: de punten staan midden boven elke optie (--rand = halve kolom) */
 .intro-drempel-baan {
+  --rand: calc(100% / 6);
   position: relative;
-  height: 52px;
+  height: 40px;
   border-radius: 12px;
 }
 
@@ -441,8 +430,8 @@ body.intro-open {
 
 .intro-drempel-spoor {
   position: absolute;
-  left: 14px;
-  right: 14px;
+  left: var(--rand);
+  right: var(--rand);
   top: 50%;
   height: 2px;
   margin-top: -1px;
@@ -462,12 +451,12 @@ body.intro-open {
   box-shadow: inset 0 0 0 2px #9fb3c8;
 }
 
-/* De schuifknop ziet eruit als de grens op de kaart: zwart met rode stippellijn */
+/* De schuifknop ziet eruit als het spoor op de kaart: zwart met witte blokjes */
 .intro-drempel-lijn {
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: calc(14px + var(--pos) * (100% - 28px));
+  left: calc(var(--rand) + var(--pos) * (100% - 2 * var(--rand)));
   width: 7px;
   margin-left: -3.5px;
   border-radius: 4px;
@@ -489,57 +478,47 @@ body.intro-open {
   cursor: pointer;
 }
 
+/* De drie opties als duidelijke knoppen; de gekozen optie is blauw omrand */
 .intro-drempel-stops {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-top: 2px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));  /* even breed, zodat de schuifpunten erboven blijven staan */
+  gap: 8px;
 }
 
 .intro .intro-drempel-stop {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 4px 2px;
-  border-radius: 8px;
-  background: none;
-  color: var(--kleur-tekst-zacht);
-  font-size: 12px;
-  font-weight: 700;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 9px 4px;
+  border: 1.5px solid rgba(8, 24, 48, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  color: #0b3040;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
   text-align: center;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.intro .intro-drempel-stop:first-child { text-align: left; align-items: flex-start; }
-.intro .intro-drempel-stop:last-child  { text-align: right; align-items: flex-end; }
-
 .intro .intro-drempel-stop:hover {
-  background: rgba(11, 114, 133, 0.07);
+  border-color: rgba(33, 113, 181, 0.45);
+  background: rgba(33, 113, 181, 0.05);
 }
 
 .intro .intro-drempel-stop.is-actief {
+  border-color: var(--intro-accent);
+  background: rgba(33, 113, 181, 0.09);
+  box-shadow: 0 6px 16px rgba(33, 113, 181, 0.18);
   color: #061826;
 }
 
 .intro-drempel-stop small {
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.intro-drempel-uitleg {
-  margin: 12px 0 6px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #0b3040;
-}
-
-.intro-drempel-stad {
-  margin: 0;
-  font-size: 13px;
-}
-
-.intro-drempel-stad strong {
-  font-size: 20px;
-  letter-spacing: -0.02em;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--kleur-tekst-zacht);
 }
 
 .intro-drempel-boodschap {
@@ -654,6 +633,88 @@ body.intro-open {
   display: none;
 }
 
+/* Stap 4: uitleg bij de gekozen armoedegrens, links naast Heerlen (de kaart schuift op als het krap is) */
+.intro-kaartuitleg {
+  position: absolute;
+  z-index: 700;
+  top: 54%;
+  left: calc(24px + var(--intro-paneel-breedte) + 24px);
+  width: min(400px, calc(100vw - var(--intro-paneel-breedte) - 140px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.intro-kaartuitleg[hidden] {
+  display: none;
+}
+
+.intro-uitleg-kaart {
+  margin: 0;
+  padding: 16px 22px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 48px rgba(8, 24, 48, 0.18);
+  animation: intro-uitleg-in 0.45s ease both;
+}
+
+.intro-uitleg-grens {
+  align-self: stretch;
+}
+
+.intro-uitleg-titel {
+  margin: 0;
+  font-size: clamp(22px, 2vw, 30px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--intro-accent);
+}
+
+.intro-uitleg-maatstaf {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #061826;
+}
+
+.intro-uitleg-tekst {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-uitleg-cijfer {
+  display: flex;
+  flex-direction: column;
+  animation-delay: 0.1s;
+}
+
+.intro-uitleg-cijfer strong {
+  font-size: clamp(48px, 4.6vw, 68px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--intro-accent);
+}
+
+.intro-uitleg-cijfer span {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #061826;
+}
+
+@keyframes intro-uitleg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* De kaarten krijgen alle hoogte die over is; de legenda staat eronder */
 .intro-vergelijking-kaarten {
   flex: 1;
@@ -754,6 +815,46 @@ body.intro-open {
 
   .intro .leaflet-control-zoom {
     display: none;
+  }
+
+  /* Boven de kaart, naast elkaar en zonder de lopende tekst */
+  .intro-kaartuitleg {
+    top: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
+    flex-direction: row;
+    align-items: stretch;
+    gap: 8px;
+    transform: none;
+  }
+
+  .intro-uitleg-kaart {
+    padding: 10px 14px;
+    border-radius: 16px;
+  }
+
+  .intro-uitleg-grens {
+    flex: 1;
+  }
+
+  .intro-uitleg-titel {
+    font-size: 16px;
+  }
+
+  .intro-uitleg-maatstaf {
+    font-size: 12px;
+  }
+
+  .intro-uitleg-tekst {
+    display: none;
+  }
+
+  .intro-uitleg-cijfer strong {
+    font-size: 28px;
+  }
+
+  .intro-uitleg-cijfer span {
+    font-size: 11px;
   }
 
   .intro.is-vergelijking .intro-paneel {

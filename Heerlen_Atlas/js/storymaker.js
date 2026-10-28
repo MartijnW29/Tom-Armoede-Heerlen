@@ -99,7 +99,8 @@
   }
 
   const hint = (tekst) => h('p', { className: 'maker-hint' }, tekst);
-  const waarschuwing = (tekst) => h('p', { className: 'maker-waarschuwing' }, tekst);
+  const waarschuwing = (...inhoud) => h('p', { className: 'maker-waarschuwing' }, ...inhoud);
+  const accepteerKnop = () => knop('Cookies accepteren', window.accepteerCookies, 'maker-tweede maker-klein');
 
   const nieuwId = () => `eigen-${Date.now().toString(36)}`;
   const datum = (tijd) => new Date(tijd).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
@@ -220,7 +221,7 @@
   function opslaanEnSluiten() {
     const { id, verhaal } = maker;
     if (!bewaarNu(true)) {
-      window.toonMelding('Niet opgeslagen: je hebt cookies geweigerd. Exporteer je story als bestand om hem te houden.', 7000);
+      window.meldNietBewaard('Niet opgeslagen: je hebt cookies geweigerd. Exporteer je story als bestand om hem te houden.');
       return;
     }
     toonOverzicht();
@@ -230,7 +231,8 @@
 
   function werkStatusBij(bewaard) {
     if (!maker.status) return;
-    maker.status.textContent = bewaard ? '✓ Bewaard in deze browser' : 'Niet bewaard: exporteer je story';
+    vul(maker.status, bewaard ? '✓ Bewaard in deze browser' : 'Niet bewaard: exporteer je story',
+      bewaard || Stories.magOpslaan() ? null : accepteerKnop());
     maker.status.classList.toggle('is-waarschuwing', !bewaard);
   }
 
@@ -241,7 +243,14 @@
   }
 
   const opslagWaarschuwing = () => Stories.magOpslaan() ? null : waarschuwing(
-    'Je hebt cookies geweigerd, dus stories worden niet in deze browser bewaard. Exporteer je story als bestand om hem te houden.');
+    'Je hebt cookies geweigerd, dus stories worden niet in deze browser bewaard. Exporteer je story als bestand om hem te houden.',
+    accepteerKnop());
+
+  // Cookies alsnog geaccepteerd: de open story meteen bewaren, of het overzicht zonder waarschuwing tonen
+  window.addEventListener('atlas:cookies-geaccepteerd', () => {
+    if (!document.getElementById('app').classList.contains('maker-open')) return;
+    if (maker.verhaal) bewaarNu(true); else toonOverzicht();
+  });
 
   function kop(titel, terug) {
     const sluit = knop('✕', sluitMaker, 'maker-sluit', 'Story maker sluiten');

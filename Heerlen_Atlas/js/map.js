@@ -351,7 +351,7 @@ function toonTrendgrafiek(buurt, standaardVeld) {
  *   klassenFC: dataset voor de klassengrenzen (alle jaren), zodat dezelfde kleur
  *   elk jaar dezelfde waarde betekent.
  */
-window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'rdylgn', opacity = 0.65, classes = 5, klassenFC } = {}) {
+window.toonChoropleth = function (fc, veld, { method = 'quantile', palette = 'blues', opacity = 0.65, classes = 5, klassenFC } = {}) {
   if (!fc?.features?.length) return;
   const { appData } = window;
 

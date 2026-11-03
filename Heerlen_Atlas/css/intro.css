@@ -722,10 +722,8 @@ body.intro-open {
   vector-effect: non-scaling-stroke;
 }
 
-/* Stap 4: twee kaartjes, elk met een eigen legenda */
-.intro-vergelijking-kaarten.is-twee {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 40px;
+/* Stap 4 en 7: Noord en Zuid, wijken en buurten, elk met een eigen legenda */
+.intro-vergelijking-kaarten.is-eigen-legenda {
   margin-bottom: 0;
 }
 
@@ -736,6 +734,13 @@ body.intro-open {
 /* Noord en Zuid als twee vlakken: geen buurtranden binnen een helft */
 .intro-mini svg.is-geheel path {
   stroke: none;
+}
+
+/* Wijkgrenzen over de wijkvlakken (die zelf geen rand hebben) */
+.intro-mini svg path.intro-mini-grens {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1px;
 }
 
 /* Het spoor zoals op de grote kaart: zwart met witte blokjes */

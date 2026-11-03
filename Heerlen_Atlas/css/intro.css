@@ -740,6 +740,14 @@ body.intro-open {
   margin-top: 10px;
 }
 
+/* In de smalle kaartjes valt "geen cijfers" onder de titel; twee regels ruimte houdt de balken op één lijn */
+.intro-mini .intro-legenda-kop {
+  flex-wrap: wrap;
+  align-content: flex-start;
+  row-gap: 2px;
+  min-height: 32px;
+}
+
 /* Noord en Zuid als twee vlakken: geen buurtranden binnen een helft */
 .intro-mini svg.is-geheel path {
   stroke: none;

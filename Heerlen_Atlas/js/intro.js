@@ -165,7 +165,7 @@
       <div class="intro-legenda">
         <div class="intro-legenda-kop">
           <span class="intro-legenda-titel">${escapeHtml(titel)}</span>
-          ${geenData ? '<span class="intro-legenda-geendata" title="Te weinig inwoners voor cijfers"><i></i>Geen cijfers</span>' : ''}
+          ${geenData ? '<span class="intro-legenda-geendata"><i></i>Geen cijfers: te weinig inwoners</span>' : ''}
         </div>
         <div class="intro-legenda-balk" style="background: ${verloop(schaal.palet)}"></div>
         <div class="intro-legenda-ticks">${ticks}</div>

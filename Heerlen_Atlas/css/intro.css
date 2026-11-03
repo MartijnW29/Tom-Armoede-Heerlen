@@ -396,6 +396,22 @@ body.intro-open {
   font-variant-numeric: tabular-nums;
 }
 
+.intro-legenda-geendata {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--kleur-tekst-zacht);
+}
+
+.intro-legenda-geendata i {
+  width: 18px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--arcering-geen-data);
+}
+
 /* ========== Keuze van de armoedegrens (stap 4) ========== */
 .intro-drempel {
   margin-bottom: 14px;
@@ -704,6 +720,35 @@ body.intro-open {
   stroke: #fff;
   stroke-width: 0.8px;
   vector-effect: non-scaling-stroke;
+}
+
+/* Stap 4: twee kaartjes, elk met een eigen legenda */
+.intro-vergelijking-kaarten.is-twee {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 40px;
+  margin-bottom: 0;
+}
+
+.intro-mini .intro-legenda {
+  margin-top: 10px;
+}
+
+/* Noord en Zuid als twee vlakken: geen buurtranden binnen een helft */
+.intro-mini svg.is-geheel path {
+  stroke: none;
+}
+
+/* Het spoor zoals op de grote kaart: zwart met witte blokjes */
+.intro-mini svg path.intro-mini-spoor {
+  fill: none;
+  stroke: #061826;
+  stroke-width: 5px;
+}
+
+.intro-mini svg path.intro-mini-spoor.is-streep {
+  stroke: #fff;
+  stroke-width: 2.5px;
+  stroke-dasharray: 6 6;
 }
 
 .intro-mini-stad {

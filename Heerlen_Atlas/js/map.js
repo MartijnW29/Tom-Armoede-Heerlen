@@ -18,7 +18,8 @@ const KAART_CONFIG = {
 
   // Buurten buiten het filter of zonder waarde
   buitenFilterStijl: { color: '#999', weight: 0.6, fillOpacity: 0.45, fillColor: '#bdbdbd' },
-  geenDataStijl:     { color: '#999', weight: 0.6, fillOpacity: 0.3,  fillColor: '#ccc' },
+  // Schuine streepjes: patroon 'arcering-geen-data' in index.html
+  geenDataStijl:     { color: '#999', weight: 0.6, fillOpacity: 0.75, fillColor: 'url(#arcering-geen-data)' },
 
   // Info-venster: deze velden staan bovenaan (als ze bestaan)
   voorkeurvelden: ['naam', 'name', 'buurtnaam', 'id', 'code'],
@@ -137,7 +138,7 @@ function tekenLegenda(breuken, kleuren, veld, waarden) {
   const klassen = kleuren.map((kleur, i) => rij(kleur, label(i)));
   document.getElementById('legend').innerHTML = `<h3 title="${titel}">${titel}</h3>`
     + klassen.reverse().join('')
-    + rij('#ccc', 'Geen data', 'is-geen-data');
+    + rij('var(--arcering-geen-data)', 'Geen data', 'is-geen-data');
 }
 
 

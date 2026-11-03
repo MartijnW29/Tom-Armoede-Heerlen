@@ -18,7 +18,7 @@ const KAART_CONFIG = {
 
   // Buurten buiten het filter of zonder waarde
   buitenFilterStijl: { color: '#999', weight: 0.6, fillOpacity: 0.45, fillColor: '#bdbdbd' },
-  // Schuine streepjes: patroon 'arcering-geen-data' in index.html
+  // Schuine streepjes: patroon 'arcering-geen-data' (maakArceringPatroon hieronder)
   geenDataStijl:     { color: '#999', weight: 0.6, fillOpacity: 0.75, fillColor: 'url(#arcering-geen-data)' },
 
   // Info-venster: deze velden staan bovenaan (als ze bestaan)
@@ -43,6 +43,21 @@ const TRENDGRAFIEK_CONFIG = {
   // Velden die een buurt over de jaren heen herkenbaar maken (eerste gevulde wint)
   identiteitsvelden: ['code', 'id', 'buurtcode', 'wijkcode', 'buurtnaam', 'wijknaam', 'naam', 'name'],
 };
+
+// Arcering voor gebieden zonder cijfers: één verborgen SVG-patroon in de pagina, waar elke kaart naar
+// verwijst met fillColor 'url(#arcering-geen-data)' (ook intro.js). Zelfde strepen als --arcering-geen-data.
+(function maakArceringPatroon() {
+  if (document.getElementById('arcering-geen-data')) return;
+  document.body.insertAdjacentHTML('afterbegin', `
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <pattern id="arcering-geen-data" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="7" height="7" fill="#c4c7cc" />
+          <line x1="0" y1="0" x2="0" y2="7" stroke="#7d838c" stroke-width="2" />
+        </pattern>
+      </defs>
+    </svg>`);
+})();
 
 // Lagen boven elkaar: ondergrond (200) < kleuren < gebouwen < gemeentegrens < info-venster (700).
 // Gebouwen en grens laten de muis door naar de buurten eronder.

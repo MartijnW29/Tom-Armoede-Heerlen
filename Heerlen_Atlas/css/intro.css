@@ -353,7 +353,7 @@ body.intro-open {
   color: var(--kleur-tekst-zacht);
 }
 
-/* Spreiding binnen noord en zuid (stap 3) */
+/* Spreiding binnen noord en zuid of over de wijken (stap 3, 4, 7 en 8) */
 .intro-spreiding {
   margin: 0 0 14px;
   padding: 10px 14px 10px 30px;
@@ -421,7 +421,7 @@ body.intro-open {
   background: var(--arcering-geen-data);
 }
 
-/* ========== Keuze van de armoedegrens (stap 4) ========== */
+/* ========== Keuze van de armoedegrens (stap 10) ========== */
 .intro-drempel {
   margin-bottom: 14px;
   padding: 12px;
@@ -572,7 +572,7 @@ body.intro-open {
   visibility: hidden;
 }
 
-/* ========== Vergelijking: drie kaarten naast elkaar over het hele kaartgebied (stap 5) ========== */
+/* ========== Vergelijking: drie kaarten naast elkaar over het hele kaartgebied (stap 5, 9 en 11) ========== */
 .intro-vergelijking {
   position: absolute;
   z-index: 700;
@@ -592,7 +592,7 @@ body.intro-open {
   display: none;
 }
 
-/* Stap 4: uitleg bij de gekozen armoedegrens, links naast Heerlen (de kaart schuift op als het krap is) */
+/* Stap 10: uitleg bij de gekozen armoedegrens, links naast Heerlen (de kaart schuift op als het krap is) */
 .intro-kaartuitleg {
   position: absolute;
   z-index: 700;
@@ -731,7 +731,7 @@ body.intro-open {
   vector-effect: non-scaling-stroke;
 }
 
-/* Stap 4 en 7: Noord en Zuid, wijken en buurten, elk met een eigen legenda */
+/* Stap 5 en 9: Noord en Zuid, wijken en buurten, elk met een eigen legenda */
 .intro-vergelijking-kaarten.is-eigen-legenda {
   margin-bottom: 0;
 }

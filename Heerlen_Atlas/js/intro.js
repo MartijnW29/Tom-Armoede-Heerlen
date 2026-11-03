@@ -174,7 +174,7 @@
 
 
   // ==========================================================================
-  // ARMOEDEDEFINITIES — Stap 4 en 5
+  // ARMOEDEDEFINITIES — Stap 10 en 11
   // ==========================================================================
 
   // Gebieden met te weinig inwoners hebben bij CBS geen cijfers; die blijven op elke kaart grijs
@@ -226,7 +226,27 @@
 
 
   // ==========================================================================
+  // KAARTEN — Wat de grote kaart per stap toont
+  // ==========================================================================
+
+  /** Niveau (helft, wijk, buurt), waarde per gebied en kleurschaal; elke stap verwijst naar een van deze. */
+  const KAART_PER_STAP = {
+    noordZuid:      { niveau: 'helft', waarde: h => h.waarde,      schaal: SCHAAL_VERDELING },
+    wijken:         { niveau: 'wijk',  waarde: w => w.armPersonen, schaal: SCHAAL_AANTAL_WIJK },
+    buurten:        { niveau: 'buurt', waarde: b => b.armPersonen, schaal: SCHAAL_AANTAL },
+    perInwoner:     { niveau: 'helft', waarde: h => h.perInwoner,  schaal: SCHAAL_PROCENT_HELFT },
+    wijkenProcent:  { niveau: 'wijk',  waarde: w => w.perInwoner,  schaal: SCHAAL_PROCENT_WIJK },
+    buurtenProcent: { niveau: 'buurt', waarde: b => b.armoede,     schaal: SCHAAL_PROCENT_BUURT },
+  };
+  // De armoedegrens kleurt de buurten volgens de gekozen definitie
+  const KAART_DEFINITIE = { niveau: 'buurt', waarde: b => DEFINITIES[staat.definitie].waarde(b), schaal: SCHAAL_AANDEEL, definitie: true };
+
+
+  // ==========================================================================
   // STAPPEN — Teksten en knoppen (tekst volgens het script)
+  // `kaart`: wat de grote kaart toont (bij een vergelijking: de kaart erachter);
+  // `procentueel`: de stap kijkt naar het aandeel van de inwoners, niet naar aantallen.
+  // `tekst` mag een functie van het model zijn, zodat cijfers in de tekst uit de data komen.
   // ==========================================================================
 
   const STAPPEN = [
@@ -243,13 +263,15 @@
     },
     {
       id:     'noordZuid',
+      kaart:  KAART_PER_STAP.noordZuid,
       kicker: 'Noord en zuid',
       titel:  'Eén lijn door Heerlen',
-      tekst: `
+      tekst: (m) => `
         <p>Heerlen wordt soms beschreven als een stad die in tweeën wordt gedeeld: ten noorden van de
         spoorlijn en ten zuiden van de spoorlijn.</p>
-        <p>Wanneer we tellen hoeveel mensen in armoede leven, lijkt deze indeling betekenisvol. Ruim
-        twee derde van de Heerlenaren in armoede woont ten noorden van het spoor.</p>
+        <p>Wanneer we tellen hoeveel mensen in armoede leven, lijkt deze indeling betekenisvol.
+        ${m ? `${pct(m.noord.waarde)} van de Heerlenaren in armoede` : 'Het grootste deel van de Heerlenaren in armoede'}
+        woont ten noorden van het spoor.</p>
         <p>Het is verleidelijk om hier een eenvoudig beeld van te maken: <strong>Noord is arm. Zuid niet.</strong></p>
         <p>Maar wat gebeurt er als we de grenzen anders trekken?</p>`,
       extra: extraNoordZuid,
@@ -257,19 +279,20 @@
     },
     {
       id:     'wijken',
+      kaart:  KAART_PER_STAP.wijken,
       kicker: 'Wijken',
       titel:  'Dezelfde stad. Andere grenzen.',
-      tekst: `
+      tekst: (m) => `
         <p>Laten we de grenzen nu anders trekken. In plaats van Heerlen in noord en zuid te verdelen,
         kijken we naar de wijken.</p>
-        <p>Het eenvoudige noord-zuidbeeld begint uiteen te vallen. Ook ten zuiden van het spoor liggen
-        wijken met meer mensen in armoede dan veel wijken in het noorden.</p>
+        <p>Het eenvoudige noord-zuidbeeld begint uiteen te vallen.${m ? ` ${zuidTegenNoord(m)}` : ''}</p>
         <p>En wat als we de grenzen nog kleiner trekken?</p>`,
       extra: (m) => extraWijken(m, false),
       knop: 'Bekijk de buurten',
     },
     {
       id:     'buurten',
+      kaart:  KAART_PER_STAP.buurten,
       kicker: 'Buurten',
       titel:  'Nog kleinere grenzen',
       tekst: `
@@ -282,6 +305,7 @@
     },
     {
       id:     'naastElkaar',
+      kaart:  KAART_PER_STAP.buurten,
       kicker: 'Naast elkaar',
       titel:  'Meer arme mensen, of gewoon meer mensen?',
       tekst: `
@@ -295,6 +319,8 @@
     },
     {
       id:     'perInwoner',
+      kaart:  KAART_PER_STAP.perInwoner,
+      procentueel: true,
       kicker: 'Procentueel',
       titel:  'Een eerlijkere vergelijking',
       tekst: `
@@ -308,16 +334,20 @@
     },
     {
       id:     'wijkenProcent',
+      kaart:  KAART_PER_STAP.wijkenProcent,
+      procentueel: true,
       kicker: 'Wijken, procentueel',
       titel:  'Ook procentueel verschillen de wijken',
-      tekst: `
-        <p>Per wijk loopt het aandeel inwoners in armoede uiteen van ruim 1% tot bijna 9%.</p>
+      tekst: (m) => `
+        <p>Per wijk loopt het aandeel inwoners in armoede ${m ? `uiteen van ${wijkBereik(m)}` : 'sterk uiteen'}.</p>
         <p>En wat zien we als we weer naar de buurten kijken?</p>`,
       extra: (m) => extraWijken(m, true),
       knop: 'Bekijk de buurten',
     },
     {
       id:     'buurtenProcent',
+      kaart:  KAART_PER_STAP.buurtenProcent,
+      procentueel: true,
       kicker: 'Buurten, procentueel',
       titel:  'Ook procentueel valt het beeld uiteen',
       tekst: `
@@ -331,6 +361,8 @@
     },
     {
       id:     'naastElkaarProcent',
+      kaart:  KAART_PER_STAP.buurtenProcent,
+      procentueel: true,
       kicker: 'Naast elkaar',
       titel:  'Hetzelfde verhaal, eerlijk geteld',
       tekst: `
@@ -344,6 +376,7 @@
     },
     {
       id:     'drempel',
+      kaart:  KAART_DEFINITIE,
       kicker: 'Wat telt als armoede?',
       titel:  'Wat als we hier de armoedegrens trekken?',
       tekst: `
@@ -359,6 +392,7 @@
     },
     {
       id:     'vergelijking',
+      kaart:  KAART_DEFINITIE,
       kicker: 'Meerdere kaarten',
       titel:  'Welke van deze is de armoedekaart van Heerlen?',
       tekst: `
@@ -383,6 +417,25 @@
   // Stapnummer bij naam (0-based), bijv. STAP.drempel
   const STAP = Object.fromEntries(STAPPEN.map((s, i) => [s.id, i]));
 
+  /** Wijken met cijfers voor `veld`, van laag naar hoog. */
+  const wijkenGesorteerd = (m, veld) => m.wijken.filter(w => w[veld] != null).sort((a, b) => a[veld] - b[veld]);
+
+  /** Stap 3: de zuidelijke wijk met de meeste mensen in armoede, afgezet tegen de wijken in het noorden. */
+  function zuidTegenNoord(m) {
+    const wijken = wijkenGesorteerd(m, 'armPersonen');
+    const zuid  = wijken.filter(w => w.helft === m.zuid).at(-1);
+    const noord = wijken.filter(w => w.helft === m.noord);
+    const minder = zuid ? noord.filter(w => w.armPersonen < zuid.armPersonen).length : 0;
+    return minder ? `Zo wonen er in ${escapeHtml(zuid.naam)}, ten zuiden van het spoor, meer mensen in armoede
+      dan in ${minder} van de ${noord.length} wijken in het noorden.` : '';
+  }
+
+  /** Stap 7: het laagste en hoogste aandeel inwoners in armoede over de wijken, bijv. "1,2% tot 8,7%". */
+  function wijkBereik(m) {
+    const wijken = wijkenGesorteerd(m, 'perInwoner');
+    return wijken.length ? `${pct(wijken[0].perInwoner, true)} tot ${pct(wijken.at(-1).perInwoner, true)}` : 'wijk tot wijk';
+  }
+
   const BRON = 'Bron: CBS, Kerncijfers wijken en buurten 2024.';
 
 
@@ -402,7 +455,7 @@
     laadBelofte: null,
 
     overlay: null, paneel: null, inhoud: null, status: null, vergelijking: null,
-    kaartUitleg: null,    // de kaartjes bij de gekozen armoedegrens (stap 8)
+    kaartUitleg: null,    // de kaartjes bij de gekozen armoedegrens (stap 10)
     getoondCijfer: null,  // het aandeel dat het grote cijfer nu laat zien (telt mee bij een wissel)
     kaart: null,
     grensLagen: [],       // gemeentegrens (halo + lijn)
@@ -411,7 +464,7 @@
     labels: [],
     gemeentegrensGetekend: false,
     spoorGetekend: false,
-    miniKaart: null,  // { viewBox, paden, helften, spoor, streep } van de kaartjes naast elkaar (stap 4, 7 en 9)
+    miniKaart: null,  // { viewBox, paden, helften, spoor, streep } van de kaartjes naast elkaar (stap 5, 9 en 11)
   };
 
   // Elke nieuwe kaartovergang verhoogt dit token; lopende animaties stoppen dan
@@ -472,9 +525,16 @@
   function laadData() {
     if (!staat.laadBelofte) {
       staat.laadFout = null;
-      // Zonder wijknamen werkt alles nog; dan staat de wijkcode in de tooltip
-      staat.laadBelofte = Promise.all([haalBuurten(), haalCbsCijfers(), haalWijkNamen().catch(() => ({}))])
-        .then(([features, cijfers, wijkNamen]) => bouwModel(features, cijfers, wijkNamen))
+      staat.laadBelofte = Promise.all([haalBuurten(), haalCbsCijfers()])
+        .then(([features, cijfers]) => {
+          const model = bouwModel(features, cijfers);
+          // Wijknamen zijn alleen voor de tooltips: ze komen later binnen en houden de intro niet op.
+          // Tot dan (of als het mislukt) staat de wijkcode er.
+          haalWijkNamen()
+            .then(namen => model.wijken.forEach(w => { w.naam = namen[w.code] || w.naam; }))
+            .catch(err => console.warn('Introductie: wijknamen laden mislukt', err));
+          return model;
+        })
         .catch(err => { staat.laadBelofte = null; throw err; });
     }
     return staat.laadBelofte;
@@ -521,7 +581,7 @@
     return { inkomenPerDag: c ? (c.inkomenPerInwoner * 1000) / 365 : null, inkomenBron: bron ?? null };
   }
 
-  function bouwModel(features, cijfers, wijkNamen = {}) {
+  function bouwModel(features, cijfers) {
     const noordSet = new Set(INTRO_CONFIG.noordBuurten);
     const gemeente = cijfers[`GM${INTRO_CONFIG.gemeenteCode}`] || {};
     const wijkcode = (buurtcode) => `WK${buurtcode.slice(2, 8)}`;
@@ -530,15 +590,16 @@
       const code = String(f.properties.buurtcode || '').trim();
       const c    = cijfers[code] || {};
       const { punt, oppervlak } = zwaartepunt(f.geometry);
+      const inwoners = c.inwoners ?? getal(f.properties.aantal_inwoners) ?? 0;
       return {
         code,
         naam:          f.properties.buurtnaam || code,
         noord:         noordSet.has(code),
-        inwoners:      c.inwoners ?? getal(f.properties.aantal_inwoners) ?? 0,
+        inwoners,
         laagInkomen:   c.laagInkomen ?? null,
         armoede:       c.armoede ?? null,
         // Aantal personen in armoede: inwoners x percentage (nationale armoedegrens)
-        armPersonen:   c.armoede != null ? ((c.inwoners ?? getal(f.properties.aantal_inwoners) ?? 0) * c.armoede) / 100 : null,
+        armPersonen:   c.armoede != null ? (inwoners * c.armoede) / 100 : null,
         ...inkomenPerDag(['buurt', c], ['wijk', cijfers[wijkcode(code)]], ['gemeente', gemeente]),
         zwaartepunt:   punt,
         oppervlak,
@@ -584,7 +645,7 @@
     const segmenten = randSegmenten(buurten, b => b.feature.geometry);
     const gemeentegrens = maakKetens(segmenten.filter(s => s.buurten.length === 1));
 
-    // Wijken (stap 4 en 7): opgeteld uit hun buurten, net als Noord en Zuid
+    // Wijken (stap 3, 5, 7 en 9): opgeteld uit hun buurten, net als Noord en Zuid
     const wijken = [...d3.group(buurten, b => wijkcode(b.code))].map(([code, lijst]) => {
       const metCijfers = lijst.filter(b => b.armPersonen != null);
       const armPersonen = metCijfers.length ? metCijfers.reduce((som, b) => som + b.armPersonen, 0) : null;
@@ -593,7 +654,7 @@
       const geometry = { type: 'MultiPolygon', coordinates: lijst.flatMap(b => polygonen(b.feature.geometry)) };
       const wijk = {
         code,
-        naam: wijkNamen[code] || code,
+        naam: code,  // de naam komt na het laden binnen (haalWijkNamen)
         buurten: lijst,
         armPersonen,
         perInwoner: armPersonen != null && inwonersMetCijfers ? (armPersonen / inwonersMetCijfers) * 100 : null,
@@ -754,9 +815,9 @@
     }, klaar);
   }
 
-  /** Waarde en uitleg op het label van een helft: aantallen (stap 2) of procentueel (stap 5). */
+  /** Waarde en uitleg op het label van een helft: aantallen (stap 2) of procentueel (stap 6). */
   function helftLabelInhoud(h) {
-    return staat.stap === STAP.perInwoner
+    return isProcentueel(staat.stap)
       ? { waarde: pct(h.perInwoner, true), uitleg: 'van de inwoners in armoede' }
       : { waarde: pct(h.waarde), uitleg: `${NF_HEEL.format(h.armPersonen)} personen in armoede` };
   }
@@ -905,28 +966,8 @@
   // KAART — Toestand per stap
   // ==========================================================================
 
-  // Stap 2–5 tellen personen in armoede, stap 6–9 kijken procentueel (aandeel van de inwoners)
-  const isProcentueel = (stap) => stap >= STAP.perInwoner && stap <= STAP.naastElkaarProcent;
-
-  /** Wat de grote kaart per stap toont: niveau, waarde per gebied en kleurschaal. */
-  const KAART_PER_STAP = {
-    noordZuid:      { niveau: 'helft', waarde: h => h.waarde,      schaal: SCHAAL_VERDELING },
-    wijken:         { niveau: 'wijk',  waarde: w => w.armPersonen, schaal: SCHAAL_AANTAL_WIJK },
-    buurten:        { niveau: 'buurt', waarde: b => b.armPersonen, schaal: SCHAAL_AANTAL },
-    perInwoner:     { niveau: 'helft', waarde: h => h.perInwoner,  schaal: SCHAAL_PROCENT_HELFT },
-    wijkenProcent:  { niveau: 'wijk',  waarde: w => w.perInwoner,  schaal: SCHAAL_PROCENT_WIJK },
-    buurtenProcent: { niveau: 'buurt', waarde: b => b.armoede,     schaal: SCHAAL_PROCENT_BUURT },
-  };
-  const KAART_DEFINITIE = { niveau: 'buurt', waarde: b => DEFINITIES[staat.definitie].waarde(b), schaal: SCHAAL_AANDEEL, definitie: true };
-
-  /** De kaart achter een vergelijking is die van de stap ervoor; de armoedegrens kleurt de buurten. */
-  function kaartVoorStap(stap) {
-    const id = STAPPEN[stap].id;
-    if (id === 'naastElkaar')        return KAART_PER_STAP.buurten;
-    if (id === 'naastElkaarProcent') return KAART_PER_STAP.buurtenProcent;
-    if (id === 'drempel' || id === 'vergelijking') return KAART_DEFINITIE;
-    return KAART_PER_STAP[id] ?? null;  // de start heeft nog geen cijfers
-  }
+  const kaartVoorStap = (stap) => STAPPEN[stap].kaart ?? null;  // de start heeft nog geen cijfers
+  const isProcentueel = (stap) => Boolean(STAPPEN[stap].procentueel);
 
   const RANG = { helft: 0, wijk: 1, buurt: 2 };
   const gebiedenOp = (niveau) => ({ helft: staat.model.helften, wijk: staat.model.wijken, buurt: staat.model.buurten })[niveau];
@@ -957,9 +998,10 @@
     toonArcering(b => kaart.waarde(gebiedVan(b, naar)) == null && naar !== 'helft');
 
     if (!duur || !van || van === naar) {
-      // Zelfde niveau (of zonder animatie): de kleuren vloeien over
-      if (van !== naar) verbergAndere();
-      if (!duur) { zetStijl(items, zichtbaar); verbergAndere(); klaar?.(); return; }
+      // Zelfde niveau (of zonder animatie): de kleuren vloeien over. Ook een half afgemaakte
+      // vorige overgang op een ander niveau verdwijnt hiermee.
+      verbergAndere();
+      if (!duur) { zetStijl(items, zichtbaar); klaar?.(); return; }
       stijlOvergang(items, zichtbaar, duur, null, klaar);
       return;
     }
@@ -970,13 +1012,14 @@
       verbergAndere();
       stijlOvergang(items, zichtbaar, 1700, it => it.afstandTotSpoor, klaar);
     } else {
-      // Samenvloeien: de kleine gebieden nemen de kleur van hun grotere gebied aan
+      // Samenvloeien: het grotere niveau staat er meteen (het ligt onder het kleinere); de kleine
+      // gebieden nemen de kleur van hun grotere gebied aan en verdwijnen dan
+      zetStijl(items, zichtbaar);
       const oud = gebiedenOp(van);
       stijlOvergang(oud, it => {
         const kleur = kleurVoor(kaart.waarde(gebiedVan(it, naar)), kaart.schaal);
         return { fillColor: kleur, color: kleur, opacity: 0 };
       }, duur, null, () => {
-        zetStijl(items, zichtbaar);
         verbergAndere();
         klaar?.();
       });
@@ -1036,7 +1079,7 @@
 
 
   // ==========================================================================
-  // KAART — Uitleg bij de gekozen armoedegrens (stap 8)
+  // KAART — Uitleg bij de gekozen armoedegrens (stap 10)
   // ==========================================================================
 
   /** De kaartjes links naast Heerlen: naam, maatstaf en uitleg van de grens, en het aandeel van Heerlen. */
@@ -1069,7 +1112,7 @@
     return (punt) => kaart.project(punt, zoom).subtract(midden).add(helft);
   }
 
-  /** Schuif Heerlen naar rechts tot de gemeentegrens nergens achter de kaartjes van stap 8 ligt. */
+  /** Schuif Heerlen naar rechts tot de gemeentegrens nergens achter de kaartjes van stap 10 ligt. */
   function maakRuimteVoorUitleg(opties, vak) {
     const grens = staat.model.gemeentegrens.flat();
     for (let poging = 0; poging < 4; poging++) {
@@ -1132,13 +1175,13 @@
     if (!m) return ladenHtml();
     const veld = procentueel ? 'perInwoner' : 'armPersonen';
     const opmaak = procentueel ? (v => pct(v, true)) : personen;
-    const metWaarde = m.wijken.filter(w => w[veld] != null).sort((a, b) => a[veld] - b[veld]);
+    const metWaarde = wijkenGesorteerd(m, veld);
     const regel = (label, w) => `<li><strong>${label}</strong>: ${opmaak(w[veld])} (${escapeHtml(w.naam)})</li>`;
     return `
-      <ul class="intro-spreiding">
+      ${metWaarde.length ? `<ul class="intro-spreiding">
         ${regel('Minste', metWaarde[0])}
         ${regel('Meeste', metWaarde.at(-1))}
-      </ul>
+      </ul>` : ''}
       ${procentueel
         ? legendaHtml('Aandeel inwoners in armoede per wijk (nationale armoedegrens)', { schaal: SCHAAL_PROCENT_WIJK, geenData: true })
         : legendaHtml('Aantal personen in armoede per wijk (nationale armoedegrens)', { schaal: SCHAAL_AANTAL_WIJK, geenData: true })}
@@ -1236,7 +1279,7 @@
     toonNiveau(KAART_DEFINITIE, 750);
   }
 
-  /** Laat de keuze vanzelf door de definities lopen zolang stap 8 open is en niemand de knoppen heeft aangeraakt. */
+  /** Laat de keuze vanzelf door de definities lopen zolang stap 10 open is en niemand de knoppen heeft aangeraakt. */
   function regelAutoDraai() {
     clearInterval(staat.autoDraaiTimer);
     staat.autoDraaiTimer = null;
@@ -1250,7 +1293,7 @@
     regelAutoDraai();
   }
 
-  /** Paden van de kaartjes naast elkaar (stap 4, 7 en 9): eenmalig berekend, zonder achtergrond en niet zoombaar. */
+  /** Paden van de kaartjes naast elkaar (stap 5, 9 en 11): eenmalig berekend, zonder achtergrond en niet zoombaar. */
   function miniKaartGeometrie(m) {
     if (!staat.miniKaart) {
       // Vlakke projectie: lengtegraad schalen met cos(breedtegraad). De viewBox ligt precies om
@@ -1304,38 +1347,36 @@
       </figure>`;
   }
 
-  /** De drie kaartjes van stap 5 of 9: Noord en Zuid, wijken en buurten, elk in de kleur van zijn niveau. */
-  function drieNiveausHtml(m, { sub, helft, wijk, buurt }) {
+  /**
+   * De drie kaartjes van stap 5 of 9: Noord en Zuid, wijken en buurten, elk in de kleur van zijn niveau.
+   * `kaarten` zijn drie items uit KAART_PER_STAP (zelfde waarde en schaal als de grote kaart).
+   */
+  function drieNiveausHtml(m, { sub, kaarten, tekst, legendas }) {
     const g = miniKaartGeometrie(m);
-    const kaartje = (i, titel, niveau, gebieden, paden, { waarde, schaal, tekst, legenda }) => miniKaartHtml(i, {
-      titel, sub,
+    const paden = { helft: g.helften, wijk: g.wijken, buurt: g.paden };
+    const titels = { helft: 'Noord en Zuid', wijk: 'Wijken', buurt: 'Buurten' };
+    return kaarten.map(({ niveau, waarde, schaal }, i) => miniKaartHtml(i, {
+      titel: titels[niveau], sub,
       geheel: niveau !== 'buurt',
       spoor: true,
       grenzen: niveau === 'wijk' ? g.wijkgrenzen : null,
-      vlakken: gebieden.map((gb, j) => {
+      vlakken: gebiedenOp(niveau).map((gb, j) => {
         const v = waarde(gb);
-        return { d: paden[j], waarde: v, kleur: kleurVoor(v, schaal), titel: `${gb.naam}: ${v == null ? 'geen cijfers' : tekst(v)}` };
+        return { d: paden[niveau][j], waarde: v, kleur: kleurVoor(v, schaal), titel: `${gb.naam}: ${v == null ? 'geen cijfers' : tekst[niveau](v)}` };
       }),
-      legenda: legendaHtml(legenda, { schaal, geenData: niveau !== 'helft' }),
-    });
-    return [
-      kaartje(0, 'Noord en Zuid', 'helft', m.helften, g.helften, helft),
-      kaartje(1, 'Wijken',        'wijk',  m.wijken,  g.wijken,  wijk),
-      kaartje(2, 'Buurten',       'buurt', m.buurten, g.paden,   buurt),
-    ].join('');
+      legenda: legendaHtml(legendas[i], { schaal, geenData: niveau !== 'helft' }),
+    })).join('');
   }
 
   /** Stap 5: de aantallen van Noord en Zuid (stap 2), de wijken (stap 3) en de buurten (stap 4) naast elkaar. */
   function vergelijkingAantallenHtml(m) {
     if (!m) return ladenHtml();
+    const inArmoede = v => `${personen(v)} in armoede`;
     const kaartjes = drieNiveausHtml(m, {
       sub: 'aantal personen in armoede',
-      helft: { waarde: h => h.waarde, schaal: SCHAAL_VERDELING, tekst: v => `${pct(v)} van de Heerlenaren in armoede`,
-               legenda: 'Deel van alle arme Heerlenaren' },
-      wijk:  { waarde: w => w.armPersonen, schaal: SCHAAL_AANTAL_WIJK, tekst: v => `${personen(v)} in armoede`,
-               legenda: 'Personen in armoede per wijk' },
-      buurt: { waarde: b => b.armPersonen, schaal: SCHAAL_AANTAL, tekst: v => `${personen(v)} in armoede`,
-               legenda: 'Personen in armoede per buurt' },
+      kaarten: [KAART_PER_STAP.noordZuid, KAART_PER_STAP.wijken, KAART_PER_STAP.buurten],
+      tekst: { helft: v => `${pct(v)} van de Heerlenaren in armoede`, wijk: inArmoede, buurt: inArmoede },
+      legendas: ['Deel van alle arme Heerlenaren', 'Personen in armoede per wijk', 'Personen in armoede per buurt'],
     });
     return `<div class="intro-vergelijking-kaarten is-eigen-legenda">${kaartjes}</div>`;
   }
@@ -1343,12 +1384,12 @@
   /** Stap 9: hetzelfde procentueel, met net als stap 5 een eigen legenda onder elk kaartje. */
   function vergelijkingProcentHtml(m) {
     if (!m) return ladenHtml();
-    const tekst = v => `${pct(v, true)} van de inwoners in armoede`;
+    const aandeel = v => `${pct(v, true)} van de inwoners in armoede`;
     const kaartjes = drieNiveausHtml(m, {
       sub: 'aandeel inwoners in armoede',
-      helft: { waarde: h => h.perInwoner, schaal: SCHAAL_PROCENT_HELFT, tekst, legenda: 'Aandeel inwoners in armoede' },
-      wijk:  { waarde: w => w.perInwoner, schaal: SCHAAL_PROCENT_WIJK,  tekst, legenda: 'Aandeel per wijk' },
-      buurt: { waarde: b => b.armoede,    schaal: SCHAAL_PROCENT_BUURT, tekst, legenda: 'Aandeel per buurt' },
+      kaarten: [KAART_PER_STAP.perInwoner, KAART_PER_STAP.wijkenProcent, KAART_PER_STAP.buurtenProcent],
+      tekst: { helft: aandeel, wijk: aandeel, buurt: aandeel },
+      legendas: ['Aandeel inwoners in armoede', 'Aandeel per wijk', 'Aandeel per buurt'],
     });
     return `<div class="intro-vergelijking-kaarten is-eigen-legenda">${kaartjes}</div>`;
   }
@@ -1390,7 +1431,7 @@
       </div>
       <p class="intro-kicker">${s.kicker}</p>
       <h2 class="intro-titel" id="intro-titel">${s.titel}</h2>
-      <div class="intro-tekst">${s.tekst}</div>
+      <div class="intro-tekst">${typeof s.tekst === 'function' ? s.tekst(staat.model) : s.tekst}</div>
       ${s.extra ? `<div class="intro-extra">${s.extra(staat.model)}</div>` : ''}
       <div class="intro-navigatie">
         <button type="button" class="intro-vorige" data-actie="vorige" ${index === 0 ? 'disabled' : ''}>

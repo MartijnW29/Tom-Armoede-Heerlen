@@ -368,8 +368,16 @@ body.intro-open {
   margin-top: 4px;
 }
 
-.intro-legenda-titel {
+/* Titel links, "geen cijfers" rechts op dezelfde regel: zo zijn alle legenda's even hoog */
+.intro-legenda-kop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 6px;
+}
+
+.intro-legenda-titel {
   font-size: 11px;
   font-weight: 700;
   color: var(--kleur-tekst-zacht);
@@ -398,9 +406,10 @@ body.intro-open {
 
 .intro-legenda-geendata {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--kleur-tekst-zacht);
 }
